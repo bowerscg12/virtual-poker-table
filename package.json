@@ -1,0 +1,23 @@
+{
+  "name": "virtual-card-table",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @vct/shared-types && npm run build -w @vct/poker-engine && npm run build -w @vct/game-server && npm run build -w @vct/web",
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w @vct/game-server\" \"npm run dev -w @vct/web\"",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "npm run db:migrate -w @vct/game-server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
