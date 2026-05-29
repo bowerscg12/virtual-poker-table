@@ -15,13 +15,11 @@ import { SessionResultsModal } from '../components/SessionResultsModal';
 export default function TablePage() {
   const { lobbyId } = useParams<{ lobbyId: string }>();
   const navigate = useNavigate();
-  const { user, token, loginGuest } = useAuth();
+  const { user, token } = useAuth();
   const [chatOpen, setChatOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
   const [cashOutOpen, setCashOutOpen] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [nameChangeError, setNameChangeError] = useState<string | null>(null);
 
   const {
     connected,
@@ -31,7 +29,6 @@ export default function TablePage() {
     privateState,
     chat,
     error,
-    nameTaken,
     cashOutQueued,
     cashOutSummary,
     clearCashOutSummary,
@@ -74,8 +71,6 @@ export default function TablePage() {
 
   function handleCashOutConfirm() {
     send({ type: 'cash_out' });
-    // If the server responds with cash_out_queued, the modal stays open in queued mode.
-    // If the server responds with cashed_out, cashOutSummary will be set and we hide this modal.
   }
 
   function handleCancelQueue() {
@@ -86,19 +81,6 @@ export default function TablePage() {
   function handleLeaveTable() {
     clearCashOutSummary();
     navigate('/');
-  }
-
-  async function handleNameChange(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = newName.trim();
-    if (!trimmed) return;
-    setNameChangeError(null);
-    try {
-      await loginGuest(trimmed);
-      setNewName('');
-    } catch {
-      setNameChangeError('Could not update name. Please try again.');
-    }
   }
 
   return (
@@ -164,35 +146,7 @@ export default function TablePage() {
 
         {!mySeat && headerLobby && token && connected && (
           <div className="sit-panel panel">
-            {nameTaken ? (
-              <>
-                <p className="form-error" role="alert">
-                  The name &ldquo;{user?.displayName}&rdquo; is already in use at this table.
-                  Please choose a different name.
-                </p>
-                <form onSubmit={handleNameChange} className="name-change-form">
-                  <input
-                    placeholder="New display name"
-                    value={newName}
-                    onChange={(e) => {
-                      setNewName(e.target.value.slice(0, 10));
-                      if (nameChangeError) setNameChangeError(null);
-                    }}
-                    maxLength={10}
-                    autoFocus
-                  />
-                  {nameChangeError && <p className="form-error" role="alert">{nameChangeError}</p>}
-                  <div className="name-change-actions">
-                    <button type="submit" className="btn primary" disabled={!newName.trim()}>
-                      Try Again
-                    </button>
-                    <button type="button" className="btn" onClick={() => navigate('/')}>
-                      Leave Table
-                    </button>
-                  </div>
-                </form>
-              </>
-            ) : tableFull ? (
+            {tableFull ? (
               <p>Table is full. Wait for a seat to open.</p>
             ) : (
               <p>Joining table... you will be seated automatically with {buyIn.toLocaleString()} chips.</p>

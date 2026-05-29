@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { RulesPreset, VariantConfig } from '@vct/shared-types';
 import { TIMER_STEPS_SEC, formatTimerLabel } from '@vct/shared-types';
-import { createLobby, getPresets } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { getPresets } from '../api/client';
 
 function digitsOnly(value: string): string {
   return value.replace(/[^\d]/g, '');
@@ -38,7 +37,6 @@ function loadPresetIntoForm(
 }
 
 export default function CreateLobbyPage() {
-  const { token, user, loginGuest } = useAuth();
   const [presets, setPresets] = useState<RulesPreset[]>([]);
   const [presetId, setPresetId] = useState('nlhe-standard');
   const [buyIn, setBuyIn] = useState('500');
@@ -48,7 +46,6 @@ export default function CreateLobbyPage() {
   const [straddleAmount, setStraddleAmount] = useState('20');
   const [sevenDeuceRule, setSevenDeuceRule] = useState(false);
   const [actionTimerSec, setActionTimerSec] = useState(30);
-  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -100,18 +97,10 @@ export default function CreateLobbyPage() {
     );
   }, [presetId, selectedPreset]);
 
-  async function handleCreate(e: React.FormEvent) {
+  function handleNext(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPreset || !isFormValid || parsedBuyIn === null || parsedSmallBlind === null || parsedBigBlind === null) {
-      setError('Please enter valid buy-in and blind values before creating the table.');
-      return;
-    }
-
-    setError(null);
-    try {
-      if (!user && name.trim()) await loginGuest(name.trim());
-    } catch {
-      setError('Display names must be 10 characters or fewer.');
+      setError('Please enter valid buy-in and blind values before continuing.');
       return;
     }
 
@@ -134,30 +123,13 @@ export default function CreateLobbyPage() {
       sevenDeuceRule: base.game === 'holdem' ? sevenDeuceRule : false,
       actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
     };
-    const { lobby } = await createLobby({ presetId, settings });
-    navigate(`/table/${lobby.id}`);
-  }
 
-  if (!token && !name) {
-    return (
-      <div className="page">
-        <form className="panel" onSubmit={(e) => { e.preventDefault(); handleCreate(e); }}>
-          <h2>Your name</h2>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value.slice(0, 10))}
-            placeholder="Display name"
-            maxLength={10}
-          />
-          <button type="submit">Next</button>
-        </form>
-      </div>
-    );
+    navigate('/name', { state: { mode: 'create', presetId, settings } });
   }
 
   return (
     <div className="page">
-      <form className="panel" onSubmit={handleCreate}>
+      <form className="panel" onSubmit={handleNext}>
         <h2>Create table</h2>
         <label>
           Rules preset
@@ -300,7 +272,7 @@ export default function CreateLobbyPage() {
           least the big blind.
         </p>
         <button type="submit" className="btn primary" disabled={!isFormValid}>
-          Create &amp; open table
+          Next: Choose your name
         </button>
       </form>
     </div>

@@ -12,6 +12,26 @@ import { initAuthStore } from './auth.js';
 
 let useMemory = false;
 
+/**
+ * Per-lobby mutex to serialize concurrent entry attempts (name check + seat assignment).
+ * Prevents two users from simultaneously passing the name uniqueness check.
+ */
+const lobbyEntryLocks = new Map<string, Promise<void>>();
+
+export async function withLobbyEntryLock<T>(lobbyId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = lobbyEntryLocks.get(lobbyId) ?? Promise.resolve();
+  let release!: () => void;
+  const lock = new Promise<void>((res) => { release = res; });
+  lobbyEntryLocks.set(lobbyId, lock);
+  try {
+    await prev;
+    return await fn();
+  } finally {
+    release();
+    if (lobbyEntryLocks.get(lobbyId) === lock) lobbyEntryLocks.delete(lobbyId);
+  }
+}
+
 export async function initLobbyStore(): Promise<void> {
   await initAuthStore();
   try {

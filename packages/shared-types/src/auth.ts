@@ -24,3 +24,10 @@ export interface AuthResponse {
   user: AuthUser;
   token: string;
 }
+
+/** Returned by POST /api/lobbies and POST /api/lobbies/:id/enter */
+export interface EnterLobbyResponse {
+  user: AuthUser;
+  token: string;
+  sessionId: string;
+}

@@ -6,6 +6,8 @@ interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   loginGuest: (name: string) => Promise<void>;
+  /** Set auth state directly from an EnterLobbyResponse (bypasses guest-login flow). */
+  setAuthDirect: (user: AuthUser, token: string, sessionId: string) => void;
   logout: () => void;
 }
 
@@ -35,6 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.token);
   }, []);
 
+  const setAuthDirect = useCallback((u: AuthUser, t: string, sessionId: string) => {
+    localStorage.setItem('vct_token', t);
+    localStorage.setItem('vct_session_id', sessionId);
+    setUser(u);
+    setToken(t);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem('vct_token');
     localStorage.removeItem('vct_session_id');
@@ -43,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loginGuest, logout }}>
+    <AuthContext.Provider value={{ user, token, loginGuest, setAuthDirect, logout }}>
       {children}
     </AuthContext.Provider>
   );

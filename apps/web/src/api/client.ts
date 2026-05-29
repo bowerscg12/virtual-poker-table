@@ -1,13 +1,6 @@
-import type { AuthResponse, CreateLobbyRequest, LobbySummary, RulesPreset } from '@vct/shared-types';
+import type { AuthResponse, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
 
 const API = '/api';
-
-function authHeaders(): HeadersInit {
-  const token = localStorage.getItem('vct_token');
-  return token
-    ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-    : { 'Content-Type': 'application/json' };
-}
 
 export async function guestLogin(displayName: string): Promise<AuthResponse> {
   let res: Response;
@@ -38,14 +31,63 @@ export async function register(displayName: string, email: string, password: str
   return data;
 }
 
-export async function createLobby(req: CreateLobbyRequest): Promise<{ lobby: LobbySummary }> {
-  const res = await fetch(`${API}/lobbies`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) throw new Error('Create lobby failed');
-  return res.json();
+/**
+ * Create a new table and enter it in one request.
+ * No auth required — identity is created server-side.
+ * Returns user, token, sessionId, and the new lobby.
+ */
+export async function createTableAndEnter(
+  displayName: string,
+  req: CreateLobbyRequest
+): Promise<EnterLobbyResponse & { lobby: LobbySummary }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API}/lobbies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName, ...req }),
+    });
+  } catch {
+    throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string; code?: string };
+    const e = new Error(err.error ?? 'Could not create table') as Error & { code?: string };
+    e.code = err.code;
+    throw e;
+  }
+  const data = await res.json() as EnterLobbyResponse & { lobby: LobbySummary };
+  localStorage.setItem('vct_token', data.token);
+  localStorage.setItem('vct_session_id', data.sessionId);
+  return data;
+}
+
+/**
+ * Join an existing table by lobbyId with a chosen display name.
+ * No auth required — identity is created server-side after name validation.
+ * Throws with code 'NAME_TAKEN' if the name is already in use at this table.
+ */
+export async function enterLobby(lobbyId: string, displayName: string): Promise<EnterLobbyResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API}/lobbies/${lobbyId}/enter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName }),
+    });
+  } catch {
+    throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string; code?: string };
+    const e = new Error(err.error ?? 'Could not join table') as Error & { code?: string };
+    e.code = err.code;
+    throw e;
+  }
+  const data = await res.json() as EnterLobbyResponse;
+  localStorage.setItem('vct_token', data.token);
+  localStorage.setItem('vct_session_id', data.sessionId);
+  return data;
 }
 
 export async function getLobbyByInvite(code: string): Promise<{ lobby: LobbySummary }> {

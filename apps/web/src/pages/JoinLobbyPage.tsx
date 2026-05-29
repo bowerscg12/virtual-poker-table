@@ -1,56 +1,55 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getLobbyByInvite } from '../api/client';
-import { useAuth } from '../context/AuthContext';
 
 export default function JoinLobbyPage() {
   const { code } = useParams();
   const [inviteCode, setInviteCode] = useState(code ?? '');
-  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const { user, loginGuest, token } = useAuth();
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Auto-resolve a code passed directly in the URL
   useEffect(() => {
     if (code && code.length >= 4) {
       getLobbyByInvite(code)
-        .then((r) => navigate(`/table/${r.lobby.id}`, { replace: true }))
+        .then((r) => navigate(`/lobby/${r.lobby.id}/name`, { replace: true }))
         .catch(() => {});
     }
   }, [code, navigate]);
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
+    const trimmed = inviteCode.trim().toUpperCase();
+    if (!trimmed) return;
+    setError(null);
+    setLoading(true);
     try {
-      if (!user && name.trim()) await loginGuest(name.trim());
+      const { lobby } = await getLobbyByInvite(trimmed);
+      navigate(`/lobby/${lobby.id}/name`);
     } catch {
-      setError('Display names must be 10 characters or fewer.');
-      return;
+      setError('Table not found. Check the invite code and try again.');
+    } finally {
+      setLoading(false);
     }
-    const { lobby } = await getLobbyByInvite(inviteCode.trim().toUpperCase());
-    navigate(`/table/${lobby.id}`);
   }
 
   return (
     <div className="page">
       <form className="panel" onSubmit={handleJoin}>
         <h2>Join table</h2>
-        {!token && !user && (
-          <input
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value.slice(0, 10))}
-            maxLength={10}
-          />
-        )}
         <input
           placeholder="Invite code"
           value={inviteCode}
-          onChange={(e) => setInviteCode(e.target.value)}
+          onChange={(e) => {
+            setInviteCode(e.target.value);
+            if (error) setError(null);
+          }}
+          disabled={loading}
         />
         {error && <p className="form-error" role="alert">{error}</p>}
-        <button type="submit" className="btn primary">
-          Join
+        <button type="submit" className="btn primary" disabled={loading || !inviteCode.trim()}>
+          {loading ? 'Looking up table...' : 'Next'}
         </button>
       </form>
     </div>

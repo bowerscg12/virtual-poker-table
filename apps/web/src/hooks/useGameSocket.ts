@@ -27,7 +27,6 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [privateState, setPrivateState] = useState<{ holeCards: Card[]; legalActions: LegalAction[] } | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [nameTaken, setNameTaken] = useState(false);
   const [cashOutQueued, setCashOutQueued] = useState(false);
   const [cashOutSummary, setCashOutSummary] = useState<CashOutSummary | null>(null);
 
@@ -162,7 +161,6 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
 
           case 'lobby_state':
             setLobby(msg.lobby);
-            setNameTaken(false);
             readyToFlushRef.current = true;
             flushPending(ws);
             break;
@@ -194,11 +192,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             break;
 
           case 'error':
-            if (msg.code === 'NAME_TAKEN') {
-              setNameTaken(true);
-            } else {
-              setError(msg.message);
-            }
+            setError(msg.message);
             break;
 
           default:
@@ -245,7 +239,6 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     privateState,
     chat,
     error,
-    nameTaken,
     cashOutQueued,
     cashOutSummary,
     clearCashOutSummary,
