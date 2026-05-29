@@ -7,6 +7,13 @@ import { memoryCreateUser, memoryStore } from '../store/memory-fallback.js';
 
 let useMemory = false;
 
+function assertDisplayName(displayName: string): string {
+  const trimmed = displayName.trim();
+  if (trimmed.length === 0) throw new Error('Display name is required');
+  if (trimmed.length > 10) throw new Error('Display name must be 10 characters or fewer');
+  return trimmed;
+}
+
 export async function initAuthStore(): Promise<void> {
   try {
     const pool = (await import('../db/client.js')).getPool();
@@ -23,15 +30,16 @@ export async function registerUser(
   email?: string,
   password?: string
 ): Promise<AuthUser> {
+  const normalizedDisplayName = assertDisplayName(displayName);
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
   if (useMemory) {
-    const user = memoryCreateUser({ displayName, email, passwordHash, isGuest: false });
+    const user = memoryCreateUser({ displayName: normalizedDisplayName, email, passwordHash, isGuest: false });
     return { id: user.id, displayName: user.displayName, isGuest: false };
   }
   const db = getDb();
   const [row] = await db
     .insert(users)
-    .values({ displayName, email, passwordHash, isGuest: false })
+    .values({ displayName: normalizedDisplayName, email, passwordHash, isGuest: false })
     .returning();
   return { id: row.id, displayName: row.displayName, avatarUrl: row.avatarUrl ?? undefined, isGuest: false };
 }
@@ -49,12 +57,13 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
 }
 
 export async function guestLogin(displayName: string): Promise<AuthUser> {
+  const normalizedDisplayName = assertDisplayName(displayName);
   if (useMemory) {
-    const user = memoryCreateUser({ displayName, isGuest: true });
+    const user = memoryCreateUser({ displayName: normalizedDisplayName, isGuest: true });
     return { id: user.id, displayName: user.displayName, isGuest: true };
   }
   const db = getDb();
-  const [row] = await db.insert(users).values({ displayName, isGuest: true }).returning();
+  const [row] = await db.insert(users).values({ displayName: normalizedDisplayName, isGuest: true }).returning();
   return { id: row.id, displayName: row.displayName, isGuest: true };
 }
 

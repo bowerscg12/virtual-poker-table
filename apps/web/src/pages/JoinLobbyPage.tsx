@@ -7,6 +7,7 @@ export default function JoinLobbyPage() {
   const { code } = useParams();
   const [inviteCode, setInviteCode] = useState(code ?? '');
   const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const { user, loginGuest, token } = useAuth();
   const navigate = useNavigate();
 
@@ -20,7 +21,12 @@ export default function JoinLobbyPage() {
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
-    if (!user && name.trim()) await loginGuest(name.trim());
+    try {
+      if (!user && name.trim()) await loginGuest(name.trim());
+    } catch {
+      setError('Display names must be 10 characters or fewer.');
+      return;
+    }
     const { lobby } = await getLobbyByInvite(inviteCode.trim().toUpperCase());
     navigate(`/table/${lobby.id}`);
   }
@@ -30,13 +36,19 @@ export default function JoinLobbyPage() {
       <form className="panel" onSubmit={handleJoin}>
         <h2>Join table</h2>
         {!token && !user && (
-          <input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value.slice(0, 10))}
+            maxLength={10}
+          />
         )}
         <input
           placeholder="Invite code"
           value={inviteCode}
           onChange={(e) => setInviteCode(e.target.value)}
         />
+        {error && <p className="form-error" role="alert">{error}</p>}
         <button type="submit" className="btn primary">
           Join
         </button>

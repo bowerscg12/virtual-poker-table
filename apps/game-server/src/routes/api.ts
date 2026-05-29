@@ -11,10 +11,12 @@ import {
 import { getHandHistories } from '../services/game-manager.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
+  const displayNameSchema = z.string().trim().min(1).max(10);
+
   app.post('/auth/register', async (req, reply) => {
     const body = z
       .object({
-        displayName: z.string().min(1).max(64),
+        displayName: displayNameSchema,
         email: z.string().email().optional(),
         password: z.string().min(6).optional(),
       })
@@ -33,7 +35,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/auth/guest', async (req, reply) => {
-    const body = z.object({ displayName: z.string().min(1).max(64) }).parse(req.body);
+    const body = z.object({ displayName: displayNameSchema }).parse(req.body);
     const user = await guestLogin(body.displayName);
     const token = await reply.jwtSign({ sub: user.id });
     return toAuthResponse(user, token);

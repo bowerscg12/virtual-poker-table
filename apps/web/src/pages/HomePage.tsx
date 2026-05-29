@@ -42,10 +42,10 @@ export default function HomePage() {
             placeholder="Your display name"
             value={name}
             onChange={(e) => {
-              setName(e.target.value);
+              setName(e.target.value.slice(0, 10));
               if (error) setError(null);
             }}
-            maxLength={64}
+            maxLength={10}
             autoComplete="nickname"
             disabled={loading}
           />

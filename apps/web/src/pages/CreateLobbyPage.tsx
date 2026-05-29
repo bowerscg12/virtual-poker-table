@@ -102,7 +102,12 @@ export default function CreateLobbyPage() {
     }
 
     setError(null);
-    if (!user && name.trim()) await loginGuest(name.trim());
+    try {
+      if (!user && name.trim()) await loginGuest(name.trim());
+    } catch {
+      setError('Display names must be 10 characters or fewer.');
+      return;
+    }
 
     const base: VariantConfig = selectedPreset.config;
     const settings: VariantConfig = {
@@ -131,7 +136,12 @@ export default function CreateLobbyPage() {
       <div className="page">
         <form className="panel" onSubmit={(e) => { e.preventDefault(); handleCreate(e); }}>
           <h2>Your name</h2>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Display name" />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value.slice(0, 10))}
+            placeholder="Display name"
+            maxLength={10}
+          />
           <button type="submit">Next</button>
         </form>
       </div>

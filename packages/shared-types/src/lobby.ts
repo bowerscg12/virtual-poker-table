@@ -21,6 +21,7 @@ export interface LobbySummary {
   id: string;
   inviteCode: string;
   hostUserId: string;
+  hostDisplayName: string;
   status: LobbyStatus;
   settings: VariantConfig;
   seats: TableSeat[];

@@ -1,8 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useState } from 'react';
+import { getTableBuyIn, type LobbySummary } from '@vct/shared-types';
 import { useAuth } from '../context/AuthContext';
+import { getLobbyById } from '../api/client';
 import { useGameSocket } from '../hooks/useGameSocket';
-import { getTableBuyIn } from '@vct/shared-types';
 import { PokerTable } from '../components/PokerTable';
 import { ActionBar } from '../components/ActionBar';
 import { ChatPanel } from '../components/ChatPanel';
@@ -14,19 +15,38 @@ export default function TablePage() {
   const { user, token } = useAuth();
   const [chatOpen, setChatOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
   const { connected, lobby, table, privateState, chat, error, send } = useGameSocket(
     token,
     lobbyId ?? null
   );
 
-  const isHost = user && lobby && lobby.hostUserId === user.id;
-  const mySeat = lobby?.seats.find((s) => s.userId === user?.id);
-  const tableFull = lobby && !mySeat && lobby.seats.every((s) => s.userId);
-  const buyIn = lobby ? getTableBuyIn(lobby.settings) : 0;
+  useEffect(() => {
+    if (!lobbyId) return;
+
+    let cancelled = false;
+    getLobbyById(lobbyId)
+      .then(({ lobby: fetchedLobby }) => {
+        if (!cancelled) setSnapshotLobby(fetchedLobby);
+      })
+      .catch(() => {
+        if (!cancelled) setSnapshotLobby(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lobbyId]);
+
+  const headerLobby = lobby ?? snapshotLobby;
+  const isHost = user && headerLobby && headerLobby.hostUserId === user.id;
+  const mySeat = headerLobby?.seats.find((s) => s.userId === user?.id);
+  const tableFull = headerLobby && !mySeat && headerLobby.seats.every((s) => s.userId);
+  const buyIn = headerLobby ? getTableBuyIn(headerLobby.settings) : 0;
 
   function copyInvite() {
-    if (!lobby) return;
-    const url = `${window.location.origin}/join/${lobby.inviteCode}`;
+    if (!headerLobby) return;
+    const url = `${window.location.origin}/join/${headerLobby.inviteCode}`;
     navigator.clipboard.writeText(url);
   }
 
@@ -34,14 +54,12 @@ export default function TablePage() {
     <div className="table-layout">
       <header className="table-header">
         <div>
-          <h1>Table {lobby?.inviteCode ?? '…'}</h1>
-          <span className={`status ${connected ? 'on' : 'off'}`}>{connected ? 'Connected' : 'Connecting…'}</span>
-          {lobby && (
-            <p className="table-meta">Buy-in: {buyIn.toLocaleString()} chips per player</p>
-          )}
+          <h1>{headerLobby ? `${headerLobby.hostDisplayName}'s Table` : 'Table ...'}</h1>
+          <span className={`status ${connected ? 'on' : 'off'}`}>{connected ? 'Connected' : 'Connecting...'}</span>
+          {headerLobby && <p className="table-meta">Buy-in: {buyIn.toLocaleString()} chips per player</p>}
         </div>
         <div className="header-actions">
-          {lobby && (
+          {headerLobby && (
             <button type="button" className="btn small" onClick={copyInvite}>
               Copy invite link
             </button>
@@ -58,7 +76,7 @@ export default function TablePage() {
       {error && <div className="banner error">{error}</div>}
 
       <main className="table-main">
-        <PokerTable lobby={lobby} table={table} privateHoleCards={privateState?.holeCards} myUserId={user?.id} />
+        <PokerTable lobby={headerLobby} table={table} privateHoleCards={privateState?.holeCards} myUserId={user?.id} />
 
         {mySeat && (
           <div className="my-stack panel">
@@ -80,19 +98,19 @@ export default function TablePage() {
           />
         )}
 
-        {!mySeat && lobby && token && connected && (
+        {!mySeat && headerLobby && token && connected && (
           <div className="sit-panel panel">
             {tableFull ? (
               <p>Table is full. Wait for a seat to open.</p>
             ) : (
-              <p>Joining table… you will be seated automatically with {buyIn.toLocaleString()} chips.</p>
+              <p>Joining table... you will be seated automatically with {buyIn.toLocaleString()} chips.</p>
             )}
           </div>
         )}
 
-        {isHost && lobby && (
+        {isHost && headerLobby && (
           <HostControls
-            lobby={lobby}
+            lobby={headerLobby}
             onStart={() => send({ type: 'host_start' })}
             onPause={(paused) => send({ type: 'host_pause', paused })}
             onKick={(seatIndex) => send({ type: 'host_kick', seatIndex })}
@@ -109,9 +127,7 @@ export default function TablePage() {
         />
       )}
 
-      {historyOpen && lobbyId && (
-        <HandHistoryPanel lobbyId={lobbyId} onClose={() => setHistoryOpen(false)} />
-      )}
+      {historyOpen && lobbyId && <HandHistoryPanel lobbyId={lobbyId} onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }

@@ -54,6 +54,12 @@ export async function getLobbyByInvite(code: string): Promise<{ lobby: LobbySumm
   return res.json();
 }
 
+export async function getLobbyById(id: string): Promise<{ lobby: LobbySummary }> {
+  const res = await fetch(`${API}/lobbies/${id}`);
+  if (!res.ok) throw new Error('Lobby not found');
+  return res.json();
+}
+
 export async function getPresets(): Promise<{ presets: RulesPreset[] }> {
   const res = await fetch(`${API}/presets`);
   return res.json();

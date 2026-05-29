@@ -24,10 +24,12 @@ export async function initLobbyStore(): Promise<void> {
 }
 
 function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): LobbySummary {
+  const hostDisplayName = memoryStore.users.get(lobby.hostUserId)?.displayName ?? 'Host';
   return {
     id: lobby.id,
     inviteCode: lobby.inviteCode,
     hostUserId: lobby.hostUserId,
+    hostDisplayName,
     status: lobby.status,
     settings: lobby.settings,
     seats: lobby.seats.map((s) => ({
@@ -46,6 +48,7 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
   const db = getDb();
   const [lobby] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId)).limit(1);
   if (!lobby) return null;
+  const [host] = await db.select().from(users).where(eq(users.id, lobby.hostUserId)).limit(1);
   const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
   const seatSummaries: TableSeat[] = [];
   for (const s of seats) {
@@ -67,6 +70,7 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
     id: lobby.id,
     inviteCode: lobby.inviteCode,
     hostUserId: lobby.hostUserId,
+    hostDisplayName: host?.displayName ?? 'Host',
     status: lobby.status as LobbySummary['status'],
     settings: lobby.settings as VariantConfig,
     seats: seatSummaries,
