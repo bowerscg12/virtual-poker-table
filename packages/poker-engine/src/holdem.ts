@@ -36,11 +36,13 @@ export function computeLegalActions(
     const minRaiseTo = currentBet + minRaise;
     const maxRaiseTo = player.betThisStreet + player.stack;
     if (config.limit === 'no_limit') {
-      actions.push({
-        type: 'raise',
-        minAmount: Math.min(minRaiseTo, maxRaiseTo),
-        maxAmount: maxRaiseTo,
-      });
+      if (maxRaiseTo >= minRaiseTo) {
+        actions.push({
+          type: 'raise',
+          minAmount: minRaiseTo,
+          maxAmount: maxRaiseTo,
+        });
+      }
       if (player.stack <= toCall + minRaise) {
         actions.push({ type: 'all_in', amount: player.stack });
       }

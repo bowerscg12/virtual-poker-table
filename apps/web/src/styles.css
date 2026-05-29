@@ -474,6 +474,69 @@ select {
   background: rgba(0, 0, 0, 0.35);
 }
 
+.raise-control {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  min-width: min(100%, 420px);
+}
+
+.raise-control__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.raise-control__label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+.raise-control__value {
+  color: var(--gold);
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.raise-control__range {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.raise-control__inputs {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.raise-control__input {
+  width: 7rem;
+  margin: 0;
+  text-align: right;
+}
+
+.raise-control__hint,
+.raise-control__error {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.raise-control__hint {
+  opacity: 0.8;
+}
+
+.raise-control__error {
+  color: #ffb4b4;
+}
+
 .chat-panel {
   position: fixed;
   right: 0;
@@ -524,6 +587,25 @@ select {
 
 @media (max-width: 600px) {
   .chat-panel {
+    width: 100%;
+  }
+
+  .action-bar {
+    align-items: stretch;
+  }
+
+  .raise-control__top,
+  .raise-control__inputs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .raise-control__value {
+    text-align: left;
+  }
+
+  .raise-control__input,
+  .raise-control .btn.primary {
     width: 100%;
   }
 }
