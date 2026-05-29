@@ -76,7 +76,47 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
 
 function normalizeSettings(settings: VariantConfig): VariantConfig {
   const buyIn = settings.buyIn ?? settings.minBuyIn;
-  return { ...settings, buyIn, minBuyIn: buyIn, maxBuyIn: Math.max(buyIn, settings.maxBuyIn) };
+  const isHoldem = settings.game === 'holdem';
+  const straddle = isHoldem ? !!settings.straddle : false;
+  return {
+    ...settings,
+    buyIn,
+    minBuyIn: buyIn,
+    maxBuyIn: Math.max(buyIn, settings.maxBuyIn),
+    straddle,
+    straddleAmount: straddle ? Math.max(settings.blinds.big, settings.straddleAmount ?? settings.blinds.big * 2) : undefined,
+    sevenDeuceRule: isHoldem ? !!settings.sevenDeuceRule : false,
+  };
+}
+
+function isValidBuyIn(value: number): boolean {
+  return Number.isInteger(value) && value >= 10 && value <= 10000 && value % 5 === 0;
+}
+
+function isPositiveInteger(value: number): boolean {
+  return Number.isInteger(value) && value > 0;
+}
+
+function validateSettings(settings: VariantConfig): void {
+  const buyIn = settings.buyIn ?? settings.minBuyIn;
+  if (!isValidBuyIn(buyIn)) {
+    throw new Error('Buy-in must be between 10 and 10000 in increments of 5');
+  }
+  if (!isPositiveInteger(settings.blinds.small) || !isPositiveInteger(settings.blinds.big)) {
+    throw new Error('Blind amounts must be positive integers');
+  }
+  if (settings.blinds.ante !== undefined && !isPositiveInteger(settings.blinds.ante)) {
+    throw new Error('Ante must be a positive integer');
+  }
+  if (settings.game === 'holdem' && settings.straddle) {
+    const straddleAmount = settings.straddleAmount ?? settings.blinds.big;
+    if (!isPositiveInteger(straddleAmount)) {
+      throw new Error('Straddle amount must be a positive integer');
+    }
+    if (straddleAmount < settings.blinds.big) {
+      throw new Error('Straddle amount must be at least the big blind');
+    }
+  }
 }
 
 export async function createLobby(hostUserId: string, req: CreateLobbyRequest): Promise<LobbySummary> {
@@ -85,6 +125,7 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
     const preset = RULES_PRESETS.find((p) => p.id === req.presetId);
     if (preset) settings = { ...preset.config, ...req.settings };
   }
+  validateSettings(settings);
   settings = normalizeSettings(settings);
 
   if (useMemory) {
@@ -135,7 +176,9 @@ export async function setTableBuyIn(
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return { error: 'Lobby not found' };
   if (lobby.hostUserId !== hostUserId) return { error: 'Only host can set buy-in' };
-  if (buyIn < 1) return { error: 'Buy-in must be positive' };
+  if (!isValidBuyIn(buyIn)) {
+    return { error: 'Buy-in must be between 10 and 10000 in increments of 5' };
+  }
   const settings = normalizeSettings({ ...lobby.settings, buyIn });
 
   if (useMemory) {
@@ -180,6 +223,9 @@ export async function sitAtSeat(
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return { error: 'Lobby not found' };
   const amount = buyIn ?? getTableBuyIn(lobby.settings);
+  if (!isValidBuyIn(amount)) {
+    return { error: 'Buy-in must be between 10 and 10000 in increments of 5' };
+  }
   if (amount !== getTableBuyIn(lobby.settings)) {
     return { error: 'Buy-in is set by the host' };
   }

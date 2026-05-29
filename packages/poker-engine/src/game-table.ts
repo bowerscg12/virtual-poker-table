@@ -24,6 +24,7 @@ export interface GameTableState {
   currentBet: number;
   minRaise: number;
   lastAggressorSeat: number | null;
+  lastWinningSeatIndices: number[];
   processedActionIds: Set<string>;
   bombPotActive: boolean;
 }
@@ -65,6 +66,21 @@ export function createInitialTable(
   postBlind(seats, sbSeat, sb);
   postBlind(seats, bbSeat, bb);
 
+  let lastAggressorSeat = bbSeat;
+  let actionSeatStart = bbSeat + 1;
+  let minRaise = bb;
+
+  if (config.game === 'holdem' && config.straddle) {
+    const straddleSeat = nextActiveSeat(activeIndices, bbSeat + 1, () => true);
+    if (straddleSeat !== null) {
+      const straddleAmount = Math.max(bb, config.straddleAmount ?? bb * 2);
+      postBlind(seats, straddleSeat, straddleAmount);
+      lastAggressorSeat = straddleSeat;
+      actionSeatStart = straddleSeat + 1;
+      minRaise = Math.max(bb, straddleAmount - bb);
+    }
+  }
+
   if (bombPot && config.bombPot) {
     const ante = config.blinds.big * config.bombPot.multiplier;
     for (const seat of seats) {
@@ -75,7 +91,7 @@ export function createInitialTable(
   const currentBet = Math.max(...seats.map((s) => s.betThisStreet));
   const actionSeat = nextActiveSeat(
     activeIndices,
-    bbSeat + 1,
+    actionSeatStart,
     (idx) => !getSeat(seats, idx)!.folded && !getSeat(seats, idx)!.allIn
   );
 
@@ -89,8 +105,9 @@ export function createInitialTable(
     dealerSeatIndex,
     actionSeatIndex: actionSeat,
     currentBet,
-    minRaise: bb,
-    lastAggressorSeat: bbSeat,
+    minRaise,
+    lastAggressorSeat,
+    lastWinningSeatIndices: [],
     processedActionIds: new Set(),
     bombPotActive: !!bombPot,
   };
@@ -338,6 +355,7 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
       street: 'complete',
       pots,
       actionSeatIndex: null,
+      lastWinningSeatIndices: Array.from(new Set(winners.map((w) => w.seatIndex))),
     },
   };
 }
@@ -346,7 +364,7 @@ function awardToWinner(state: GameTableState, seatIndex: number): GameTableState
   const total = state.seats.reduce((s, seat) => s + seat.totalBet, 0);
   const seat = getSeat(state.seats, seatIndex)!;
   seat.stack += total;
-  return { ...state, street: 'complete', actionSeatIndex: null };
+  return { ...state, street: 'complete', actionSeatIndex: null, lastWinningSeatIndices: [seatIndex] };
 }
 
 export function getLegalActionsForSeat(state: GameTableState, config: VariantConfig, seatIndex: number) {

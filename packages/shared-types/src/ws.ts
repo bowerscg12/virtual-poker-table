@@ -17,7 +17,6 @@ export type ClientMessage =
   | { type: 'host_adjust_blinds'; small: number; big: number }
   | { type: 'game_action'; actionId: string; action: PlayerActionType; amount?: number }
   | { type: 'spectate' }
-  | { type: 'voice_signal'; targetUserId: string; signal: unknown }
   | { type: 'ping' };
 
 /** Server -> Client */
@@ -29,7 +28,6 @@ export type ServerMessage =
   | { type: 'chat'; message: ChatMessage }
   | { type: 'hand_complete'; winners: { seatIndex: number; amount: number; handDescription: string }[] }
   | { type: 'hand_history'; entry: import('./game.js').HandHistoryEntry }
-  | { type: 'voice_token'; token: string; roomName: string }
   | { type: 'pong' };
 
 export interface ChatMessage {

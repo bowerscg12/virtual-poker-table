@@ -11,7 +11,6 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [privateState, setPrivateState] = useState<{ holeCards: Card[]; legalActions: LegalAction[] } | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [voiceToken, setVoiceToken] = useState<{ token: string; roomName: string } | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -47,9 +46,6 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
         case 'error':
           setError(msg.message);
           break;
-        case 'voice_token':
-          setVoiceToken({ token: msg.token, roomName: msg.roomName });
-          break;
         default:
           break;
       }
@@ -71,7 +67,6 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     privateState,
     chat,
     error,
-    voiceToken,
     send,
   };
 }

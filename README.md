@@ -39,14 +39,12 @@ Without Docker, the server uses an **in-memory** store automatically.
 | `JWT_SECRET` | Auth signing secret |
 | `GAME_SERVER_PORT` | API/WS port (default 3001) |
 | `WEB_ORIGIN` | CORS origin (default http://localhost:5173) |
-| `LIVEKIT_URL` | LiveKit server URL for voice (optional) |
-| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | Voice tokens |
 
 ## Deploy (Railway / Render)
 
 1. Provision Postgres + Redis.
 2. Deploy `apps/game-server` with env vars; expose port 3001.
-3. Build `apps/web` with `VITE_LIVEKIT_URL` if using voice; serve static files behind a reverse proxy to `/api` and `/ws` on the game server.
+3. Serve the built `apps/web` static files behind a reverse proxy to `/api` and `/ws` on the game server.
 
 See [docs/PLAYTEST.md](docs/PLAYTEST.md) for a friend playtest checklist.
 

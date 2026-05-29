@@ -18,7 +18,6 @@ import {
   getHandHistories,
 } from '../services/game-manager.js';
 import { addChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
-import { getVoiceToken } from '../services/voice.js';
 import { getMemoryLobby } from '../services/lobby.js';
 
 interface ClientState {
@@ -133,9 +132,6 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'chat', message: m });
       }
       await broadcastTableState(msg.lobbyId);
-
-      const voice = getVoiceToken(msg.lobbyId, st.userId, 'Player');
-      if (voice) send(ws, { type: 'voice_token', token: voice.token, roomName: voice.roomName });
       return;
     }
 

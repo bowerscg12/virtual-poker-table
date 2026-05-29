@@ -4,37 +4,123 @@ import type { RulesPreset, VariantConfig } from '@vct/shared-types';
 import { createLobby, getPresets } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
+function digitsOnly(value: string): string {
+  return value.replace(/[^\d]/g, '');
+}
+
+function parsePositiveInt(value: string): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function loadPresetIntoForm(
+  preset: RulesPreset | undefined,
+  setBuyIn: (value: string) => void,
+  setSmallBlind: (value: string) => void,
+  setBigBlind: (value: string) => void,
+  setStraddleEnabled: (value: boolean) => void,
+  setStraddleAmount: (value: string) => void,
+  setSevenDeuceRule: (value: boolean) => void
+): void {
+  if (!preset) return;
+
+  const config = preset.config;
+  setBuyIn(String(config.buyIn ?? config.minBuyIn));
+  setSmallBlind(String(Math.max(1, Math.floor(config.blinds.small))));
+  setBigBlind(String(Math.max(1, Math.floor(config.blinds.big))));
+  setStraddleEnabled(config.game === 'holdem' && !!config.straddle);
+  setStraddleAmount(String(Math.max(config.blinds.big, config.straddleAmount ?? config.blinds.big * 2)));
+  setSevenDeuceRule(config.game === 'holdem' && !!config.sevenDeuceRule);
+}
+
 export default function CreateLobbyPage() {
   const { token, user, loginGuest } = useAuth();
   const [presets, setPresets] = useState<RulesPreset[]>([]);
   const [presetId, setPresetId] = useState('nlhe-standard');
-  const [buyIn, setBuyIn] = useState(500);
+  const [buyIn, setBuyIn] = useState('500');
+  const [smallBlind, setSmallBlind] = useState('5');
+  const [bigBlind, setBigBlind] = useState('10');
+  const [straddleEnabled, setStraddleEnabled] = useState(false);
+  const [straddleAmount, setStraddleAmount] = useState('20');
+  const [sevenDeuceRule, setSevenDeuceRule] = useState(false);
   const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const selectedPreset = presets.find((preset) => preset.id === presetId) ?? presets[0];
+  const isHoldem = selectedPreset?.config.game === 'holdem';
+  const hasPreset = !!selectedPreset;
+
+  const parsedBuyIn = parsePositiveInt(buyIn);
+  const parsedSmallBlind = parsePositiveInt(smallBlind);
+  const parsedBigBlind = parsePositiveInt(bigBlind);
+  const parsedStraddleAmount = parsePositiveInt(straddleAmount);
+
+  const isValidBuyIn =
+    parsedBuyIn !== null && parsedBuyIn >= 10 && parsedBuyIn <= 10000 && parsedBuyIn % 5 === 0;
+  const isValidBlinds = parsedSmallBlind !== null && parsedBigBlind !== null;
+  const isValidStraddle =
+    !isHoldem ||
+    !straddleEnabled ||
+    (parsedStraddleAmount !== null && parsedBigBlind !== null && parsedStraddleAmount >= parsedBigBlind);
+  const isFormValid = hasPreset && isValidBuyIn && isValidBlinds && isValidStraddle;
+
   useEffect(() => {
-    getPresets().then((r) => {
-      setPresets(r.presets);
-      const first = r.presets.find((p) => p.id === 'nlhe-standard') ?? r.presets[0];
-      if (first) setBuyIn(first.config.buyIn ?? first.config.minBuyIn);
+    getPresets().then((response) => {
+      setPresets(response.presets);
+      const first = response.presets.find((preset) => preset.id === 'nlhe-standard') ?? response.presets[0];
+      loadPresetIntoForm(
+        first,
+        setBuyIn,
+        setSmallBlind,
+        setBigBlind,
+        setStraddleEnabled,
+        setStraddleAmount,
+        setSevenDeuceRule
+      );
     });
   }, []);
 
   useEffect(() => {
-    const preset = presets.find((p) => p.id === presetId);
-    if (preset) setBuyIn(preset.config.buyIn ?? preset.config.minBuyIn);
-  }, [presetId, presets]);
+    loadPresetIntoForm(
+      selectedPreset,
+      setBuyIn,
+      setSmallBlind,
+      setBigBlind,
+      setStraddleEnabled,
+      setStraddleAmount,
+      setSevenDeuceRule
+    );
+  }, [presetId, selectedPreset]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!selectedPreset || !isFormValid || parsedBuyIn === null || parsedSmallBlind === null || parsedBigBlind === null) {
+      setError('Please enter valid buy-in and blind values before creating the table.');
+      return;
+    }
+
+    setError(null);
     if (!user && name.trim()) await loginGuest(name.trim());
-    const preset = presets.find((p) => p.id === presetId);
-    const base: VariantConfig = preset?.config ?? presets[0]!.config;
+
+    const base: VariantConfig = selectedPreset.config;
     const settings: VariantConfig = {
       ...base,
-      buyIn,
-      minBuyIn: buyIn,
-      maxBuyIn: Math.max(buyIn, base.maxBuyIn),
+      buyIn: parsedBuyIn,
+      minBuyIn: parsedBuyIn,
+      maxBuyIn: Math.max(parsedBuyIn, base.maxBuyIn),
+      blinds: {
+        ...base.blinds,
+        small: parsedSmallBlind,
+        big: parsedBigBlind,
+      },
+      straddle: base.game === 'holdem' ? straddleEnabled : false,
+      straddleAmount:
+        base.game === 'holdem' && straddleEnabled
+          ? Math.max(parsedBigBlind, parsedStraddleAmount ?? parsedBigBlind)
+          : undefined,
+      sevenDeuceRule: base.game === 'holdem' ? sevenDeuceRule : false,
     };
     const { lobby } = await createLobby({ presetId, settings });
     navigate(`/table/${lobby.id}`);
@@ -59,25 +145,124 @@ export default function CreateLobbyPage() {
         <label>
           Rules preset
           <select value={presetId} onChange={(e) => setPresetId(e.target.value)}>
-            {presets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} — {p.description}
+            {presets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name} - {preset.description}
               </option>
             ))}
           </select>
         </label>
+
         <label>
           Buy-in per player (chips)
           <input
-            type="number"
-            min={1}
-            step={50}
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={buyIn}
-            onChange={(e) => setBuyIn(Math.max(1, parseInt(e.target.value, 10) || 0))}
+            onChange={(e) => {
+              setBuyIn(digitsOnly(e.target.value));
+              if (error) setError(null);
+            }}
           />
         </label>
-        <p className="field-hint">Each player receives this stack when they join the table.</p>
-        <button type="submit" className="btn primary">
+
+        <fieldset className="settings-group">
+          <legend>Blinds</legend>
+          <label>
+            Small blind
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={smallBlind}
+              onChange={(e) => {
+                setSmallBlind(digitsOnly(e.target.value));
+                if (error) setError(null);
+              }}
+            />
+          </label>
+          <label>
+            Big blind
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={bigBlind}
+              onChange={(e) => {
+                const nextValue = digitsOnly(e.target.value);
+                setBigBlind(nextValue);
+                if (straddleEnabled) {
+                  const parsedBig = parsePositiveInt(nextValue);
+                  const parsedStraddle = parsePositiveInt(straddleAmount);
+                  if (parsedBig !== null && (parsedStraddle === null || parsedStraddle < parsedBig)) {
+                    setStraddleAmount(String(Math.max(parsedBig, parsedBig * 2)));
+                  }
+                }
+                if (error) setError(null);
+              }}
+            />
+          </label>
+        </fieldset>
+
+        {isHoldem && (
+          <fieldset className="settings-group">
+            <legend>Hold'em options</legend>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={straddleEnabled}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setStraddleEnabled(checked);
+                  if (checked) {
+                    const parsedBig = parsePositiveInt(bigBlind);
+                    const parsedCurrent = parsePositiveInt(straddleAmount);
+                    const nextValue = Math.max(parsedBig ?? 0, parsedCurrent ?? 0, (parsedBig ?? 0) * 2);
+                    if (nextValue > 0) setStraddleAmount(String(nextValue));
+                  }
+                  if (error) setError(null);
+                }}
+              />
+              Enable straddle
+            </label>
+
+            {straddleEnabled && (
+              <label>
+                Straddle amount
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={straddleAmount}
+                  onChange={(e) => {
+                    setStraddleAmount(digitsOnly(e.target.value));
+                    if (error) setError(null);
+                  }}
+                />
+              </label>
+            )}
+
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={sevenDeuceRule}
+                onChange={(e) => {
+                  setSevenDeuceRule(e.target.checked);
+                  if (error) setError(null);
+                }}
+              />
+              Enable Seven Deuce Rule
+            </label>
+          </fieldset>
+        )}
+
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <p className="field-hint">
+          Each player receives the buy-in stack on join. Blinds must be positive, and straddle amounts must be at
+          least the big blind.
+        </p>
+        <button type="submit" className="btn primary" disabled={!isFormValid}>
           Create &amp; open table
         </button>
       </form>

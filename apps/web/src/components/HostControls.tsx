@@ -12,7 +12,17 @@ interface Props {
 
 export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn }: Props) {
   const currentBuyIn = getTableBuyIn(lobby.settings);
-  const [buyIn, setBuyIn] = useState(currentBuyIn);
+  const [buyIn, setBuyIn] = useState(String(currentBuyIn));
+  const parsedBuyIn = Number.parseInt(buyIn, 10);
+  const isValidBuyIn =
+    Number.isInteger(parsedBuyIn) && parsedBuyIn >= 10 && parsedBuyIn <= 10000 && parsedBuyIn % 5 === 0;
+
+  function handleUpdateBuyIn() {
+    if (!isValidBuyIn) {
+      return;
+    }
+    onSetBuyIn(parsedBuyIn);
+  }
 
   return (
     <div className="host-controls panel">
@@ -21,13 +31,13 @@ export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn }: Pr
         Table buy-in (chips for new players)
         <div className="host-buy-in-row">
           <input
-            type="number"
-            min={1}
-            step={50}
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={buyIn}
-            onChange={(e) => setBuyIn(Math.max(1, parseInt(e.target.value, 10) || 0))}
+            onChange={(e) => setBuyIn(e.target.value.replace(/[^\d]/g, ''))}
           />
-          <button type="button" className="btn small" onClick={() => onSetBuyIn(buyIn)}>
+          <button type="button" className="btn small" onClick={handleUpdateBuyIn} disabled={!isValidBuyIn}>
             Update
           </button>
         </div>

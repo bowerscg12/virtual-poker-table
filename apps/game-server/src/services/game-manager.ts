@@ -104,6 +104,32 @@ function syncStacksToLobby(lobbyId: string, state: GameTableState): void {
   }
 }
 
+function isSevenDeuceOffsuit(cards: Card[]): boolean {
+  if (cards.length < 2) return false;
+  const ranks = new Set(cards.map((card) => card[0]));
+  if (!ranks.has('7') || !ranks.has('2')) return false;
+  return cards[0][1] !== cards[1][1];
+}
+
+function applySevenDeuceRule(state: GameTableState, config: VariantConfig): GameTableState {
+  if (config.game !== 'holdem' || !config.sevenDeuceRule) return state;
+  const winners = new Set(state.lastWinningSeatIndices);
+  const qualifyingWinner = state.seats.some((seat) => winners.has(seat.seatIndex) && isSevenDeuceOffsuit(seat.holeCards));
+  if (!qualifyingWinner) return state;
+
+  const donation = Math.max(1, Math.round(config.buyIn * 0.05));
+  const nextState = { ...state, seats: state.seats.map((seat) => ({ ...seat })) };
+
+  for (const seat of nextState.seats) {
+    if (winners.has(seat.seatIndex)) continue;
+    if (seat.stack >= donation) {
+      seat.stack -= donation;
+    }
+  }
+
+  return nextState;
+}
+
 export async function processGameAction(
   lobbyId: string,
   config: VariantConfig,
@@ -122,6 +148,9 @@ export async function processGameAction(
   if (!result.ok) return { error: result.error };
 
   state = result.state;
+  if (state.street === 'complete') {
+    state = applySevenDeuceRule(state, config);
+  }
   await persistGame(lobbyId, state);
   syncStacksToLobby(lobbyId, state);
 

@@ -21,6 +21,8 @@ export interface VariantConfig {
   bombPot?: BombPotConfig;
   runItTwice?: boolean;
   straddle?: boolean;
+  straddleAmount?: number;
+  sevenDeuceRule?: boolean;
   /** Host-set stack size for each player when they join */
   buyIn: number;
   minBuyIn: number;

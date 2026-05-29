@@ -7,7 +7,6 @@ import { PokerTable } from '../components/PokerTable';
 import { ActionBar } from '../components/ActionBar';
 import { ChatPanel } from '../components/ChatPanel';
 import { HostControls } from '../components/HostControls';
-import { VoicePanel } from '../components/VoicePanel';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
 
 export default function TablePage() {
@@ -15,7 +14,7 @@ export default function TablePage() {
   const { user, token } = useAuth();
   const [chatOpen, setChatOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const { connected, lobby, table, privateState, chat, error, voiceToken, send } = useGameSocket(
+  const { connected, lobby, table, privateState, chat, error, send } = useGameSocket(
     token,
     lobbyId ?? null
   );
@@ -113,8 +112,6 @@ export default function TablePage() {
       {historyOpen && lobbyId && (
         <HandHistoryPanel lobbyId={lobbyId} onClose={() => setHistoryOpen(false)} />
       )}
-
-      <VoicePanel voiceToken={voiceToken} displayName={user?.displayName ?? 'Player'} />
     </div>
   );
 }

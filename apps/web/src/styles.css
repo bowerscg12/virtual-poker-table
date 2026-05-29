@@ -137,6 +137,12 @@ a {
   margin-top: 0.5rem;
 }
 
+.form-error {
+  color: #ffb4b4;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
 input,
 select,
 button {
@@ -277,6 +283,33 @@ select {
   font-size: 0.8rem;
   opacity: 0.75;
   margin: 0 0 0.5rem;
+}
+
+.settings-group {
+  margin: 0.75rem 0;
+  padding: 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings-group legend {
+  padding: 0 0.3rem;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+}
+
+.checkbox-row input[type='checkbox'] {
+  width: auto;
+  margin: 0;
 }
 
 .my-stack {
@@ -464,15 +497,6 @@ select {
   bottom: 1rem;
   max-width: 280px;
   z-index: 10;
-}
-
-.voice-panel {
-  position: fixed;
-  left: 1rem;
-  top: 4rem;
-  max-width: 220px;
-  z-index: 5;
-  font-size: 0.85rem;
 }
 
 @media (max-width: 600px) {

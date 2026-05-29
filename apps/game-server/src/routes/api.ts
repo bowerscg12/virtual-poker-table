@@ -50,9 +50,13 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   app.post('/lobbies', { onRequest: [app.authenticate] }, async (req, reply) => {
     const userId = (req.user as { sub: string }).sub;
     const body = req.body as CreateLobbyRequest;
-    const lobby = await createLobby(userId, body);
-    const token = await reply.jwtSign({ sub: userId });
-    return { lobby, token };
+    try {
+      const lobby = await createLobby(userId, body);
+      const token = await reply.jwtSign({ sub: userId });
+      return { lobby, token };
+    } catch (error) {
+      return reply.status(400).send({ error: error instanceof Error ? error.message : 'Invalid lobby settings' });
+    }
   });
 
   app.get('/lobbies/invite/:code', async (req) => {

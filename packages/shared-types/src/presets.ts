@@ -70,22 +70,6 @@ export const RULES_PRESETS: RulesPreset[] = [
     },
   },
   {
-    id: 'straddle-holdem',
-    name: 'Straddle Hold\'em',
-    description: 'UTG straddle optional',
-    config: {
-      game: 'holdem',
-      limit: 'no_limit',
-      maxPlayers: 9,
-      blinds: { small: 5, big: 10 },
-      straddle: true,
-      buyIn: 500,
-      minBuyIn: 500,
-      maxBuyIn: 3000,
-      actionTimerSec: 30,
-    },
-  },
-  {
     id: 'card-flip-chaos',
     name: 'Card Flip Chaos',
     description: 'Extra flop cards (house rules)',
