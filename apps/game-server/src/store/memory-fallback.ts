@@ -3,7 +3,7 @@ import type { LobbyStatus } from '@vct/shared-types';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
 
-const nanoid = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 8);
+const nanoid = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 5);
 
 export interface MemoryUser {
   id: string;

@@ -21,6 +21,7 @@ test('two players join lobby and host sees guest', async ({ browser }) => {
 
   const lobbyId = inviteMatch![1];
   await host.getByText('Connected').waitFor({ timeout: 15_000 });
+  await expect(host.getByText(/Code: [A-Z]{5}/)).toBeVisible({ timeout: 15_000 });
   await guest.goto('/', { waitUntil: 'networkidle' });
   await guest.locator('input[placeholder="Your display name"]').waitFor({ state: 'visible' });
   await guest.getByPlaceholder('Your display name').fill('GuestBob');
@@ -31,4 +32,16 @@ test('two players join lobby and host sees guest', async ({ browser }) => {
   await guest.getByText('Connected').waitFor({ timeout: 15_000 });
   await expect(host.getByText('GuestBob')).toBeVisible({ timeout: 15_000 });
   await expect(guest.getByText(/Your stack:/)).toBeVisible({ timeout: 10_000 });
+});
+
+test('join page is available from the home screen after guest login', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.locator('input[placeholder="Your display name"]').waitFor({ state: 'visible', timeout: 45_000 });
+  await page.getByPlaceholder('Your display name').fill('Joiner');
+  await page.locator('form').evaluate((f) => (f as HTMLFormElement).requestSubmit());
+
+  await page.getByRole('button', { name: 'Join with code' }).click();
+  await expect(page).toHaveURL(/\/join$/);
+  await expect(page.getByRole('heading', { name: 'Join table' })).toBeVisible();
+  await expect(page.getByPlaceholder('Invite code')).toBeVisible();
 });

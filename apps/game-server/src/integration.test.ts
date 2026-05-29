@@ -53,6 +53,6 @@ describe('API integration', () => {
     });
     expect(lobby.statusCode).toBe(200);
     const body = lobby.json() as { lobby: { inviteCode: string } };
-    expect(body.lobby.inviteCode).toBeTruthy();
+    expect(body.lobby.inviteCode).toMatch(/^[A-Z]{5}$/);
   });
 });

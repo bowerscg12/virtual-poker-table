@@ -61,7 +61,7 @@ export default function HomePage() {
             <Link className="btn primary" to="/create">
               Create table
             </Link>
-            <button className="btn secondary" type="button" onClick={() => navigate('/join/')}>
+            <button className="btn secondary" type="button" onClick={() => navigate('/join')}>
               Join with code
             </button>
           </div>

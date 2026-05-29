@@ -55,6 +55,7 @@ export default function TablePage() {
       <header className="table-header">
         <div>
           <h1>{headerLobby ? `${headerLobby.hostDisplayName}'s Table` : 'Table ...'}</h1>
+          {headerLobby && <p className="invite-code">Code: {headerLobby.inviteCode}</p>}
           <span className={`status ${connected ? 'on' : 'off'}`}>{connected ? 'Connected' : 'Connecting...'}</span>
           {headerLobby && <p className="table-meta">Buy-in: {buyIn.toLocaleString()} chips per player</p>}
         </div>

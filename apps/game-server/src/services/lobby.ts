@@ -140,7 +140,7 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
 
   const db = getDb();
   const { customAlphabet } = await import('nanoid');
-  const code = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 8)();
+  const code = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 5)();
   const [lobby] = await db
     .insert(lobbies)
     .values({ hostUserId, inviteCode: code, settings, status: 'open' })
