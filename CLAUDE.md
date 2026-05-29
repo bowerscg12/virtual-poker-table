@@ -94,6 +94,7 @@ Run `npm run migrate -w @vct/game-server` to apply DDL.
 | `chat` | Send a chat message |
 | `sit` | Take or auto-assign a seat |
 | `host_start` / `host_pause` / `host_kick` / `host_set_buy_in` / `host_approve_rebuy` | Host controls |
+| `host_set_action_timer` | `{ seconds: number }` — change action timer mid-table (0 = disabled) |
 | `ping` | Heartbeat keepalive |
 
 ### Server → Client
@@ -109,6 +110,43 @@ Run `npm run migrate -w @vct/game-server` to apply DDL.
 | `hand_history` | `HandHistoryEntry` at end of each hand |
 | `error` | `{ message, code? }` |
 | `pong` | Heartbeat response |
+
+---
+
+## Action Timer System
+
+### Overview
+
+Each table has a configurable per-turn countdown (`VariantConfig.actionTimerSec`). Valid values: 0 (disabled) or any multiple of 15 up to 180 — exported as `TIMER_STEPS_SEC` from `@vct/shared-types`. When the timer expires the server auto-acts: **check** if legal, otherwise **fold**.
+
+### Server (`ws/handler.ts` + `services/game-manager.ts`)
+
+Two module-level Maps in `handler.ts`:
+```
+actionTimers:      Map<string, setTimeout>  // lobbyId → active countdown
+actionTimerGenerations: Map<string, number> // lobbyId → monotonic counter (race guard)
+```
+`actionDeadlines: Map<string, string>` lives in `game-manager.ts` (co-located with `toPublicState`).
+
+**`cancelActionTimer(lobbyId)`** — clears the timeout AND increments the generation counter so any already-queued callback bails immediately. Always called synchronously before awaiting `processGameAction` in `game_action`.
+
+**`scheduleActionTimer(lobbyId, config, state)`** — calls `cancelActionTimer`, then (if timer enabled and seat is live) sets the deadline and schedules the callback with a generation snapshot.
+
+**`onActionTimerExpired`** — re-fetches state (guard: bail if `actionSeatIndex` has changed), calls `processGameAction` with auto-action, reschedules for next player, broadcasts.
+
+Timer is also rescheduled/cancelled by: `host_start`, `host_pause`/resume, `host_set_action_timer`, and `onGracePeriodExpired`.
+
+### Client (`hooks/useActionTimer.ts` + `components/PokerTable.tsx`)
+
+`useActionTimer(deadline?: string): number | null` — polls every 100ms, returns remaining integer seconds (0 when expired, null when no deadline). Deadline comes from `PublicTableState.actionDeadline` (ISO string set by server). On reconnect the fresh `table_state` push from the server carries the correct deadline, eliminating drift.
+
+Display: acting seat shows a countdown badge and a progress bar (`--timer-pct` CSS custom property). Both turn red (`urgent` class) at ≤ 10 seconds.
+
+### Configuration
+
+- Set at table creation via the "Action timer" fieldset in `CreateLobbyPage`
+- Changed live by host in `HostControls` ("Action timer" select → sends `host_set_action_timer`)
+- `DISCONNECT_GRACE_PERIOD_MS` env var governs the grace-period auto-fold (separate from the action timer)
 
 ---
 
@@ -196,6 +234,10 @@ Lives entirely in `packages/poker-engine/src/pots.ts`. Side pots are calculated 
 | Session / reconnect behaviour | `apps/game-server/src/services/session.ts`, `ws/handler.ts` |
 | Disconnect grace period | `DISCONNECT_GRACE_PERIOD_MS` env var (server); `GRACE_PERIOD_MS` in `session.ts` |
 | Client reconnect logic | `apps/web/src/hooks/useGameSocket.ts` |
+| Action timer durations / steps | `TIMER_STEPS_SEC` in `packages/shared-types/src/variant.ts` |
+| Action timer server logic | `scheduleActionTimer` / `cancelActionTimer` in `ws/handler.ts` |
+| Action timer auto-action logic | `getAutoAction` in `services/game-manager.ts` |
+| Action timer client display | `hooks/useActionTimer.ts`, `components/PokerTable.tsx` |
 | Lobby seat / chip changes | `apps/game-server/src/services/lobby.ts` |
 | DB schema change | `apps/game-server/src/db/schema.ts` + `migrate.ts` |
 | In-memory fallback | `apps/game-server/src/store/memory-fallback.ts` |
