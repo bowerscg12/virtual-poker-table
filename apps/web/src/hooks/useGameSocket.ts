@@ -20,6 +20,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const handNumberRef = useRef<number>(0);
+
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [lobby, setLobby] = useState<LobbySummary | null>(null);
@@ -29,6 +31,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [cashOutQueued, setCashOutQueued] = useState(false);
   const [cashOutSummary, setCashOutSummary] = useState<CashOutSummary | null>(null);
+  const [handComplete, setHandComplete] = useState<{ seatIndex: number; amount: number; handDescription: string }[] | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -168,8 +171,17 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
           case 'table_state':
             setTable(msg.public);
             setPrivateState(msg.private ?? null);
+            // Clear hand result when a fresh hand begins
+            if (msg.public.street === 'preflop' && msg.public.handNumber > handNumberRef.current) {
+              handNumberRef.current = msg.public.handNumber;
+              setHandComplete(null);
+            }
             readyToFlushRef.current = true;
             flushPending(ws);
+            break;
+
+          case 'hand_complete':
+            setHandComplete(msg.winners);
             break;
 
           case 'chat':
@@ -241,6 +253,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     error,
     cashOutQueued,
     cashOutSummary,
+    handComplete,
     clearCashOutSummary,
     send,
   };

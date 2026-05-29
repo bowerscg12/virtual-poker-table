@@ -290,6 +290,10 @@ async function onActionTimerExpired(
     const histories = getHandHistories(lobbyId);
     const last = histories[histories.length - 1];
     if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
+    if (result.state.winnerPayouts.length > 0) {
+      const payouts = result.state.winnerPayouts;
+      broadcastLobby(lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
+    }
     const updatedLobby = await getLobbyById(lobbyId);
     if (updatedLobby?.status === 'playing') {
       scheduleIntermission(lobbyId, config);
@@ -343,6 +347,10 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
             const histories = getHandHistories(lobbyId);
             const last = histories[histories.length - 1];
             if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
+            if (result.state.winnerPayouts.length > 0) {
+              const payouts = result.state.winnerPayouts;
+              broadcastLobby(lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
+            }
             const currentLobby = await getLobbyById(lobbyId);
             if (currentLobby?.status === 'playing') {
               scheduleIntermission(lobbyId, lobby.settings);
@@ -840,6 +848,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         const histories = getHandHistories(st.lobbyId);
         const last = histories[histories.length - 1];
         if (last) broadcastLobby(st.lobbyId, () => ({ type: 'hand_history', entry: last }));
+        if (result.state.winnerPayouts.length > 0) {
+          const payouts = result.state.winnerPayouts;
+          broadcastLobby(st.lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
+        }
         const updatedLobby = await getLobbyById(st.lobbyId);
         if (updatedLobby?.status === 'playing') {
           scheduleIntermission(st.lobbyId, lobby.settings);

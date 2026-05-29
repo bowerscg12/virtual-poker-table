@@ -31,6 +31,7 @@ export default function TablePage() {
     error,
     cashOutQueued,
     cashOutSummary,
+    handComplete,
     clearCashOutSummary,
     send,
   } = useGameSocket(token, lobbyId ?? null);
@@ -115,7 +116,13 @@ export default function TablePage() {
       {error && <div className="banner error">{error}</div>}
 
       <main className="table-main">
-        <PokerTable lobby={headerLobby} table={table} privateHoleCards={privateState?.holeCards} myUserId={user?.id} />
+        <PokerTable
+          lobby={headerLobby}
+          table={table}
+          privateHoleCards={privateState?.holeCards}
+          myUserId={user?.id}
+          handComplete={handComplete}
+        />
 
         {mySeat && (
           <div className="my-stack panel">

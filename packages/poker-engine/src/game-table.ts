@@ -25,6 +25,7 @@ export interface GameTableState {
   minRaise: number;
   lastAggressorSeat: number | null;
   lastWinningSeatIndices: number[];
+  winnerPayouts: { seatIndex: number; amount: number; handDescription: string }[];
   processedActionIds: Set<string>;
   bombPotActive: boolean;
   pendingActionSeatIndices: number[];
@@ -107,6 +108,7 @@ export function createInitialTable(
     minRaise,
     lastAggressorSeat,
     lastWinningSeatIndices: [],
+    winnerPayouts: [],
     processedActionIds: new Set(),
     bombPotActive: !!bombPot,
     pendingActionSeatIndices,
@@ -392,6 +394,11 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
       pots,
       actionSeatIndex: null,
       lastWinningSeatIndices: Array.from(new Set(winners.map((w) => w.seatIndex))),
+      winnerPayouts: winners.map((w) => ({
+        seatIndex: w.seatIndex,
+        amount: w.amount,
+        handDescription: w.hand.description,
+      })),
       pendingActionSeatIndices: [],
     },
   };
@@ -406,6 +413,7 @@ function awardToWinner(state: GameTableState, seatIndex: number): GameTableState
     street: 'complete',
     actionSeatIndex: null,
     lastWinningSeatIndices: [seatIndex],
+    winnerPayouts: [{ seatIndex, amount: total, handDescription: '' }],
     pendingActionSeatIndices: [],
   };
 }

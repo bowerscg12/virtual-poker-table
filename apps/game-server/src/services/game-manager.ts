@@ -7,7 +7,6 @@ import {
   getLegalActionsForSeat,
   type GameTableState,
 } from '@vct/poker-engine';
-import { getVariantModule } from '@vct/poker-engine';
 import { getDb } from '../db/client.js';
 import { tableSeats, users } from '../db/schema.js';
 import { keys, redisGet, redisSet } from '../store/redis.js';
@@ -215,7 +214,7 @@ export async function processGameAction(
   syncStacksToLobby(lobbyId, state);
 
   if (state.street === 'complete') {
-    await recordHandHistory(lobbyId, state, config);
+    await recordHandHistory(lobbyId, state);
   }
 
   return { state };
@@ -224,9 +223,7 @@ export async function processGameAction(
 async function recordHandHistory(
   lobbyId: string,
   state: GameTableState,
-  config: VariantConfig
 ): Promise<void> {
-  const module = getVariantModule(config);
   const entry: HandHistoryEntry = {
     id: crypto.randomUUID(),
     lobbyId,
@@ -234,13 +231,7 @@ async function recordHandHistory(
     startedAt: new Date().toISOString(),
     endedAt: new Date().toISOString(),
     board: state.board,
-    winners: state.seats
-      .filter((s) => s.shownCards)
-      .map((s) => ({
-        seatIndex: s.seatIndex,
-        amount: 0,
-        handDescription: module.evaluateHand(s.holeCards, state.board).description,
-      })),
+    winners: state.winnerPayouts,
     actions: [],
   };
 
