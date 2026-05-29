@@ -21,6 +21,8 @@ export interface VariantConfig {
   bombPot?: BombPotConfig;
   runItTwice?: boolean;
   straddle?: boolean;
+  /** Host-set stack size for each player when they join */
+  buyIn: number;
   minBuyIn: number;
   maxBuyIn: number;
   actionTimerSec?: number;
@@ -28,11 +30,17 @@ export interface VariantConfig {
   extraFlopCards?: number;
 }
 
+/** Stack chips granted when a player sits (host-configured). */
+export function getTableBuyIn(settings: VariantConfig): number {
+  return settings.buyIn ?? settings.minBuyIn;
+}
+
 export const DEFAULT_VARIANT_CONFIG: VariantConfig = {
   game: 'holdem',
   limit: 'no_limit',
   maxPlayers: 9,
   blinds: { small: 5, big: 10 },
+  buyIn: 500,
   minBuyIn: 500,
   maxBuyIn: 2000,
   actionTimerSec: 30,

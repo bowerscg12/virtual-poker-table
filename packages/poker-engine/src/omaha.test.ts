@@ -10,6 +10,7 @@ describe('omaha module', () => {
       limit: 'pot_limit',
       maxPlayers: 9,
       blinds: { small: 5, big: 10 },
+      buyIn: 500,
       minBuyIn: 100,
       maxBuyIn: 1000,
     });

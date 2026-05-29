@@ -15,7 +15,7 @@ export function HandHistoryPanel({ lobbyId, onClose }: Props) {
   }, [lobbyId]);
 
   return (
-    <aside className="history-panel card">
+    <aside className="history-panel panel">
       <header>
         <h2>Hand history</h2>
         <button type="button" onClick={onClose}>

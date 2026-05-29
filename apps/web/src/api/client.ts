@@ -10,11 +10,16 @@ function authHeaders(): HeadersInit {
 }
 
 export async function guestLogin(displayName: string): Promise<AuthResponse> {
-  const res = await fetch(`${API}/auth/guest`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API}/auth/guest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName }),
+    });
+  } catch {
+    throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
+  }
   if (!res.ok) throw new Error('Login failed');
   const data = (await res.json()) as AuthResponse;
   localStorage.setItem('vct_token', data.token);

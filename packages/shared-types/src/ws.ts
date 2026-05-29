@@ -7,7 +7,8 @@ export type ClientMessage =
   | { type: 'auth'; token: string }
   | { type: 'join_lobby'; lobbyId: string }
   | { type: 'chat'; text: string }
-  | { type: 'sit'; seatIndex: number; buyIn: number }
+  | { type: 'sit'; seatIndex?: number; buyIn?: number }
+  | { type: 'host_set_buy_in'; buyIn: number }
   | { type: 'stand' }
   | { type: 'host_start' }
   | { type: 'host_pause'; paused: boolean }

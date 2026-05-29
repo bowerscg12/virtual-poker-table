@@ -49,14 +49,14 @@ export function VoicePanel({ voiceToken, displayName }: Props) {
 
   if (!available) {
     return (
-      <div className="voice-panel card muted-info">
+      <div className="voice-panel panel muted-info">
         <p>Voice chat: configure LIVEKIT_URL on the server to enable.</p>
       </div>
     );
   }
 
   return (
-    <div className="voice-panel card">
+    <div className="voice-panel panel">
       <h3>Voice</h3>
       {!connected ? (
         <button type="button" className="btn small" onClick={connect}>

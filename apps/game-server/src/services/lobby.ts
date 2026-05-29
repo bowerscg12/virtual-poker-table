@@ -1,5 +1,5 @@
 import type { CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
-import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS } from '@vct/shared-types';
+import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, getTableBuyIn } from '@vct/shared-types';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { lobbies, tableSeats, users } from '../db/schema.js';
@@ -74,16 +74,23 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
   };
 }
 
+function normalizeSettings(settings: VariantConfig): VariantConfig {
+  const buyIn = settings.buyIn ?? settings.minBuyIn;
+  return { ...settings, buyIn, minBuyIn: buyIn, maxBuyIn: Math.max(buyIn, settings.maxBuyIn) };
+}
+
 export async function createLobby(hostUserId: string, req: CreateLobbyRequest): Promise<LobbySummary> {
   let settings: VariantConfig = req.settings ?? DEFAULT_VARIANT_CONFIG;
   if (req.presetId) {
     const preset = RULES_PRESETS.find((p) => p.id === req.presetId);
-    if (preset) settings = preset.config;
+    if (preset) settings = { ...preset.config, ...req.settings };
   }
+  settings = normalizeSettings(settings);
 
   if (useMemory) {
     const lobby = memoryCreateLobby(hostUserId, settings);
-    return toSummary(lobby);
+    const seated = await autoSeatPlayer(lobby.id, hostUserId);
+    return seated ?? toSummary(lobby);
   }
 
   const db = getDb();
@@ -100,7 +107,47 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
     stack: 0,
   }));
   await db.insert(tableSeats).values(seatRows);
-  return (await pgToSummary(lobby.id))!;
+  const seated = await autoSeatPlayer(lobby.id, hostUserId);
+  return seated ?? (await pgToSummary(lobby.id))!;
+}
+
+/** Seat player at first open seat with the table buy-in. */
+export async function autoSeatPlayer(
+  lobbyId: string,
+  userId: string
+): Promise<LobbySummary | null> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return null;
+  if (lobby.seats.some((s) => s.userId === userId)) return lobby;
+  const empty = lobby.seats.find((s) => !s.userId);
+  if (!empty) return lobby;
+  const buyIn = getTableBuyIn(lobby.settings);
+  const result = await sitAtSeat(lobbyId, userId, empty.seatIndex, buyIn);
+  if ('error' in result) return lobby;
+  return result;
+}
+
+export async function setTableBuyIn(
+  lobbyId: string,
+  hostUserId: string,
+  buyIn: number
+): Promise<LobbySummary | { error: string }> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only host can set buy-in' };
+  if (buyIn < 1) return { error: 'Buy-in must be positive' };
+  const settings = normalizeSettings({ ...lobby.settings, buyIn });
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
 }
 
 export async function getLobbyByInvite(code: string): Promise<LobbySummary | null> {
@@ -128,33 +175,34 @@ export async function sitAtSeat(
   lobbyId: string,
   userId: string,
   seatIndex: number,
-  buyIn: number
+  buyIn?: number
 ): Promise<LobbySummary | { error: string }> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  const amount = buyIn ?? getTableBuyIn(lobby.settings);
+  if (amount !== getTableBuyIn(lobby.settings)) {
+    return { error: 'Buy-in is set by the host' };
+  }
+
   if (useMemory) {
-    const lobby = memoryStore.lobbies.get(lobbyId);
-    if (!lobby) return { error: 'Lobby not found' };
-    const seat = lobby.seats.find((s) => s.seatIndex === seatIndex);
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    const seat = mem.seats.find((s) => s.seatIndex === seatIndex);
     if (!seat) return { error: 'Invalid seat' };
     if (seat.userId) return { error: 'Seat taken' };
-    if (buyIn < lobby.settings.minBuyIn || buyIn > lobby.settings.maxBuyIn) {
-      return { error: 'Buy-in out of range' };
-    }
-    if (lobby.seats.some((s) => s.userId === userId)) return { error: 'Already seated' };
+    if (mem.seats.some((s) => s.userId === userId)) return { error: 'Already seated' };
     seat.userId = userId;
-    seat.stack = buyIn;
-    return toSummary(lobby);
+    seat.stack = amount;
+    return toSummary(mem);
   }
 
   const db = getDb();
-  const summary = await getLobbyById(lobbyId);
-  if (!summary) return { error: 'Lobby not found' };
-  if (buyIn < summary.settings.minBuyIn || buyIn > summary.settings.maxBuyIn) {
-    return { error: 'Buy-in out of range' };
-  }
-  await db
-    .update(tableSeats)
-    .set({ userId, stack: buyIn })
-    .where(eq(tableSeats.lobbyId, lobbyId));
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const seat = seats.find((s) => s.seatIndex === seatIndex);
+  if (!seat) return { error: 'Invalid seat' };
+  if (seat.userId) return { error: 'Seat taken' };
+  if (seats.some((s) => s.userId === userId)) return { error: 'Already seated' };
+  await db.update(tableSeats).set({ userId, stack: amount }).where(eq(tableSeats.id, seat.id));
   return (await getLobbyById(lobbyId))!;
 }
 

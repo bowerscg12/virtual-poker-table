@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useGameSocket } from '../hooks/useGameSocket';
+import { getTableBuyIn } from '@vct/shared-types';
 import { PokerTable } from '../components/PokerTable';
 import { ActionBar } from '../components/ActionBar';
 import { ChatPanel } from '../components/ChatPanel';
@@ -21,6 +22,8 @@ export default function TablePage() {
 
   const isHost = user && lobby && lobby.hostUserId === user.id;
   const mySeat = lobby?.seats.find((s) => s.userId === user?.id);
+  const tableFull = lobby && !mySeat && lobby.seats.every((s) => s.userId);
+  const buyIn = lobby ? getTableBuyIn(lobby.settings) : 0;
 
   function copyInvite() {
     if (!lobby) return;
@@ -34,6 +37,9 @@ export default function TablePage() {
         <div>
           <h1>Table {lobby?.inviteCode ?? '…'}</h1>
           <span className={`status ${connected ? 'on' : 'off'}`}>{connected ? 'Connected' : 'Connecting…'}</span>
+          {lobby && (
+            <p className="table-meta">Buy-in: {buyIn.toLocaleString()} chips per player</p>
+          )}
         </div>
         <div className="header-actions">
           {lobby && (
@@ -55,6 +61,12 @@ export default function TablePage() {
       <main className="table-main">
         <PokerTable lobby={lobby} table={table} privateHoleCards={privateState?.holeCards} myUserId={user?.id} />
 
+        {mySeat && (
+          <div className="my-stack panel">
+            <ChipStackLabel amount={mySeat.stack} buyIn={buyIn} />
+          </div>
+        )}
+
         {mySeat && table && privateState && (
           <ActionBar
             legalActions={privateState.legalActions}
@@ -69,29 +81,13 @@ export default function TablePage() {
           />
         )}
 
-        {!mySeat && lobby && token && (
-          <div className="sit-panel card">
-            <h3>Take a seat</h3>
-            <div className="seat-grid">
-              {lobby.seats.map((seat) => (
-                <button
-                  key={seat.seatIndex}
-                  type="button"
-                  disabled={!!seat.userId}
-                  className="btn seat-btn"
-                  onClick={() =>
-                    send({
-                      type: 'sit',
-                      seatIndex: seat.seatIndex,
-                      buyIn: lobby.settings.minBuyIn,
-                    })
-                  }
-                >
-                  Seat {seat.seatIndex + 1}
-                  {seat.userId ? ` (${seat.displayName})` : ''}
-                </button>
-              ))}
-            </div>
+        {!mySeat && lobby && token && connected && (
+          <div className="sit-panel panel">
+            {tableFull ? (
+              <p>Table is full. Wait for a seat to open.</p>
+            ) : (
+              <p>Joining table… you will be seated automatically with {buyIn.toLocaleString()} chips.</p>
+            )}
           </div>
         )}
 
@@ -101,6 +97,7 @@ export default function TablePage() {
             onStart={() => send({ type: 'host_start' })}
             onPause={(paused) => send({ type: 'host_pause', paused })}
             onKick={(seatIndex) => send({ type: 'host_kick', seatIndex })}
+            onSetBuyIn={(amount) => send({ type: 'host_set_buy_in', buyIn: amount })}
           />
         )}
       </main>
@@ -119,5 +116,14 @@ export default function TablePage() {
 
       <VoicePanel voiceToken={voiceToken} displayName={user?.displayName ?? 'Player'} />
     </div>
+  );
+}
+
+function ChipStackLabel({ amount, buyIn }: { amount: number; buyIn: number }) {
+  return (
+    <p className="my-stack-label">
+      Your stack: <strong>{amount.toLocaleString()}</strong> chips
+      {amount === buyIn && <span className="buy-in-tag"> (table buy-in)</span>}
+    </p>
   );
 }

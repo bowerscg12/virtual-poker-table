@@ -35,11 +35,106 @@ a {
   margin: 0 0 0.5rem;
 }
 
-.card {
-  background: rgba(0, 0, 0, 0.25);
+/* UI panels (forms, side cards) — NOT poker cards */
+.panel {
+  background: rgba(0, 0, 0, 0.35);
   border-radius: 12px;
   padding: 1.25rem;
   margin: 1rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.home .hero {
+  margin-bottom: 0.5rem;
+}
+
+.home .hero p {
+  margin: 0;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.home .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.home .panel h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.home .panel input {
+  margin: 0;
+}
+
+.home .panel button[type='submit'] {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--gold);
+  color: #111;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.home .panel button[type='submit']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.home .welcome {
+  font-size: 1.1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.home .actions {
+  margin: 1rem 0;
+}
+
+.home .actions .btn {
+  width: 100%;
+}
+
+.home .form-error {
+  color: #ffb4b4;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.home .disclaimer {
+  margin-top: auto;
+  padding-top: 2rem;
+  line-height: 1.4;
+  position: static;
+}
+
+.panel h2 {
+  margin: 0 0 0.25rem;
+}
+
+.panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.panel button[type='submit'],
+.panel .btn.primary {
+  width: 100%;
+  margin-top: 0.5rem;
 }
 
 input,
@@ -98,7 +193,6 @@ select {
 .disclaimer {
   font-size: 0.8rem;
   opacity: 0.7;
-  margin-top: 2rem;
 }
 
 .table-layout {
@@ -160,12 +254,112 @@ select {
   padding: 0;
 }
 
+.table-buy-in-badge {
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--gold);
+  z-index: 2;
+}
+
+.table-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.field-hint {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin: 0 0 0.5rem;
+}
+
+.my-stack {
+  text-align: center;
+  margin: 0.5rem auto;
+  max-width: 320px;
+}
+
+.my-stack-label {
+  margin: 0;
+}
+
+.buy-in-tag {
+  opacity: 0.8;
+  font-size: 0.9em;
+}
+
+.chip-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.chip-discs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+}
+
+.chip-disc {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #f4d03f, #c9a227);
+  border: 2px solid #fff8;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.chip-amount {
+  font-weight: 700;
+  color: var(--gold);
+  font-size: 0.85rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
 .seat {
   position: absolute;
   transform: translate(-50%, -50%);
   text-align: center;
   font-size: 0.75rem;
-  min-width: 80px;
+  min-width: 88px;
+}
+
+.seat.occupied .seat-info {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+}
+
+.seat.me.occupied .seat-info {
+  border-color: var(--gold);
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+}
+
+.seat.empty .seat-empty-label {
+  opacity: 0.5;
+  font-size: 0.7rem;
+}
+
+.host-buy-in-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.host-buy-in-row input {
+  flex: 1;
+  margin: 0;
 }
 
 .seat.acting {
@@ -184,7 +378,7 @@ select {
   margin-top: 4px;
 }
 
-.card {
+.playing-card {
   width: 36px;
   height: 50px;
   border-radius: 4px;
@@ -194,24 +388,25 @@ select {
   justify-content: center;
   font-size: 0.7rem;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
-.card.face {
+.playing-card.face {
   background: var(--card-bg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.card.red {
+.playing-card.red {
   color: #c00;
 }
 
-.card.black {
+.playing-card.black {
   color: #111;
 }
 
-.card.back {
+.playing-card.back {
   background: linear-gradient(135deg, #1a3a8c, #2a5ac8);
-  border: 1px solid #fff3;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .action-bar {

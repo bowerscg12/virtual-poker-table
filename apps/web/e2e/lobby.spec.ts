@@ -29,8 +29,6 @@ test('two players join lobby and host sees guest', async ({ browser }) => {
   await guest.goto(`/table/${lobbyId}`);
 
   await guest.getByText('Connected').waitFor({ timeout: 15_000 });
-  await guest.getByRole('heading', { name: 'Take a seat' }).waitFor({ timeout: 20_000 });
-  const emptySeat = guest.locator('.seat-btn:not([disabled])').first();
-  await emptySeat.click();
-  await expect(host.getByRole('button', { name: 'Seat 1 (GuestBob)' })).toBeVisible({ timeout: 15_000 });
+  await expect(host.getByText('GuestBob')).toBeVisible({ timeout: 15_000 });
+  await expect(guest.getByText(/Your stack:/)).toBeVisible({ timeout: 10_000 });
 });

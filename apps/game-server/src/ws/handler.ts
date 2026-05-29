@@ -3,8 +3,10 @@ import type { ClientMessage, ServerMessage } from '@vct/shared-types';
 import { getUserById } from '../services/auth.js';
 import {
   approveRebuy,
+  autoSeatPlayer,
   getLobbyById,
   kickSeat,
+  setTableBuyIn,
   sitAtSeat,
   updateLobbyStatus,
 } from '../services/lobby.js';
@@ -124,7 +126,9 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!lobbyClients.has(msg.lobbyId)) lobbyClients.set(msg.lobbyId, new Set());
       lobbyClients.get(msg.lobbyId)!.add(ws);
 
-      send(ws, { type: 'lobby_state', lobby });
+      const seated = await autoSeatPlayer(msg.lobbyId, st.userId);
+      const lobbyState = seated ?? lobby;
+      broadcastLobby(msg.lobbyId, () => ({ type: 'lobby_state', lobby: lobbyState }));
       for (const m of getChatHistory(msg.lobbyId)) {
         send(ws, { type: 'chat', message: m });
       }
@@ -155,7 +159,24 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
     case 'sit': {
       if (!st.userId || !st.lobbyId) return;
-      const result = await sitAtSeat(st.lobbyId, st.userId, msg.seatIndex, msg.buyIn);
+      let result: Awaited<ReturnType<typeof sitAtSeat>>;
+      if (msg.seatIndex !== undefined) {
+        result = await sitAtSeat(st.lobbyId, st.userId, msg.seatIndex, msg.buyIn);
+      } else {
+        const seated = await autoSeatPlayer(st.lobbyId, st.userId);
+        result = seated ?? { error: 'No seats available' };
+      }
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
+      return;
+    }
+
+    case 'host_set_buy_in': {
+      if (!st.userId || !st.lobbyId) return;
+      const result = await setTableBuyIn(st.lobbyId, st.userId, msg.buyIn);
       if ('error' in result) {
         send(ws, { type: 'error', message: result.error });
         return;

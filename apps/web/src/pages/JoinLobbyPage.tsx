@@ -27,7 +27,7 @@ export default function JoinLobbyPage() {
 
   return (
     <div className="page">
-      <form className="card" onSubmit={handleJoin}>
+      <form className="panel" onSubmit={handleJoin}>
         <h2>Join table</h2>
         {!token && !user && (
           <input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />

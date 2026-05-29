@@ -5,12 +5,26 @@ import { useAuth } from '../context/AuthContext';
 export default function HomePage() {
   const { user, loginGuest } = useAuth();
   const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   async function handleGuest(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
-    await loginGuest(name.trim());
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Please enter a display name.');
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      await loginGuest(trimmed);
+    } catch {
+      setError('Could not sign in. Is the game server running? Start it with: npm run dev -w @vct/game-server');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -21,15 +35,24 @@ export default function HomePage() {
       </header>
 
       {!user ? (
-        <form className="card" onSubmit={handleGuest}>
+        <form className="panel" onSubmit={handleGuest}>
           <h2>Join as guest</h2>
           <input
+            type="text"
             placeholder="Your display name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (error) setError(null);
+            }}
             maxLength={64}
+            autoComplete="nickname"
+            disabled={loading}
           />
-          <button type="submit">Continue</button>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button type="submit" disabled={loading || !name.trim()}>
+            {loading ? 'Signing in…' : 'Continue'}
+          </button>
         </form>
       ) : (
         <>
