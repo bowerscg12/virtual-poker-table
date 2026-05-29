@@ -47,6 +47,7 @@ function deserialize(data: SerializedGame): GameTableState {
     ...data,
     processedActionIds: new Set(data.processedActionIds),
     seats: data.seats.map((s) => ({ ...s })),
+    pendingActionSeatIndices: data.pendingActionSeatIndices ?? [],
   };
 }
 

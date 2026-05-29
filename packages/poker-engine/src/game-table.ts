@@ -27,6 +27,7 @@ export interface GameTableState {
   lastWinningSeatIndices: number[];
   processedActionIds: Set<string>;
   bombPotActive: boolean;
+  pendingActionSeatIndices: number[];
 }
 
 export function createInitialTable(
@@ -58,7 +59,8 @@ export function createInitialTable(
   }
 
   const activeIndices = seats.map((s) => s.seatIndex);
-  const sbSeat = nextActiveSeat(activeIndices, dealerSeatIndex + 1, () => true)!;
+  const headsUp = activeIndices.length === 2;
+  const sbSeat = headsUp ? dealerSeatIndex : nextActiveSeat(activeIndices, dealerSeatIndex + 1, () => true)!;
   const bbSeat = nextActiveSeat(activeIndices, sbSeat + 1, () => true)!;
 
   const sb = config.blinds.small;
@@ -67,7 +69,7 @@ export function createInitialTable(
   postBlind(seats, bbSeat, bb);
 
   let lastAggressorSeat = bbSeat;
-  let actionSeatStart = bbSeat + 1;
+  let actionSeatStart = headsUp ? sbSeat : bbSeat + 1;
   let minRaise = bb;
 
   if (config.game === 'holdem' && config.straddle) {
@@ -89,11 +91,8 @@ export function createInitialTable(
   }
 
   const currentBet = Math.max(...seats.map((s) => s.betThisStreet));
-  const actionSeat = nextActiveSeat(
-    activeIndices,
-    actionSeatStart,
-    (idx) => !getSeat(seats, idx)!.folded && !getSeat(seats, idx)!.allIn
-  );
+  const pendingActionSeatIndices = buildActionQueue(seats, actionSeatStart);
+  const actionSeat = pendingActionSeatIndices[0] ?? null;
 
   return {
     handNumber,
@@ -110,6 +109,7 @@ export function createInitialTable(
     lastWinningSeatIndices: [],
     processedActionIds: new Set(),
     bombPotActive: !!bombPot,
+    pendingActionSeatIndices,
   };
 }
 
@@ -125,6 +125,26 @@ function postBlind(seats: InternalSeat[], seatIndex: number, amount: number): vo
   seat.betThisStreet += pay;
   seat.totalBet += pay;
   if (seat.stack === 0) seat.allIn = true;
+}
+
+function isLiveSeat(seat: InternalSeat): boolean {
+  return !seat.folded && !seat.allIn && seat.stack > 0;
+}
+
+function buildActionQueue(seats: InternalSeat[], fromSeatIndex: number): number[] {
+  if (seats.length === 0) return [];
+  const seatIndices = [...seats.map((seat) => seat.seatIndex)].sort((a, b) => a - b);
+  const start = seatIndices.findIndex((seatIndex) => seatIndex >= fromSeatIndex);
+  const startIndex = start === -1 ? 0 : start;
+  const queue: number[] = [];
+  for (let offset = 0; offset < seatIndices.length; offset++) {
+    const seatIndex = seatIndices[(startIndex + offset) % seatIndices.length];
+    const seat = getSeat(seats, seatIndex);
+    if (seat && isLiveSeat(seat)) {
+      queue.push(seatIndex);
+    }
+  }
+  return queue;
 }
 
 export function applyAction(
@@ -162,6 +182,7 @@ export function applyAction(
   const toCall = state.currentBet - seat.betThisStreet;
   let newState = { ...state, seats: state.seats.map((s) => ({ ...s })) };
   const s = getSeat(newState.seats, seatIndex)!;
+  const previousCurrentBet = state.currentBet;
 
   switch (action) {
     case 'fold':
@@ -201,49 +222,46 @@ export function applyAction(
   newState.processedActionIds = new Set(state.processedActionIds);
   newState.processedActionIds.add(actionId);
 
-  return advanceAfterAction(newState, config);
+  const raisedBet = newState.currentBet > previousCurrentBet;
+
+  return advanceAfterAction(newState, config, raisedBet);
 }
 
 function advanceAfterAction(
   state: GameTableState,
-  config: VariantConfig
+  config: VariantConfig,
+  resetBettingRound: boolean
 ): { ok: true; state: GameTableState } | { ok: false; error: string } {
   const active = state.seats.filter((s) => !s.folded && (s.stack > 0 || s.betThisStreet > 0));
   if (active.length === 1) {
     return { ok: true, state: awardToWinner(state, active[0].seatIndex) };
   }
 
-  const canAct = (s: InternalSeat) => !s.folded && !s.allIn && s.stack > 0;
-  const needAction = state.seats.filter(
-    (s) => !s.folded && !s.allIn && s.betThisStreet < state.currentBet
-  );
-
-  if (needAction.length > 0) {
-    const next = nextActiveSeat(
-      state.seats.map((s) => s.seatIndex),
-      state.actionSeatIndex! + 1,
-      (idx) => {
-        const seat = getSeat(state.seats, idx);
-        return !!seat && canAct(seat) && seat.betThisStreet < state.currentBet;
-      }
-    );
-    return { ok: true, state: { ...state, actionSeatIndex: next } };
+  const actorSeatIndex = state.actionSeatIndex;
+  if (actorSeatIndex === null) {
+    return { ok: false, error: 'No active player' };
   }
 
-  const matched = state.seats
-    .filter((s) => !s.folded && !s.allIn)
-    .every((s) => s.betThisStreet === state.currentBet || s.stack === 0);
+  const baseQueue =
+    state.pendingActionSeatIndices.length > 0
+      ? state.pendingActionSeatIndices
+      : buildActionQueue(state.seats, actorSeatIndex);
+  const nextQueue = resetBettingRound
+    ? buildActionQueue(state.seats, actorSeatIndex + 1).filter((seatIndex) => seatIndex !== actorSeatIndex)
+    : baseQueue.filter((seatIndex) => seatIndex !== actorSeatIndex);
 
-  if (!matched) {
-    const next = nextActiveSeat(
-      state.seats.map((s) => s.seatIndex),
-      state.actionSeatIndex! + 1,
-      (idx) => !!getSeat(state.seats, idx) && canAct(getSeat(state.seats, idx)!)
-    );
-    return { ok: true, state: { ...state, actionSeatIndex: next } };
+  if (nextQueue.length === 0) {
+    return advanceStreet(state, config);
   }
 
-  return advanceStreet(state, config);
+  return {
+    ok: true,
+    state: {
+      ...state,
+      actionSeatIndex: nextQueue[0],
+      pendingActionSeatIndices: nextQueue,
+    },
+  };
 }
 
 function advanceStreet(
@@ -290,9 +308,26 @@ function advanceStreet(
     state.dealerSeatIndex + 1,
     (idx) => {
       const s = getSeat(state.seats, idx);
-      return !!s && !s.folded && !s.allIn;
+      return !!s && isLiveSeat(s);
     }
   );
+
+  if (firstToAct === null) {
+    return advanceStreet(
+      {
+        ...state,
+        deck,
+        board,
+        street,
+        currentBet: 0,
+        minRaise: config.blinds.big,
+        actionSeatIndex: null,
+        lastAggressorSeat: null,
+        pendingActionSeatIndices: [],
+      },
+      config
+    );
+  }
 
   return {
     ok: true,
@@ -305,6 +340,7 @@ function advanceStreet(
       minRaise: config.blinds.big,
       actionSeatIndex: firstToAct,
       lastAggressorSeat: null,
+      pendingActionSeatIndices: buildActionQueue(state.seats, firstToAct),
     },
   };
 }
@@ -356,6 +392,7 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
       pots,
       actionSeatIndex: null,
       lastWinningSeatIndices: Array.from(new Set(winners.map((w) => w.seatIndex))),
+      pendingActionSeatIndices: [],
     },
   };
 }
@@ -364,7 +401,13 @@ function awardToWinner(state: GameTableState, seatIndex: number): GameTableState
   const total = state.seats.reduce((s, seat) => s + seat.totalBet, 0);
   const seat = getSeat(state.seats, seatIndex)!;
   seat.stack += total;
-  return { ...state, street: 'complete', actionSeatIndex: null, lastWinningSeatIndices: [seatIndex] };
+  return {
+    ...state,
+    street: 'complete',
+    actionSeatIndex: null,
+    lastWinningSeatIndices: [seatIndex],
+    pendingActionSeatIndices: [],
+  };
 }
 
 export function getLegalActionsForSeat(state: GameTableState, config: VariantConfig, seatIndex: number) {
