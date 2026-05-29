@@ -66,8 +66,9 @@ export function nextActiveSeat(
   if (seats.length === 0) return null;
   const sorted = [...seats].sort((a, b) => a - b);
   const start = sorted.findIndex((s) => s >= from);
+  const startIndex = start === -1 ? 0 : start;
   for (let i = 0; i < sorted.length; i++) {
-    const idx = sorted[(start + i) % sorted.length];
+    const idx = sorted[(startIndex + i) % sorted.length];
     if (isActive(idx)) return idx;
   }
   return null;

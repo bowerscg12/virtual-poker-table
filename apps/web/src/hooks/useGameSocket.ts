@@ -7,6 +7,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingJoinLobbyIdRef = useRef<string | null>(null);
   const joinedLobbyRef = useRef<string | null>(null);
+  const pendingMessagesRef = useRef<ClientMessage[]>([]);
+  const readyToFlushRef = useRef(false);
   const [connected, setConnected] = useState(false);
   const [lobby, setLobby] = useState<LobbySummary | null>(null);
   const [table, setTable] = useState<PublicTableState | null>(null);
@@ -15,16 +17,29 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !readyToFlushRef.current) {
+      pendingMessagesRef.current.push(msg);
+      return;
     }
+    ws.send(JSON.stringify(msg));
   }, []);
+
+  function flushPendingMessages(ws: WebSocket) {
+    if (!readyToFlushRef.current || pendingMessagesRef.current.length === 0) return;
+    const queued = pendingMessagesRef.current.splice(0);
+    for (const msg of queued) {
+      ws.send(JSON.stringify(msg));
+    }
+  }
 
   useEffect(() => {
     if (!token || !lobbyId) return;
 
     pendingJoinLobbyIdRef.current = lobbyId;
     joinedLobbyRef.current = null;
+    readyToFlushRef.current = false;
+    pendingMessagesRef.current = [];
     const ws = new WebSocket(getWsUrl());
     wsRef.current = ws;
 
@@ -38,6 +53,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
       switch (msg.type) {
         case 'lobby_state':
           setLobby(msg.lobby);
+          readyToFlushRef.current = true;
+          flushPendingMessages(ws);
           break;
         case 'authenticated':
           if (pendingJoinLobbyIdRef.current && joinedLobbyRef.current !== pendingJoinLobbyIdRef.current) {
@@ -48,6 +65,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
         case 'table_state':
           setTable(msg.public);
           setPrivateState(msg.private ?? null);
+          readyToFlushRef.current = true;
+          flushPendingMessages(ws);
           break;
         case 'chat':
           setChat((c) => [...c, msg.message]);
@@ -67,6 +86,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
       ws.close();
       wsRef.current = null;
       pendingJoinLobbyIdRef.current = null;
+      pendingMessagesRef.current = [];
+      readyToFlushRef.current = false;
     };
   }, [token, lobbyId]);
 
