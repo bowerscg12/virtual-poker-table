@@ -49,6 +49,21 @@ export function clearActionDeadline(lobbyId: string): void {
   actionDeadlines.delete(lobbyId);
 }
 
+/** ISO deadline for next auto-hand start (between-hand intermission). Managed by handler.ts. */
+const intermissionDeadlines = new Map<string, string>();
+
+export function getIntermissionDeadline(lobbyId: string): string | null {
+  return intermissionDeadlines.get(lobbyId) ?? null;
+}
+
+export function setIntermissionDeadline(lobbyId: string, deadline: string): void {
+  intermissionDeadlines.set(lobbyId, deadline);
+}
+
+export function clearIntermissionDeadline(lobbyId: string): void {
+  intermissionDeadlines.delete(lobbyId);
+}
+
 /** Returns 'check' if legal for the seat, otherwise 'fold'. Used by the action timer auto-action. */
 export function getAutoAction(
   state: GameTableState,
@@ -254,7 +269,8 @@ export function toPublicState(
   isSpectator: boolean,
   config: VariantConfig,
   actionDeadline?: string | null,
-  paused?: boolean
+  paused?: boolean,
+  intermissionDeadline?: string | null,
 ): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
@@ -283,6 +299,7 @@ export function toPublicState(
     currentBet: state.currentBet,
     minRaise: state.minRaise,
     actionDeadline: actionDeadline ?? undefined,
+    intermissionDeadline: intermissionDeadline ?? undefined,
     paused: paused ?? false,
   };
 

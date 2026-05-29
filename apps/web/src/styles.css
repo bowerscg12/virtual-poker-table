@@ -840,6 +840,34 @@ select {
   opacity: 0.85;
 }
 
+.intermission {
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: inherit;
+  z-index: 5;
+}
+
+.pause-overlay span {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+}
+
 .seat-timer {
   display: block;
   margin-top: 2px;

@@ -23,12 +23,20 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
   }));
 
   const angleStep = (2 * Math.PI) / maxSeats;
-  const remaining = useActionTimer(table?.actionDeadline);
+  // Suppress action countdown while paused so the bar doesn't move
+  const remaining = useActionTimer(table?.paused ? undefined : table?.actionDeadline);
+  const intermissionRemaining = useActionTimer(table?.paused ? undefined : table?.intermissionDeadline);
   const timerSec = lobby?.settings.actionTimerSec ?? 0;
   const isUrgent = remaining !== null && remaining <= 10;
 
   return (
     <div className="felt" role="region" aria-label="Poker table">
+      {table?.paused && (
+        <div className="pause-overlay">
+          <span>Game Paused</span>
+        </div>
+      )}
+
       <div className="pot-area">
         {table && table.pots.length > 0 ? (
           <div className="pot">Pot: {table.pots.reduce((s, p) => s + p.amount, 0).toLocaleString()}</div>
@@ -43,6 +51,11 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
             <span className="street">{table.street}</span>
           )}
         </div>
+        {intermissionRemaining !== null && table?.street === 'complete' && (
+          <div className="intermission">
+            Next hand in {intermissionRemaining}s
+          </div>
+        )}
       </div>
 
       <ul className="seats">

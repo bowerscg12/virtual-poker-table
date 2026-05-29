@@ -40,6 +40,8 @@ export interface PublicTableState {
   minRaise: number;
   lastAction?: { seatIndex: number; action: PlayerActionType; amount?: number };
   actionDeadline?: string;
+  /** ISO deadline for next auto-hand start (set during between-hand intermission) */
+  intermissionDeadline?: string;
   paused: boolean;
 }
 

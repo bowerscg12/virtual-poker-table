@@ -19,6 +19,7 @@ export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn, onSe
     Number.isInteger(parsedBuyIn) && parsedBuyIn >= 10 && parsedBuyIn <= 10000 && parsedBuyIn % 5 === 0;
 
   const currentTimerSec = lobby.settings.actionTimerSec ?? 0;
+  const gameStarted = lobby.status === 'playing' || lobby.status === 'paused';
 
   function handleUpdateBuyIn() {
     if (!isValidBuyIn) return;
@@ -61,15 +62,21 @@ export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn, onSe
       <p className="field-hint">Takes effect on the next action. Changing to "No Timer" cancels any running countdown.</p>
 
       <div className="host-btns">
-        <button type="button" className="btn primary" onClick={onStart}>
-          Start hand
-        </button>
-        <button type="button" className="btn" onClick={() => onPause(true)}>
-          Pause
-        </button>
-        <button type="button" className="btn" onClick={() => onPause(false)}>
-          Resume
-        </button>
+        {!gameStarted && (
+          <button type="button" className="btn primary" onClick={onStart}>
+            Start hand
+          </button>
+        )}
+        {gameStarted && lobby.status === 'playing' && (
+          <button type="button" className="btn" onClick={() => onPause(true)}>
+            Pause
+          </button>
+        )}
+        {gameStarted && lobby.status === 'paused' && (
+          <button type="button" className="btn primary" onClick={() => onPause(false)}>
+            Resume
+          </button>
+        )}
       </div>
       <details>
         <summary>Kick player</summary>

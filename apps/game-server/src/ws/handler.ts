@@ -16,12 +16,15 @@ import {
 } from '../services/lobby.js';
 import {
   clearActionDeadline,
+  clearIntermissionDeadline,
   getActiveGame,
   getActionDeadline,
   getAutoAction,
   getHandHistories,
+  getIntermissionDeadline,
   processGameAction,
   setActionDeadline,
+  setIntermissionDeadline,
   startHand,
   toPublicState,
 } from '../services/game-manager.js';
@@ -75,6 +78,21 @@ const actionTimers = new Map<string, ReturnType<typeof setTimeout>>();
  */
 const actionTimerGenerations = new Map<string, number>();
 
+/** lobbyId → between-hand countdown timer (fires to auto-start next hand) */
+const intermissionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Monotonic generation counter for intermission timers.
+ * Incremented whenever the timer is cancelled so stale callbacks bail immediately.
+ */
+const intermissionTimerGenerations = new Map<string, number>();
+
+/** lobbyId → ms remaining on action timer at moment of pause */
+const actionTimerPausedRemainingMs = new Map<string, number>();
+
+/** lobbyId → ms remaining on intermission timer at moment of pause */
+const intermissionPausedRemainingMs = new Map<string, number>();
+
 /** userId → pending cash-out request (deferred until hand ends) */
 const pendingCashOuts = new Map<string, PendingCashOut>();
 
@@ -126,6 +144,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   if (!lobby) return;
 
   const deadline = getActionDeadline(lobbyId);
+  const intermDeadline = getIntermissionDeadline(lobbyId);
   const paused = lobby.status === 'paused';
 
   broadcastLobby(lobbyId, (userId, isSpectator) => {
@@ -133,7 +152,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
       return { type: 'lobby_state', lobby };
     }
     const { public: pub, private: priv } = toPublicState(
-      game, userId, isSpectator, lobby.settings, deadline, paused
+      game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline
     );
     pub.lobbyId = lobbyId;
     return { type: 'table_state', public: pub, private: priv };
@@ -191,6 +210,57 @@ function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: Game
   actionTimers.set(lobbyId, timer);
 }
 
+/** Cancel any running between-hand countdown. Increments generation to invalidate stale callbacks. */
+function cancelIntermissionTimer(lobbyId: string): void {
+  const t = intermissionTimers.get(lobbyId);
+  if (t) {
+    clearTimeout(t);
+    intermissionTimers.delete(lobbyId);
+  }
+  clearIntermissionDeadline(lobbyId);
+  intermissionTimerGenerations.set(lobbyId, (intermissionTimerGenerations.get(lobbyId) ?? 0) + 1);
+}
+
+const INTERMISSION_MS = 10_000;
+
+/** Schedule the next hand to start after delayMs (default 10 s). */
+function scheduleIntermission(lobbyId: string, config: VariantConfig, delayMs = INTERMISSION_MS): void {
+  cancelIntermissionTimer(lobbyId);
+  const gen = intermissionTimerGenerations.get(lobbyId) ?? 0;
+  const deadline = new Date(Date.now() + delayMs).toISOString();
+  setIntermissionDeadline(lobbyId, deadline);
+  intermissionTimers.set(
+    lobbyId,
+    setTimeout(() => {
+      if ((intermissionTimerGenerations.get(lobbyId) ?? 0) !== gen) return;
+      onIntermissionExpired(lobbyId, config).catch(() => {});
+    }, delayMs)
+  );
+}
+
+/** Auto-starts the next hand once the between-hand countdown reaches zero. */
+async function onIntermissionExpired(lobbyId: string, config: VariantConfig): Promise<void> {
+  intermissionTimers.delete(lobbyId);
+  clearIntermissionDeadline(lobbyId);
+
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.status !== 'playing') return;
+
+  // Guard: bail if a hand is already in progress (e.g. duplicate callback race)
+  const existing = await getActiveGame(lobbyId);
+  if (existing && existing.street !== 'complete' && existing.street !== 'waiting') return;
+
+  const result = await startHand(lobbyId, config);
+  if ('error' in result) {
+    console.warn(`[intermission] Cannot start next hand for ${lobbyId}: ${result.error}`);
+    return;
+  }
+
+  recordHandStart(lobbyId, result);
+  scheduleActionTimer(lobbyId, config, result);
+  await broadcastTableState(lobbyId);
+}
+
 /** Auto-acts on behalf of the player whose timer expired. Check if legal, otherwise fold. */
 async function onActionTimerExpired(
   lobbyId: string,
@@ -213,17 +283,22 @@ async function onActionTimerExpired(
   if ('error' in result) return;
 
   recordAction(lobbyId, userId, action);
-  scheduleActionTimer(lobbyId, config, result.state);
-  await broadcastTableState(lobbyId);
 
   if (result.state.street === 'complete') {
-    cancelActionTimer(lobbyId);
     recordHandEnd(lobbyId, result.state, config);
     await processPendingCashOuts(lobbyId);
     const histories = getHandHistories(lobbyId);
     const last = histories[histories.length - 1];
     if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
+    const updatedLobby = await getLobbyById(lobbyId);
+    if (updatedLobby?.status === 'playing') {
+      scheduleIntermission(lobbyId, config);
+    }
+  } else {
+    scheduleActionTimer(lobbyId, config, result.state);
   }
+
+  await broadcastTableState(lobbyId);
 }
 
 /** Called when a player's grace period expires without reconnection. */
@@ -261,16 +336,22 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
         );
         if (!('error' in result)) {
           recordAction(lobbyId, userId, 'fold');
-          scheduleActionTimer(lobbyId, lobby.settings, result.state);
-          await broadcastTableState(lobbyId);
+
           if (result.state.street === 'complete') {
-            cancelActionTimer(lobbyId);
             recordHandEnd(lobbyId, result.state, lobby.settings);
             await processPendingCashOuts(lobbyId);
             const histories = getHandHistories(lobbyId);
             const last = histories[histories.length - 1];
             if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
+            const currentLobby = await getLobbyById(lobbyId);
+            if (currentLobby?.status === 'playing') {
+              scheduleIntermission(lobbyId, lobby.settings);
+            }
+          } else {
+            scheduleActionTimer(lobbyId, lobby.settings, result.state);
           }
+
+          await broadcastTableState(lobbyId);
         }
       }
     }
@@ -604,6 +685,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'error', message: 'Only host can start' });
         return;
       }
+      // Only allow manual start before the first hand; auto-progression handles all subsequent hands.
+      if (lobby.status !== 'open') {
+        send(ws, { type: 'error', message: 'Game already in progress' });
+        return;
+      }
       const result = await startHand(st.lobbyId, lobby.settings);
       if ('error' in result) {
         send(ws, { type: 'error', message: result.error });
@@ -612,6 +698,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       recordHandStart(st.lobbyId, result);
       await updateLobbyStatus(st.lobbyId, 'playing');
       scheduleActionTimer(st.lobbyId, lobby.settings, result);
+      const startedLobby = await getLobbyById(st.lobbyId);
+      if (startedLobby) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));
       await broadcastTableState(st.lobbyId);
       return;
     }
@@ -620,15 +708,85 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!st.userId || !st.lobbyId) return;
       const lobby = await getLobbyById(st.lobbyId);
       if (!lobby || lobby.hostUserId !== st.userId) return;
+
       if (msg.paused) {
+        // --- PAUSE: freeze all timers, recording exact remaining durations ---
+
+        // Snapshot action timer remaining before cancelling (cancel clears the deadline)
+        const actionDeadlineSnap = getActionDeadline(st.lobbyId);
+        if (actionDeadlineSnap) {
+          actionTimerPausedRemainingMs.set(
+            st.lobbyId,
+            Math.max(0, new Date(actionDeadlineSnap).getTime() - Date.now())
+          );
+        } else {
+          actionTimerPausedRemainingMs.delete(st.lobbyId);
+        }
         cancelActionTimer(st.lobbyId);
-      }
-      await updateLobbyStatus(st.lobbyId, msg.paused ? 'paused' : 'playing');
-      if (!msg.paused) {
-        const state = await getActiveGame(st.lobbyId);
+
+        // Snapshot intermission remaining before cancelling
+        const intermDeadlineSnap = getIntermissionDeadline(st.lobbyId);
+        if (intermDeadlineSnap) {
+          intermissionPausedRemainingMs.set(
+            st.lobbyId,
+            Math.max(0, new Date(intermDeadlineSnap).getTime() - Date.now())
+          );
+        } else {
+          intermissionPausedRemainingMs.delete(st.lobbyId);
+        }
+        cancelIntermissionTimer(st.lobbyId);
+
+        await updateLobbyStatus(st.lobbyId, 'paused');
+      } else {
+        // --- RESUME: restart all timers from their frozen remaining durations ---
+        await updateLobbyStatus(st.lobbyId, 'playing');
         const resumedLobby = await getLobbyById(st.lobbyId);
-        if (state && resumedLobby) scheduleActionTimer(st.lobbyId, resumedLobby.settings, state);
+        if (!resumedLobby) return;
+
+        const intermRemaining = intermissionPausedRemainingMs.get(st.lobbyId);
+        if (intermRemaining !== undefined) {
+          // Intermission was frozen — resume from remaining duration
+          intermissionPausedRemainingMs.delete(st.lobbyId);
+          actionTimerPausedRemainingMs.delete(st.lobbyId);
+          scheduleIntermission(st.lobbyId, resumedLobby.settings, Math.max(0, intermRemaining));
+        } else {
+          // Action timer may have been frozen — resume from remaining duration (or full if unknown)
+          const actionRemaining = actionTimerPausedRemainingMs.get(st.lobbyId);
+          actionTimerPausedRemainingMs.delete(st.lobbyId);
+
+          const resumeLobbyId = st.lobbyId;
+          const state = await getActiveGame(resumeLobbyId);
+          if (
+            state &&
+            state.actionSeatIndex !== null &&
+            state.street !== 'complete' &&
+            state.street !== 'waiting'
+          ) {
+            const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
+            if (seat && !seat.folded && !seat.allIn && (resumedLobby.settings.actionTimerSec ?? 0) > 0) {
+              // Use frozen remaining, or fall back to the full configured duration
+              const durationMs =
+                actionRemaining !== undefined
+                  ? Math.max(0, actionRemaining)
+                  : resumedLobby.settings.actionTimerSec! * 1000;
+
+              cancelActionTimer(resumeLobbyId); // increments generation
+              const gen = actionTimerGenerations.get(resumeLobbyId) ?? 0;
+              const deadline = new Date(Date.now() + durationMs).toISOString();
+              setActionDeadline(resumeLobbyId, deadline);
+              const { userId: seatUserId, seatIndex } = seat;
+              actionTimers.set(
+                resumeLobbyId,
+                setTimeout(() => {
+                  if ((actionTimerGenerations.get(resumeLobbyId) ?? 0) !== gen) return;
+                  onActionTimerExpired(resumeLobbyId, seatUserId, seatIndex, resumedLobby.settings).catch(() => {});
+                }, durationMs)
+              );
+            }
+          }
+        }
       }
+
       const updated = await getLobbyById(st.lobbyId);
       if (updated) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: updated }));
       await broadcastTableState(st.lobbyId);
@@ -675,16 +833,22 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         return;
       }
       recordAction(st.lobbyId, st.userId, msg.action);
-      scheduleActionTimer(st.lobbyId, lobby.settings, result.state);
-      await broadcastTableState(st.lobbyId);
+
       if (result.state.street === 'complete') {
-        cancelActionTimer(st.lobbyId);
         recordHandEnd(st.lobbyId, result.state, lobby.settings);
         await processPendingCashOuts(st.lobbyId);
         const histories = getHandHistories(st.lobbyId);
         const last = histories[histories.length - 1];
         if (last) broadcastLobby(st.lobbyId, () => ({ type: 'hand_history', entry: last }));
+        const updatedLobby = await getLobbyById(st.lobbyId);
+        if (updatedLobby?.status === 'playing') {
+          scheduleIntermission(st.lobbyId, lobby.settings);
+        }
+      } else {
+        scheduleActionTimer(st.lobbyId, lobby.settings, result.state);
       }
+
+      await broadcastTableState(st.lobbyId);
       return;
     }
 
