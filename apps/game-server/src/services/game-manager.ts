@@ -34,6 +34,31 @@ const activeGames = new Map<string, GameTableState>();
 const handHistories = new Map<string, HandHistoryEntry[]>();
 let dealerRotations = new Map<string, number>();
 
+/** ISO deadline strings keyed by lobbyId. Managed by handler.ts; read here for toPublicState. */
+const actionDeadlines = new Map<string, string>();
+
+export function getActionDeadline(lobbyId: string): string | null {
+  return actionDeadlines.get(lobbyId) ?? null;
+}
+
+export function setActionDeadline(lobbyId: string, deadline: string): void {
+  actionDeadlines.set(lobbyId, deadline);
+}
+
+export function clearActionDeadline(lobbyId: string): void {
+  actionDeadlines.delete(lobbyId);
+}
+
+/** Returns 'check' if legal for the seat, otherwise 'fold'. Used by the action timer auto-action. */
+export function getAutoAction(
+  state: GameTableState,
+  config: VariantConfig,
+  seatIndex: number
+): PlayerActionType {
+  const legal = getLegalActionsForSeat(state, config, seatIndex);
+  return legal.some((a) => a.type === 'check') ? 'check' : 'fold';
+}
+
 function serialize(state: GameTableState): SerializedGame {
   return {
     ...state,
@@ -227,7 +252,9 @@ export function toPublicState(
   state: GameTableState,
   viewerUserId: string | null,
   isSpectator: boolean,
-  config: VariantConfig
+  config: VariantConfig,
+  actionDeadline?: string | null,
+  paused?: boolean
 ): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
@@ -255,7 +282,8 @@ export function toPublicState(
     actionSeatIndex: state.actionSeatIndex,
     currentBet: state.currentBet,
     minRaise: state.minRaise,
-    paused: false,
+    actionDeadline: actionDeadline ?? undefined,
+    paused: paused ?? false,
   };
 
   if (isSpectator || !viewerSeat) {

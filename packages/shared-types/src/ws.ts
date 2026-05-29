@@ -10,6 +10,7 @@ export type ClientMessage =
   | { type: 'chat'; text: string }
   | { type: 'sit'; seatIndex?: number; buyIn?: number }
   | { type: 'host_set_buy_in'; buyIn: number }
+  | { type: 'host_set_action_timer'; seconds: number }
   | { type: 'stand' }
   | { type: 'host_start' }
   | { type: 'host_pause'; paused: boolean }

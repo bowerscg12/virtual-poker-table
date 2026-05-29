@@ -384,6 +384,8 @@ select {
 
 .seat {
   position: absolute;
+  left: var(--seat-x);
+  top: var(--seat-y);
   transform: translate(-50%, -50%);
   text-align: center;
   font-size: 0.75rem;
@@ -583,6 +585,74 @@ select {
   bottom: 1rem;
   max-width: 280px;
   z-index: 10;
+}
+
+.seat-timer {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+.seat-timer.urgent {
+  color: #ff6b6b;
+}
+
+.timer-bar-track {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 3px;
+  width: 100%;
+}
+
+.timer-bar {
+  height: 100%;
+  width: var(--timer-pct, 100%);
+  background: var(--gold);
+  border-radius: 2px;
+  transition: width 0.1s linear, background 0.3s ease;
+}
+
+.timer-bar.urgent {
+  background: #ff6b6b;
+}
+
+.status.reconnecting {
+  color: #fc0;
+}
+
+.banner {
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.banner.warning {
+  background: rgba(255, 180, 0, 0.18);
+  color: #ffd966;
+  border-bottom: 1px solid rgba(255, 180, 0, 0.3);
+}
+
+.banner.error {
+  background: rgba(200, 60, 60, 0.2);
+  color: #ffb4b4;
+  border-bottom: 1px solid rgba(200, 60, 60, 0.3);
+}
+
+.host-timer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.host-timer select {
+  margin: 0;
 }
 
 @media (max-width: 600px) {

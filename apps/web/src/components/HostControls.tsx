@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { LobbySummary } from '@vct/shared-types';
-import { getTableBuyIn } from '@vct/shared-types';
+import { TIMER_STEPS_SEC, formatTimerLabel, getTableBuyIn } from '@vct/shared-types';
 
 interface Props {
   lobby: LobbySummary;
@@ -8,19 +8,20 @@ interface Props {
   onPause: (paused: boolean) => void;
   onKick: (seatIndex: number) => void;
   onSetBuyIn: (amount: number) => void;
+  onSetActionTimer: (seconds: number) => void;
 }
 
-export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn }: Props) {
+export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer }: Props) {
   const currentBuyIn = getTableBuyIn(lobby.settings);
   const [buyIn, setBuyIn] = useState(String(currentBuyIn));
   const parsedBuyIn = Number.parseInt(buyIn, 10);
   const isValidBuyIn =
     Number.isInteger(parsedBuyIn) && parsedBuyIn >= 10 && parsedBuyIn <= 10000 && parsedBuyIn % 5 === 0;
 
+  const currentTimerSec = lobby.settings.actionTimerSec ?? 0;
+
   function handleUpdateBuyIn() {
-    if (!isValidBuyIn) {
-      return;
-    }
+    if (!isValidBuyIn) return;
     onSetBuyIn(parsedBuyIn);
   }
 
@@ -43,6 +44,22 @@ export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn }: Pr
         </div>
       </label>
       <p className="field-hint">Current seated stacks stay as-is; new joiners get the updated amount.</p>
+
+      <label className="host-timer">
+        Action timer
+        <select
+          value={currentTimerSec}
+          onChange={(e) => onSetActionTimer(Number(e.target.value))}
+        >
+          {TIMER_STEPS_SEC.map((sec) => (
+            <option key={sec} value={sec}>
+              {formatTimerLabel(sec)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="field-hint">Takes effect on the next action. Changing to "No Timer" cancels any running countdown.</p>
+
       <div className="host-btns">
         <button type="button" className="btn primary" onClick={onStart}>
           Start hand

@@ -121,6 +121,7 @@ export default function TablePage() {
             onPause={(paused) => send({ type: 'host_pause', paused })}
             onKick={(seatIndex) => send({ type: 'host_kick', seatIndex })}
             onSetBuyIn={(amount) => send({ type: 'host_set_buy_in', buyIn: amount })}
+            onSetActionTimer={(seconds) => send({ type: 'host_set_action_timer', seconds })}
           />
         )}
       </main>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { RulesPreset, VariantConfig } from '@vct/shared-types';
+import { TIMER_STEPS_SEC, formatTimerLabel } from '@vct/shared-types';
 import { createLobby, getPresets } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
@@ -21,7 +22,8 @@ function loadPresetIntoForm(
   setBigBlind: (value: string) => void,
   setStraddleEnabled: (value: boolean) => void,
   setStraddleAmount: (value: string) => void,
-  setSevenDeuceRule: (value: boolean) => void
+  setSevenDeuceRule: (value: boolean) => void,
+  setActionTimerSec: (value: number) => void
 ): void {
   if (!preset) return;
 
@@ -32,6 +34,7 @@ function loadPresetIntoForm(
   setStraddleEnabled(config.game === 'holdem' && !!config.straddle);
   setStraddleAmount(String(Math.max(config.blinds.big, config.straddleAmount ?? config.blinds.big * 2)));
   setSevenDeuceRule(config.game === 'holdem' && !!config.sevenDeuceRule);
+  setActionTimerSec(config.actionTimerSec ?? 30);
 }
 
 export default function CreateLobbyPage() {
@@ -44,6 +47,7 @@ export default function CreateLobbyPage() {
   const [straddleEnabled, setStraddleEnabled] = useState(false);
   const [straddleAmount, setStraddleAmount] = useState('20');
   const [sevenDeuceRule, setSevenDeuceRule] = useState(false);
+  const [actionTimerSec, setActionTimerSec] = useState(30);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -77,7 +81,8 @@ export default function CreateLobbyPage() {
         setBigBlind,
         setStraddleEnabled,
         setStraddleAmount,
-        setSevenDeuceRule
+        setSevenDeuceRule,
+        setActionTimerSec
       );
     });
   }, []);
@@ -90,7 +95,8 @@ export default function CreateLobbyPage() {
       setBigBlind,
       setStraddleEnabled,
       setStraddleAmount,
-      setSevenDeuceRule
+      setSevenDeuceRule,
+      setActionTimerSec
     );
   }, [presetId, selectedPreset]);
 
@@ -126,6 +132,7 @@ export default function CreateLobbyPage() {
           ? Math.max(parsedBigBlind, parsedStraddleAmount ?? parsedBigBlind)
           : undefined,
       sevenDeuceRule: base.game === 'holdem' ? sevenDeuceRule : false,
+      actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
     };
     const { lobby } = await createLobby({ presetId, settings });
     navigate(`/table/${lobby.id}`);
@@ -266,6 +273,26 @@ export default function CreateLobbyPage() {
             </label>
           </fieldset>
         )}
+
+        <fieldset className="settings-group">
+          <legend>Action timer</legend>
+          <label>
+            Time per action
+            <select
+              value={actionTimerSec}
+              onChange={(e) => setActionTimerSec(Number(e.target.value))}
+            >
+              {TIMER_STEPS_SEC.map((sec) => (
+                <option key={sec} value={sec}>
+                  {formatTimerLabel(sec)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="field-hint">
+            When set, each player automatically checks (or folds) when their time expires.
+          </p>
+        </fieldset>
 
         {error && <p className="form-error" role="alert">{error}</p>}
         <p className="field-hint">

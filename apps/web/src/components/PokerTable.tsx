@@ -2,6 +2,7 @@ import type { Card } from '@vct/shared-types';
 import type { LobbySummary, PublicTableState } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
+import { useActionTimer } from '../hooks/useActionTimer';
 
 interface Props {
   lobby: LobbySummary | null;
@@ -22,6 +23,9 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
   }));
 
   const angleStep = (2 * Math.PI) / maxSeats;
+  const remaining = useActionTimer(table?.actionDeadline);
+  const timerSec = lobby?.settings.actionTimerSec ?? 0;
+  const isUrgent = remaining !== null && remaining <= 10;
 
   return (
     <div className="felt" role="region" aria-label="Poker table">
@@ -55,7 +59,7 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
             <li
               key={seat.seatIndex}
               className={`seat ${occupied ? 'occupied' : 'empty'} ${isActor ? 'acting' : ''} ${gs?.folded ? 'folded' : ''} ${isMe ? 'me' : ''}`}
-              style={{ left: `${x}%`, top: `${y}%` }}
+              style={{ '--seat-x': `${x}%`, '--seat-y': `${y}%` } as React.CSSProperties}
             >
               <div className="seat-info">
                 <strong>{seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}</strong>
@@ -64,7 +68,20 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
                 {gs?.betThisStreet ? (
                   <span className="bet">Bet: {gs.betThisStreet.toLocaleString()}</span>
                 ) : null}
+                {isActor && remaining !== null && timerSec > 0 && (
+                  <span className={`seat-timer${isUrgent ? ' urgent' : ''}`}>
+                    {remaining}s
+                  </span>
+                )}
               </div>
+              {isActor && remaining !== null && timerSec > 0 && (
+                <div className="timer-bar-track">
+                  <div
+                    className={`timer-bar${isUrgent ? ' urgent' : ''}`}
+                    style={{ '--timer-pct': `${Math.min(100, (remaining / timerSec) * 100)}%` } as React.CSSProperties}
+                  />
+                </div>
+              )}
               <div className="hole-cards">
                 {!isMe && gs && !gs.folded && table?.street !== 'complete' && occupied && (
                   <>
