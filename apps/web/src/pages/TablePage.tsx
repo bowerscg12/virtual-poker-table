@@ -16,7 +16,7 @@ export default function TablePage() {
   const [chatOpen, setChatOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
-  const { connected, lobby, table, privateState, chat, error, send } = useGameSocket(
+  const { connected, reconnecting, lobby, table, privateState, chat, error, send } = useGameSocket(
     token,
     lobbyId ?? null
   );
@@ -56,7 +56,9 @@ export default function TablePage() {
         <div>
           <h1>{headerLobby ? `${headerLobby.hostDisplayName}'s Table` : 'Table ...'}</h1>
           {headerLobby && <p className="invite-code">Code: {headerLobby.inviteCode}</p>}
-          <span className={`status ${connected ? 'on' : 'off'}`}>{connected ? 'Connected' : 'Connecting...'}</span>
+          <span className={`status ${connected ? 'on' : reconnecting ? 'reconnecting' : 'off'}`}>
+            {connected ? 'Connected' : reconnecting ? 'Reconnecting...' : 'Connecting...'}
+          </span>
           {headerLobby && <p className="table-meta">Buy-in: {buyIn.toLocaleString()} chips per player</p>}
         </div>
         <div className="header-actions">
@@ -74,6 +76,9 @@ export default function TablePage() {
         </div>
       </header>
 
+      {reconnecting && !connected && (
+        <div className="banner warning">Connection lost — reconnecting to your session...</div>
+      )}
       {error && <div className="banner error">{error}</div>}
 
       <main className="table-main">

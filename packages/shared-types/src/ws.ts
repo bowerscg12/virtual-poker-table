@@ -5,6 +5,7 @@ import type { LobbySummary } from './lobby.js';
 /** Client -> Server */
 export type ClientMessage =
   | { type: 'auth'; token: string }
+  | { type: 'reconnect'; sessionId: string }
   | { type: 'join_lobby'; lobbyId: string }
   | { type: 'chat'; text: string }
   | { type: 'sit'; seatIndex?: number; buyIn?: number }
@@ -21,7 +22,9 @@ export type ClientMessage =
 
 /** Server -> Client */
 export type ServerMessage =
-  | { type: 'authenticated'; userId: string }
+  | { type: 'authenticated'; userId: string; sessionId: string }
+  | { type: 'session_ready'; userId: string; lobbyId: string }
+  | { type: 'session_invalid' }
   | { type: 'error'; message: string; code?: string }
   | { type: 'lobby_state'; lobby: LobbySummary }
   | { type: 'table_state'; public: PublicTableState; private?: { holeCards: Card[]; legalActions: LegalAction[] } }

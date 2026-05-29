@@ -1,6 +1,6 @@
 import type { CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
 import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, getTableBuyIn } from '@vct/shared-types';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { lobbies, tableSeats, users } from '../db/schema.js';
 import {
@@ -304,6 +304,26 @@ export async function approveRebuy(
   if (seat) {
     await db.update(tableSeats).set({ stack: seat.stack + amount }).where(eq(tableSeats.id, seat.id));
   }
+  return getLobbyById(lobbyId);
+}
+
+export async function setSittingOut(
+  lobbyId: string,
+  userId: string,
+  sittingOut: boolean
+): Promise<LobbySummary | null> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return null;
+    const seat = mem.seats.find((s) => s.userId === userId);
+    if (seat) seat.sittingOut = sittingOut;
+    return toSummary(mem);
+  }
+  const db = getDb();
+  await db
+    .update(tableSeats)
+    .set({ sittingOut })
+    .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
   return getLobbyById(lobbyId);
 }
 

@@ -35,3 +35,12 @@ export const handHistories = pgTable('hand_histories', {
   data: jsonb('data').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const playerSessions = pgTable('player_sessions', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  lobbyId: uuid('lobby_id').references(() => lobbies.id, { onDelete: 'set null' }),
+  disconnectedAt: timestamp('disconnected_at'),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

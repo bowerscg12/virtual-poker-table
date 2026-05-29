@@ -39,12 +39,22 @@ export interface MemoryHandHistory {
   createdAt: string;
 }
 
+export interface MemorySession {
+  id: string;
+  userId: string;
+  lobbyId: string | null;
+  disconnectedAt: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
 /** In-memory store when Postgres is unavailable (local dev / tests) */
 export const memoryStore = {
   users: new Map<string, MemoryUser>(),
   lobbies: new Map<string, MemoryLobby>(),
   inviteIndex: new Map<string, string>(),
   handHistories: [] as MemoryHandHistory[],
+  sessions: new Map<string, MemorySession>(),
 };
 
 export function memoryCreateUser(data: Omit<MemoryUser, 'id'>): MemoryUser {

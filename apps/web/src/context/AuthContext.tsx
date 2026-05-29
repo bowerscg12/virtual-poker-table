@@ -37,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem('vct_token');
+    localStorage.removeItem('vct_session_id');
     setUser(null);
     setToken(null);
   }, []);

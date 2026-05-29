@@ -39,6 +39,18 @@ CREATE TABLE IF NOT EXISTS hand_histories (
 );
 
 CREATE INDEX IF NOT EXISTS idx_lobbies_invite ON lobbies(invite_code);
+
+CREATE TABLE IF NOT EXISTS player_sessions (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  lobby_id UUID REFERENCES lobbies(id) ON DELETE SET NULL,
+  disconnected_at TIMESTAMP,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_sessions_user ON player_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_expires ON player_sessions(expires_at);
 `;
 
 async function main() {
