@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ChangeEvent } from 'react';
 import type { LegalAction, PlayerActionType } from '@vct/shared-types';
+import { formatChips } from '../utils/formatChips';
 
 interface Props {
   legalActions: LegalAction[];
@@ -33,10 +34,6 @@ export function ActionBar({ legalActions, onAction }: Props) {
 
   function clampRaiseAmount(amount: number) {
     return Math.min(raiseMax, Math.max(raiseMin, amount));
-  }
-
-  function formatChips(amount: number) {
-    return amount.toLocaleString();
   }
 
   function updateRaiseAmount(amount: number) {

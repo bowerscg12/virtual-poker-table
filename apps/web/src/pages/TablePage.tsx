@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getTableBuyIn, type LobbySummary } from '@vct/shared-types';
+import { formatChips } from '../utils/formatChips';
 import { useAuth } from '../context/AuthContext';
 import { getLobbyById } from '../api/client';
 import { useGameSocket } from '../hooks/useGameSocket';
@@ -93,7 +94,7 @@ export default function TablePage() {
           <span className={`status ${connected ? 'on' : reconnecting ? 'reconnecting' : 'off'}`}>
             {connected ? 'Connected' : reconnecting ? 'Reconnecting...' : 'Connecting...'}
           </span>
-          {headerLobby && <p className="table-meta">Buy-in: {buyIn.toLocaleString()} chips per player</p>}
+          {headerLobby && <p className="table-meta">Buy-in: {formatChips(buyIn)} chips per player</p>}
         </div>
         <div className="header-actions">
           {headerLobby && (
@@ -156,7 +157,7 @@ export default function TablePage() {
             {tableFull ? (
               <p>Table is full. Wait for a seat to open.</p>
             ) : (
-              <p>Joining table... you will be seated automatically with {buyIn.toLocaleString()} chips.</p>
+              <p>Joining table... you will be seated automatically with {formatChips(buyIn)} chips.</p>
             )}
           </div>
         )}
@@ -203,7 +204,7 @@ export default function TablePage() {
 function ChipStackLabel({ amount, buyIn }: { amount: number; buyIn: number }) {
   return (
     <p className="my-stack-label">
-      Your stack: <strong>{amount.toLocaleString()}</strong> chips
+      Your stack: <strong>{formatChips(amount)}</strong> chips
       {amount === buyIn && <span className="buy-in-tag"> (table buy-in)</span>}
     </p>
   );

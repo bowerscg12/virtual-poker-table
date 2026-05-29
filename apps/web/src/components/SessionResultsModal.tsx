@@ -1,5 +1,6 @@
 import type { CashOutSummary } from '@vct/shared-types';
 import { CardView } from './CardView';
+import { formatChips } from '../utils/formatChips';
 
 interface Props {
   summary: CashOutSummary;
@@ -59,12 +60,12 @@ export function SessionResultsModal({ summary, onLeave }: Props) {
         {/* Hero: chip total + profit/loss */}
         <div className="results-hero">
           <div className="results-final-stack">
-            {summary.finalStack.toLocaleString()}
+            {formatChips(summary.finalStack)}
             <span className="results-chips-label"> chips</span>
           </div>
           {summary.netProfit !== 0 && (
             <div className={`results-net ${profitClass}`}>
-              {isProfit ? '+' : ''}{summary.netProfit.toLocaleString()} chips
+              {isProfit ? '+' : ''}{formatChips(summary.netProfit)} chips
             </div>
           )}
         </div>
@@ -74,8 +75,8 @@ export function SessionResultsModal({ summary, onLeave }: Props) {
           <section className="results-section">
             <h3 className="results-section-title">Session</h3>
             <StatRow label="Duration" value={formatDuration(summary.sessionDurationMs)} />
-            <StatRow label="Started with" value={`${summary.startingStack.toLocaleString()} chips`} />
-            <StatRow label="Ended with" value={`${summary.finalStack.toLocaleString()} chips`} />
+            <StatRow label="Started with" value={`${formatChips(summary.startingStack)} chips`} />
+            <StatRow label="Ended with" value={`${formatChips(summary.finalStack)} chips`} />
           </section>
 
           {/* Hands */}
@@ -89,15 +90,15 @@ export function SessionResultsModal({ summary, onLeave }: Props) {
             />
             <StatRow
               label="Biggest pot won"
-              value={summary.biggestPotWon > 0 ? `+${summary.biggestPotWon.toLocaleString()}` : '—'}
+              value={summary.biggestPotWon > 0 ? `+${formatChips(summary.biggestPotWon)}` : '—'}
             />
             <StatRow
               label="Biggest loss"
-              value={summary.biggestLoss > 0 ? `-${summary.biggestLoss.toLocaleString()}` : '—'}
+              value={summary.biggestLoss > 0 ? `-${formatChips(summary.biggestLoss)}` : '—'}
             />
             <StatRow
               label="Avg pot won"
-              value={summary.averagePotWon > 0 ? `+${Math.round(summary.averagePotWon).toLocaleString()}` : '—'}
+              value={summary.averagePotWon > 0 ? `+${formatChips(Math.round(summary.averagePotWon))}` : '—'}
             />
           </section>
 

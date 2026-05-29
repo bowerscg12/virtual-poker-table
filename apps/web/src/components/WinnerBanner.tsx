@@ -1,4 +1,5 @@
 import type { WinnerBannerData } from '../hooks/useTableAnimations';
+import { formatChips } from '../utils/formatChips';
 
 interface Props {
   data: WinnerBannerData;
@@ -18,7 +19,7 @@ export function WinnerBanner({ data }: Props) {
               <div key={i} className="winner-banner__split-winner">
                 <span className="winner-banner__split-winner-name">{w.displayName}</span>
                 <span className="winner-banner__split-winner-amount">
-                  +{w.amount.toLocaleString()}
+                  +{formatChips(w.amount)}
                 </span>
               </div>
             ))}
@@ -34,7 +35,7 @@ export function WinnerBanner({ data }: Props) {
           {winners[0]?.handDescription && (
             <p className="winner-banner__hand">{winners[0].handDescription}</p>
           )}
-          <p className="winner-banner__amount">+{totalPot.toLocaleString()}</p>
+          <p className="winner-banner__amount">+{formatChips(totalPot)}</p>
         </>
       )}
     </div>

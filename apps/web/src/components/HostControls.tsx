@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { LobbySummary } from '@vct/shared-types';
 import { TIMER_STEPS_SEC, formatTimerLabel, getTableBuyIn } from '@vct/shared-types';
+import { formatChips } from '../utils/formatChips';
 
 interface Props {
   lobby: LobbySummary;
@@ -85,7 +86,7 @@ export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn, onSe
             .filter((s) => s.userId)
             .map((s) => (
               <li key={s.seatIndex}>
-                {s.displayName} ({s.stack.toLocaleString()} chips){' '}
+                {s.displayName} ({formatChips(s.stack)} chips){' '}
                 <button type="button" className="btn small danger" onClick={() => onKick(s.seatIndex)}>
                   Kick
                 </button>

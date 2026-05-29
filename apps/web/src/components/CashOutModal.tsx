@@ -1,3 +1,5 @@
+import { formatChips } from '../utils/formatChips';
+
 interface Props {
   currentStack: number;
   queued: boolean;
@@ -18,7 +20,7 @@ export function CashOutModal({ currentStack, queued, onConfirm, onCancel, onCanc
               chips when the current hand finishes.
             </p>
             <p className="modal-chip-count">
-              {currentStack.toLocaleString()} chips
+              {formatChips(currentStack)} chips
             </p>
             <div className="modal-actions">
               <button type="button" className="btn" onClick={onCancelQueue}>
@@ -33,7 +35,7 @@ export function CashOutModal({ currentStack, queued, onConfirm, onCancel, onCanc
               You are about to cash out and leave the table with:
             </p>
             <p className="modal-chip-count">
-              {currentStack.toLocaleString()} chips
+              {formatChips(currentStack)} chips
             </p>
             <p className="modal-warning">
               Your seat will become available to other players.

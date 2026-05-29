@@ -6,6 +6,7 @@ import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
 import { useActionTimer } from '../hooks/useActionTimer';
 import { useTableAnimations, type WinnerBannerData } from '../hooks/useTableAnimations';
+import { formatChips } from '../utils/formatChips';
 
 interface Props {
   lobby: LobbySummary | null;
@@ -158,7 +159,7 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId, handCompl
       <div className="pot-area" ref={potAreaRef}>
         {table && table.pots.length > 0 ? (
           <div className={`pot${anim.winnerBanner ? ' pot-distributing' : ''}`}>
-            Pot: {table.pots.reduce((s, p) => s + p.amount, 0).toLocaleString()}
+            Pot: {formatChips(table.pots.reduce((s, p) => s + p.amount, 0))}
           </div>
         ) : (
           <div className="pot">Waiting for hand</div>
@@ -232,7 +233,7 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId, handCompl
                     key={`bet-${seat.seatIndex}-${gs.betThisStreet}`}
                     className={`bet${isBetting ? ' bet-pulse' : ''}`}
                   >
-                    Bet: {gs.betThisStreet.toLocaleString()}
+                    Bet: {formatChips(gs.betThisStreet)}
                   </span>
                 ) : null}
                 {isActor && remaining !== null && timerSec > 0 && (
