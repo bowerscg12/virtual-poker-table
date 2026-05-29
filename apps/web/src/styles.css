@@ -260,19 +260,6 @@ select {
   padding: 0;
 }
 
-.table-buy-in-badge {
-  position: absolute;
-  top: 8%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.45);
-  padding: 0.25rem 0.75rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  color: var(--gold);
-  z-index: 2;
-}
-
 .table-meta {
   margin: 0.25rem 0 0;
   font-size: 0.85rem;
@@ -366,6 +353,33 @@ select {
   color: var(--gold);
   font-size: 0.85rem;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.player-hand-tray {
+  position: fixed;
+  left: 1rem;
+  bottom: 6rem;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.player-hand-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+}
+
+.player-hand-cards {
+  display: flex;
+  gap: 0.4rem;
 }
 
 .seat {

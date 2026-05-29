@@ -5,6 +5,8 @@ import { getWsUrl } from '../api/client';
 
 export function useGameSocket(token: string | null, lobbyId: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
+  const pendingJoinLobbyIdRef = useRef<string | null>(null);
+  const joinedLobbyRef = useRef<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [lobby, setLobby] = useState<LobbySummary | null>(null);
   const [table, setTable] = useState<PublicTableState | null>(null);
@@ -21,13 +23,14 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   useEffect(() => {
     if (!token || !lobbyId) return;
 
+    pendingJoinLobbyIdRef.current = lobbyId;
+    joinedLobbyRef.current = null;
     const ws = new WebSocket(getWsUrl());
     wsRef.current = ws;
 
     ws.onopen = () => {
       setConnected(true);
       ws.send(JSON.stringify({ type: 'auth', token } satisfies ClientMessage));
-      ws.send(JSON.stringify({ type: 'join_lobby', lobbyId } satisfies ClientMessage));
     };
 
     ws.onmessage = (ev) => {
@@ -35,6 +38,12 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
       switch (msg.type) {
         case 'lobby_state':
           setLobby(msg.lobby);
+          break;
+        case 'authenticated':
+          if (pendingJoinLobbyIdRef.current && joinedLobbyRef.current !== pendingJoinLobbyIdRef.current) {
+            joinedLobbyRef.current = pendingJoinLobbyIdRef.current;
+            ws.send(JSON.stringify({ type: 'join_lobby', lobbyId: pendingJoinLobbyIdRef.current } satisfies ClientMessage));
+          }
           break;
         case 'table_state':
           setTable(msg.public);
@@ -57,6 +66,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     return () => {
       ws.close();
       wsRef.current = null;
+      pendingJoinLobbyIdRef.current = null;
     };
   }, [token, lobbyId]);
 

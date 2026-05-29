@@ -1,6 +1,5 @@
 import type { Card } from '@vct/shared-types';
 import type { LobbySummary, PublicTableState } from '@vct/shared-types';
-import { getTableBuyIn } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 
@@ -23,13 +22,9 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
   }));
 
   const angleStep = (2 * Math.PI) / maxSeats;
-  const tableBuyIn = lobby ? getTableBuyIn(lobby.settings) : 0;
 
   return (
     <div className="felt" role="region" aria-label="Poker table">
-      {lobby && (
-        <div className="table-buy-in-badge">Buy-in: {tableBuyIn.toLocaleString()} chips</div>
-      )}
       <div className="pot-area">
         {table && table.pots.length > 0 ? (
           <div className="pot">Pot: {table.pots.reduce((s, p) => s + p.amount, 0).toLocaleString()}</div>
@@ -71,7 +66,6 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
                 ) : null}
               </div>
               <div className="hole-cards">
-                {isMe && privateHoleCards?.map((c, j) => <CardView key={j} card={c} faceUp />)}
                 {!isMe && gs && !gs.folded && table?.street !== 'complete' && occupied && (
                   <>
                     <div className="playing-card back" />
@@ -84,6 +78,17 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId }: Props) 
           );
         })}
       </ul>
+
+      {privateHoleCards && privateHoleCards.length > 0 && (
+        <div className="player-hand-tray" aria-label="Your hole cards">
+          <div className="player-hand-title">Your hand</div>
+          <div className="player-hand-cards">
+            {privateHoleCards.map((card, index) => (
+              <CardView key={index} card={card} faceUp />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

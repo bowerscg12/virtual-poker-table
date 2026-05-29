@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import type { Card, HandHistoryEntry, PlayerActionType, PublicTableState, VariantConfig } from '@vct/shared-types';
+import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
   createInitialTable,
@@ -7,6 +8,8 @@ import {
   type GameTableState,
 } from '@vct/poker-engine';
 import { getVariantModule } from '@vct/poker-engine';
+import { getDb } from '../db/client.js';
+import { tableSeats, users } from '../db/schema.js';
 import { keys, redisGet, redisSet } from '../store/redis.js';
 import { getMemoryLobby, isMemoryMode } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
@@ -60,7 +63,7 @@ async function loadGame(lobbyId: string): Promise<GameTableState | null> {
   return deserialize(JSON.parse(raw) as SerializedGame);
 }
 
-function seatedPlayers(lobbyId: string) {
+async function seatedPlayers(lobbyId: string) {
   if (isMemoryMode()) {
     const lobby = getMemoryLobby(lobbyId);
     if (!lobby) return [];
@@ -73,11 +76,27 @@ function seatedPlayers(lobbyId: string) {
         stack: s.stack,
       }));
   }
-  return [];
+
+  const db = getDb();
+  const seats = await db.select().from(tableSeats).where(and(eq(tableSeats.lobbyId, lobbyId), isNotNull(tableSeats.userId), gt(tableSeats.stack, 0)));
+  if (seats.length === 0) return [];
+
+  const userIds = [...new Set(seats.map((seat) => seat.userId).filter((id): id is string => !!id))];
+  const dbUsers = await db.select().from(users).where(inArray(users.id, userIds));
+  const displayNames = new Map(dbUsers.map((user) => [user.id, user.displayName]));
+
+  return seats
+    .filter((seat) => seat.userId)
+    .map((seat) => ({
+      seatIndex: seat.seatIndex,
+      userId: seat.userId!,
+      displayName: displayNames.get(seat.userId!) ?? 'Player',
+      stack: seat.stack,
+    }));
 }
 
 export async function startHand(lobbyId: string, config: VariantConfig): Promise<GameTableState | { error: string }> {
-  const players = seatedPlayers(lobbyId);
+  const players = await seatedPlayers(lobbyId);
   if (players.length < 2) return { error: 'Need at least 2 players' };
 
   const prevDealer = dealerRotations.get(lobbyId) ?? -1;
