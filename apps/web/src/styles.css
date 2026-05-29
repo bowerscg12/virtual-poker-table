@@ -587,6 +587,259 @@ select {
   z-index: 10;
 }
 
+/* ── Cash Out button ─────────────────────────────────────── */
+
+.my-stack {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cash-out-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ── Name-taken inline form ──────────────────────────────── */
+
+.name-change-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.name-change-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ── Shared modal base ───────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+.modal {
+  background: #1c2a1c;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 16px;
+  padding: 1.75rem 1.5rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.modal-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.4rem;
+  color: var(--gold);
+}
+
+.modal-body {
+  margin: 0 0 0.5rem;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.modal-chip-count {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin: 0.5rem 0;
+}
+
+.modal-warning {
+  font-size: 0.88rem;
+  opacity: 0.7;
+  margin: 0 0 1rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+/* ── Session results modal ───────────────────────────────── */
+
+.results-overlay {
+  align-items: flex-start;
+  overflow-y: auto;
+}
+
+.results-modal {
+  max-width: 520px;
+  margin: auto;
+}
+
+.results-player {
+  font-size: 0.95rem;
+  opacity: 0.75;
+  margin: 0 0 1.25rem;
+}
+
+.results-hero {
+  text-align: center;
+  padding: 1rem 0 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 1.25rem;
+}
+
+.results-final-stack {
+  font-size: 2.6rem;
+  font-weight: 800;
+  color: var(--gold);
+  line-height: 1;
+}
+
+.results-chips-label {
+  font-size: 1.1rem;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.results-net {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-top: 0.4rem;
+}
+
+.results-net.profit {
+  color: #6f6;
+}
+
+.results-net.loss {
+  color: #f96;
+}
+
+.results-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.results-section {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.results-section-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.2rem 0;
+  font-size: 0.9rem;
+}
+
+.stat-label {
+  opacity: 0.8;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.results-best-hand-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin: 0 0 0.5rem;
+}
+
+.results-cards {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.results-hand-desc {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin: 0;
+}
+
+.results-starting-hand {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+  margin: 0 0 0.2rem;
+}
+
+.results-starting-hand-meta {
+  font-size: 0.82rem;
+  opacity: 0.7;
+  margin: 0;
+}
+
+/* ── Action breakdown bars ───────────────────────────────── */
+
+.action-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.action-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.action-bar-label {
+  width: 3.5rem;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.action-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.action-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  width: var(--bar-width, 4%);
+  background: var(--bar-color, var(--gold));
+  transition: width 0.3s ease;
+}
+
+.action-bar-count {
+  width: 2rem;
+  text-align: right;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
 .seat-timer {
   display: block;
   margin-top: 2px;

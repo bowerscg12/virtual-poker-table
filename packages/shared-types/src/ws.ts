@@ -1,6 +1,7 @@
 import type { Card } from './cards.js';
 import type { LegalAction, PlayerActionType, PublicTableState } from './game.js';
 import type { LobbySummary } from './lobby.js';
+import type { CashOutSummary } from './session-stats.js';
 
 /** Client -> Server */
 export type ClientMessage =
@@ -19,6 +20,8 @@ export type ClientMessage =
   | { type: 'host_adjust_blinds'; small: number; big: number }
   | { type: 'game_action'; actionId: string; action: PlayerActionType; amount?: number }
   | { type: 'spectate' }
+  | { type: 'cash_out' }
+  | { type: 'cash_out_cancel' }
   | { type: 'ping' };
 
 /** Server -> Client */
@@ -32,6 +35,9 @@ export type ServerMessage =
   | { type: 'chat'; message: ChatMessage }
   | { type: 'hand_complete'; winners: { seatIndex: number; amount: number; handDescription: string }[] }
   | { type: 'hand_history'; entry: import('./game.js').HandHistoryEntry }
+  | { type: 'cash_out_queued' }
+  | { type: 'cash_out_cancelled' }
+  | { type: 'cashed_out'; summary: CashOutSummary }
   | { type: 'pong' };
 
 export interface ChatMessage {

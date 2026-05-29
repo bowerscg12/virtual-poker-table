@@ -7,6 +7,7 @@ import {
   autoSeatPlayer,
   getLobbyById,
   kickSeat,
+  removeSeat,
   setActionTimerSetting,
   setTableBuyIn,
   setSittingOut,
@@ -35,11 +36,23 @@ import {
   updateSessionLobby,
   GRACE_PERIOD_MS,
 } from '../services/session.js';
+import {
+  finalizeCashOut,
+  initSession,
+  recordAction,
+  recordHandEnd,
+  recordHandStart,
+} from '../services/session-stats.js';
 
 interface ClientState {
   userId: string | null;
   lobbyId: string | null;
   isSpectator: boolean;
+  sessionId: string | null;
+}
+
+interface PendingCashOut {
+  lobbyId: string;
   sessionId: string | null;
 }
 
@@ -61,6 +74,12 @@ const actionTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * can detect they were superseded and bail without acting.
  */
 const actionTimerGenerations = new Map<string, number>();
+
+/** userId → pending cash-out request (deferred until hand ends) */
+const pendingCashOuts = new Map<string, PendingCashOut>();
+
+/** userId set to prevent duplicate cash-out processing */
+const cashOutInProgress = new Set<string>();
 
 export type TokenVerifier = (token: string) => Promise<{ sub: string }>;
 
@@ -193,11 +212,14 @@ async function onActionTimerExpired(
   const result = await processGameAction(lobbyId, config, userId, crypto.randomUUID(), action);
   if ('error' in result) return;
 
+  recordAction(lobbyId, userId, action);
   scheduleActionTimer(lobbyId, config, result.state);
   await broadcastTableState(lobbyId);
 
   if (result.state.street === 'complete') {
     cancelActionTimer(lobbyId);
+    recordHandEnd(lobbyId, result.state, config);
+    await processPendingCashOuts(lobbyId);
     const histories = getHandHistories(lobbyId);
     const last = histories[histories.length - 1];
     if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
@@ -238,10 +260,13 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
           'fold'
         );
         if (!('error' in result)) {
+          recordAction(lobbyId, userId, 'fold');
           scheduleActionTimer(lobbyId, lobby.settings, result.state);
           await broadcastTableState(lobbyId);
           if (result.state.street === 'complete') {
             cancelActionTimer(lobbyId);
+            recordHandEnd(lobbyId, result.state, lobby.settings);
+            await processPendingCashOuts(lobbyId);
             const histories = getHandHistories(lobbyId);
             const last = histories[histories.length - 1];
             if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
@@ -249,6 +274,98 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
         }
       }
     }
+  }
+}
+
+/**
+ * Execute a cash-out for a connected player: finalize stats, remove from seat,
+ * invalidate session, disconnect from lobby, send summary.
+ */
+async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
+  const userId = st.userId!;
+  const lobbyId = st.lobbyId!;
+  const sessionId = st.sessionId;
+
+  if (cashOutInProgress.has(userId)) return;
+  cashOutInProgress.add(userId);
+
+  try {
+    const lobby = await getLobbyById(lobbyId);
+    if (!lobby) return;
+
+    const seat = lobby.seats.find((s) => s.userId === userId);
+    if (!seat) return;
+
+    const finalStack = seat.stack;
+    const summary = finalizeCashOut(lobbyId, userId, finalStack);
+
+    await removeSeat(lobbyId, userId);
+
+    if (sessionId) await deleteSession(sessionId);
+
+    // Detach from lobby before broadcasting so the player doesn't receive the lobby_state
+    lobbyClients.get(lobbyId)?.delete(ws);
+    if (connectedUserSockets.get(userId) === ws) connectedUserSockets.delete(userId);
+    st.lobbyId = null;
+    st.sessionId = null;
+
+    // Send results to the cashing-out player
+    send(ws, { type: 'cashed_out', summary });
+
+    // Broadcast updated seat layout to remaining players
+    const connected = getConnectedSet(lobbyId);
+    const withConnected = await getLobbyById(lobbyId, connected);
+    if (withConnected) {
+      broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
+    }
+  } finally {
+    cashOutInProgress.delete(userId);
+    pendingCashOuts.delete(userId);
+  }
+}
+
+/**
+ * Process all deferred cash-out requests for a lobby after a hand completes.
+ * Connected players get the full summary; disconnected players are removed silently.
+ */
+async function processPendingCashOuts(lobbyId: string): Promise<void> {
+  const toProcess: string[] = [];
+  for (const [userId, pending] of pendingCashOuts) {
+    if (pending.lobbyId === lobbyId) toProcess.push(userId);
+  }
+  if (toProcess.length === 0) return;
+
+  for (const userId of toProcess) {
+    const ws = connectedUserSockets.get(userId);
+    const st = ws ? clients.get(ws) : null;
+
+    if (ws && st && st.lobbyId === lobbyId) {
+      await processCashOut(ws, st);
+    } else {
+      // Player disconnected — remove them silently
+      if (cashOutInProgress.has(userId)) continue;
+      cashOutInProgress.add(userId);
+      try {
+        const pending = pendingCashOuts.get(userId);
+        const lobby = await getLobbyById(lobbyId);
+        const seat = lobby?.seats.find((s) => s.userId === userId);
+        if (seat) {
+          finalizeCashOut(lobbyId, userId, seat.stack);
+          await removeSeat(lobbyId, userId);
+        }
+        if (pending?.sessionId) await deleteSession(pending.sessionId);
+        pendingCashOuts.delete(userId);
+      } finally {
+        cashOutInProgress.delete(userId);
+      }
+    }
+  }
+
+  // One final broadcast to reflect all seat removals
+  const connected = getConnectedSet(lobbyId);
+  const updatedLobby = await getLobbyById(lobbyId, connected);
+  if (updatedLobby) {
+    broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
   }
 }
 
@@ -355,6 +472,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
       send(ws, { type: 'session_ready', userId: session.userId, lobbyId: session.lobbyId ?? '' });
 
+      // Remind player their cash-out request is still queued
+      if (pendingCashOuts.has(session.userId)) {
+        send(ws, { type: 'cash_out_queued' });
+      }
+
       if (session.lobbyId) {
         for (const m of getChatHistory(session.lobbyId)) {
           send(ws, { type: 'chat', message: m });
@@ -374,6 +496,23 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'error', message: 'Lobby not found' });
         return;
       }
+
+      // Resolve display name before attempting to seat (needed for uniqueness check)
+      const user = await getUserById(st.userId);
+      if (!user) {
+        send(ws, { type: 'error', message: 'User not found' });
+        return;
+      }
+
+      // Attempt seating with name check BEFORE connecting the socket to the lobby.
+      // This ensures a rejected join never triggers a broadcast.
+      const seatResult = await autoSeatPlayer(msg.lobbyId, st.userId, user.displayName);
+      if (seatResult && 'error' in seatResult) {
+        send(ws, { type: 'error', message: seatResult.error, code: seatResult.code });
+        return;
+      }
+
+      // Seating succeeded — now wire up the socket
       if (st.lobbyId && st.lobbyId !== msg.lobbyId) {
         lobbyClients.get(st.lobbyId)?.delete(ws);
       }
@@ -386,7 +525,13 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         await updateSessionLobby(st.sessionId, msg.lobbyId);
       }
 
-      await autoSeatPlayer(msg.lobbyId, st.userId);
+      // Init session stats for this player
+      const lobbyAfterSeat = await getLobbyById(msg.lobbyId);
+      const mySeat = lobbyAfterSeat?.seats.find((s) => s.userId === st.userId);
+      if (mySeat) {
+        initSession(msg.lobbyId, st.userId, user.displayName, mySeat.stack);
+      }
+
       const connected = getConnectedSet(msg.lobbyId);
       const lobbyState = await getLobbyById(msg.lobbyId, connected);
       if (lobbyState) {
@@ -425,15 +570,16 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
     case 'sit': {
       if (!st.userId || !st.lobbyId) return;
+      const sitUser = await getUserById(st.userId);
       let result: Awaited<ReturnType<typeof sitAtSeat>>;
       if (msg.seatIndex !== undefined) {
-        result = await sitAtSeat(st.lobbyId, st.userId, msg.seatIndex, msg.buyIn);
+        result = await sitAtSeat(st.lobbyId, st.userId, msg.seatIndex, msg.buyIn, sitUser?.displayName);
       } else {
-        const seated = await autoSeatPlayer(st.lobbyId, st.userId);
+        const seated = await autoSeatPlayer(st.lobbyId, st.userId, sitUser?.displayName);
         result = seated ?? { error: 'No seats available' };
       }
       if ('error' in result) {
-        send(ws, { type: 'error', message: result.error });
+        send(ws, { type: 'error', message: result.error, code: result.code });
         return;
       }
       broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
@@ -463,6 +609,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'error', message: result.error });
         return;
       }
+      recordHandStart(st.lobbyId, result);
       await updateLobbyStatus(st.lobbyId, 'playing');
       scheduleActionTimer(st.lobbyId, lobby.settings, result);
       await broadcastTableState(st.lobbyId);
@@ -527,10 +674,13 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         if (current) scheduleActionTimer(st.lobbyId, lobby.settings, current);
         return;
       }
+      recordAction(st.lobbyId, st.userId, msg.action);
       scheduleActionTimer(st.lobbyId, lobby.settings, result.state);
       await broadcastTableState(st.lobbyId);
       if (result.state.street === 'complete') {
         cancelActionTimer(st.lobbyId);
+        recordHandEnd(st.lobbyId, result.state, lobby.settings);
+        await processPendingCashOuts(st.lobbyId);
         const histories = getHandHistories(st.lobbyId);
         const last = histories[histories.length - 1];
         if (last) broadcastLobby(st.lobbyId, () => ({ type: 'hand_history', entry: last }));
@@ -554,6 +704,45 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
       broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
       await broadcastTableState(st.lobbyId);
+      return;
+    }
+
+    case 'cash_out': {
+      if (!st.userId || !st.lobbyId) return;
+      const userId = st.userId;
+      const lobbyId = st.lobbyId;
+
+      if (cashOutInProgress.has(userId)) return;
+
+      const game = await getActiveGame(lobbyId);
+      if (game && game.street !== 'waiting' && game.street !== 'complete') {
+        const seat = game.seats.find((s) => s.userId === userId);
+        // Block if it's the player's turn and they still have actions to take
+        if (seat && game.actionSeatIndex === seat.seatIndex && !seat.allIn && !seat.folded) {
+          send(ws, {
+            type: 'error',
+            message: 'You must act before cashing out.',
+            code: 'CASH_OUT_NOT_ALLOWED',
+          });
+          return;
+        }
+        // Defer until hand ends
+        pendingCashOuts.set(userId, { lobbyId, sessionId: st.sessionId });
+        send(ws, { type: 'cash_out_queued' });
+        return;
+      }
+
+      // No active hand (or hand already complete) — process immediately
+      await processCashOut(ws, st);
+      return;
+    }
+
+    case 'cash_out_cancel': {
+      if (!st.userId) return;
+      if (pendingCashOuts.has(st.userId)) {
+        pendingCashOuts.delete(st.userId);
+        send(ws, { type: 'cash_out_cancelled' });
+      }
       return;
     }
 

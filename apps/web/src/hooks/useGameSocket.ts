@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatMessage, ClientMessage, LobbySummary, PublicTableState, ServerMessage } from '@vct/shared-types';
+import type { ChatMessage, ClientMessage, CashOutSummary, LobbySummary, PublicTableState, ServerMessage } from '@vct/shared-types';
 import type { Card, LegalAction } from '@vct/shared-types';
 import { getWsUrl } from '../api/client';
 
@@ -27,6 +27,9 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [privateState, setPrivateState] = useState<{ holeCards: Card[]; legalActions: LegalAction[] } | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [nameTaken, setNameTaken] = useState(false);
+  const [cashOutQueued, setCashOutQueued] = useState(false);
+  const [cashOutSummary, setCashOutSummary] = useState<CashOutSummary | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -36,6 +39,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     }
     ws.send(JSON.stringify(msg));
   }, []);
+
+  const clearCashOutSummary = useCallback(() => setCashOutSummary(null), []);
 
   useEffect(() => {
     if (!token || !lobbyId) return;
@@ -157,6 +162,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
 
           case 'lobby_state':
             setLobby(msg.lobby);
+            setNameTaken(false);
             readyToFlushRef.current = true;
             flushPending(ws);
             break;
@@ -172,8 +178,27 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             setChat((c) => [...c, msg.message]);
             break;
 
+          case 'cash_out_queued':
+            setCashOutQueued(true);
+            break;
+
+          case 'cash_out_cancelled':
+            setCashOutQueued(false);
+            break;
+
+          case 'cashed_out':
+            // Remove session so reconnect doesn't restore us to the cashed-out lobby
+            localStorage.removeItem(SESSION_ID_KEY);
+            setCashOutQueued(false);
+            setCashOutSummary(msg.summary);
+            break;
+
           case 'error':
-            setError(msg.message);
+            if (msg.code === 'NAME_TAKEN') {
+              setNameTaken(true);
+            } else {
+              setError(msg.message);
+            }
             break;
 
           default:
@@ -220,6 +245,10 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     privateState,
     chat,
     error,
+    nameTaken,
+    cashOutQueued,
+    cashOutSummary,
+    clearCashOutSummary,
     send,
   };
 }

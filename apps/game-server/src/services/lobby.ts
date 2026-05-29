@@ -1,6 +1,6 @@
 import type { CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
 import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, TIMER_STEPS_SEC, getTableBuyIn } from '@vct/shared-types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { lobbies, tableSeats, users } from '../db/schema.js';
 import {
@@ -135,7 +135,8 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
   if (useMemory) {
     const lobby = memoryCreateLobby(hostUserId, settings);
     const seated = await autoSeatPlayer(lobby.id, hostUserId);
-    return seated ?? toSummary(lobby);
+    if (!seated || 'error' in seated) return toSummary(lobby);
+    return seated;
   }
 
   const db = getDb();
@@ -153,23 +154,24 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
   }));
   await db.insert(tableSeats).values(seatRows);
   const seated = await autoSeatPlayer(lobby.id, hostUserId);
-  return seated ?? (await pgToSummary(lobby.id))!;
+  if (!seated || 'error' in seated) return (await pgToSummary(lobby.id))!;
+  return seated;
 }
 
 /** Seat player at first open seat with the table buy-in. */
 export async function autoSeatPlayer(
   lobbyId: string,
-  userId: string
-): Promise<LobbySummary | null> {
+  userId: string,
+  displayName?: string
+): Promise<LobbySummary | { error: string; code?: string } | null> {
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return null;
+  // Already seated — reclaiming an existing seat; skip name check
   if (lobby.seats.some((s) => s.userId === userId)) return lobby;
   const empty = lobby.seats.find((s) => !s.userId);
   if (!empty) return lobby;
   const buyIn = getTableBuyIn(lobby.settings);
-  const result = await sitAtSeat(lobbyId, userId, empty.seatIndex, buyIn);
-  if ('error' in result) return lobby;
-  return result;
+  return sitAtSeat(lobbyId, userId, empty.seatIndex, buyIn, displayName);
 }
 
 export async function setTableBuyIn(
@@ -222,8 +224,9 @@ export async function sitAtSeat(
   lobbyId: string,
   userId: string,
   seatIndex: number,
-  buyIn?: number
-): Promise<LobbySummary | { error: string }> {
+  buyIn?: number,
+  displayName?: string
+): Promise<LobbySummary | { error: string; code?: string }> {
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return { error: 'Lobby not found' };
   const amount = buyIn ?? getTableBuyIn(lobby.settings);
@@ -241,6 +244,21 @@ export async function sitAtSeat(
     if (!seat) return { error: 'Invalid seat' };
     if (seat.userId) return { error: 'Seat taken' };
     if (mem.seats.some((s) => s.userId === userId)) return { error: 'Already seated' };
+    // Name uniqueness check — runs synchronously so check+write is one atomic microtask
+    if (displayName) {
+      const normalizedNew = displayName.toLowerCase().trim();
+      const collision = mem.seats.some((s) => {
+        if (!s.userId || s.userId === userId) return false;
+        const u = memoryStore.users.get(s.userId);
+        return u?.displayName.toLowerCase().trim() === normalizedNew;
+      });
+      if (collision) {
+        return {
+          error: 'That name is already taken at this table. Please choose another name.',
+          code: 'NAME_TAKEN',
+        };
+      }
+    }
     seat.userId = userId;
     seat.stack = amount;
     return toSummary(mem);
@@ -252,6 +270,22 @@ export async function sitAtSeat(
   if (!seat) return { error: 'Invalid seat' };
   if (seat.userId) return { error: 'Seat taken' };
   if (seats.some((s) => s.userId === userId)) return { error: 'Already seated' };
+  // Name uniqueness check (Postgres path — best-effort before the write)
+  if (displayName) {
+    const otherUserIds = seats
+      .filter((s) => s.userId && s.userId !== userId)
+      .map((s) => s.userId as string);
+    if (otherUserIds.length > 0) {
+      const seated = await db.select({ displayName: users.displayName }).from(users).where(inArray(users.id, otherUserIds));
+      const normalizedNew = displayName.toLowerCase().trim();
+      if (seated.some((u) => u.displayName.toLowerCase().trim() === normalizedNew)) {
+        return {
+          error: 'That name is already taken at this table. Please choose another name.',
+          code: 'NAME_TAKEN',
+        };
+      }
+    }
+  }
   await db.update(tableSeats).set({ userId, stack: amount }).where(eq(tableSeats.id, seat.id));
   return (await getLobbyById(lobbyId))!;
 }
@@ -354,6 +388,30 @@ export async function setActionTimerSetting(
   const db = getDb();
   await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
   return (await getLobbyById(lobbyId))!;
+}
+
+export async function removeSeat(lobbyId: string, userId: string): Promise<LobbySummary | null> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return null;
+    const seat = mem.seats.find((s) => s.userId === userId);
+    if (seat) {
+      seat.userId = null;
+      seat.stack = 0;
+      seat.sittingOut = false;
+    }
+    return toSummary(mem);
+  }
+  const db = getDb();
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const seat = seats.find((s) => s.userId === userId);
+  if (seat) {
+    await db
+      .update(tableSeats)
+      .set({ userId: null, stack: 0, sittingOut: false })
+      .where(eq(tableSeats.id, seat.id));
+  }
+  return getLobbyById(lobbyId);
 }
 
 export function isMemoryMode(): boolean {
