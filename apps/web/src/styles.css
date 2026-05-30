@@ -260,9 +260,17 @@ select {
 
 .board {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   justify-content: center;
   margin-top: 0.5rem;
+}
+
+/* Community cards — primary visual focal point */
+.board .playing-card {
+  width: 56px;
+  height: 78px;
+  font-size: 0.95rem;
+  border-radius: 6px;
 }
 
 .seats {
@@ -351,10 +359,18 @@ select {
 
 .player-tray__cards {
   display: flex;
-  gap: 3px;
-  min-width: 76px; /* hold space for 2 cards between deals */
-  min-height: 50px;
+  gap: 4px;
+  min-width: 124px; /* hold space for 2 cards (60px each + gap) between deals */
+  min-height: 84px;
   align-items: center;
+}
+
+/* Player hole cards — prominent but secondary to community cards */
+.player-tray__cards .playing-card {
+  width: 60px;
+  height: 84px;
+  font-size: 1.05rem;
+  border-radius: 6px;
 }
 
 .player-tray__meta {
@@ -514,14 +530,6 @@ select {
   color: var(--gold);
   font-size: 0.85rem;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-}
-
-
-.player-hand-cards .playing-card {
-  width: 46px;
-  height: 64px;
-  font-size: 0.9rem;
-  border-radius: 5px;
 }
 
 .seat {
@@ -1025,6 +1033,27 @@ select {
   .chat-panel {
     width: 100%;
   }
+
+  .board {
+    gap: 4px;
+  }
+
+  .board .playing-card {
+    width: 44px;
+    height: 62px;
+    font-size: 0.8rem;
+  }
+
+  .player-tray__cards {
+    min-width: 104px; /* 2 × 50px + 4px */
+    min-height: 70px;
+  }
+
+  .player-tray__cards .playing-card {
+    width: 50px;
+    height: 70px;
+    font-size: 0.9rem;
+  }
 }
 
 /* ── Landscape / short-screen adjustments ────────────────── */
@@ -1053,6 +1082,23 @@ select {
 
   .player-tray__cards-row {
     padding: 0.3rem 0.5rem;
+  }
+
+  .player-tray__cards {
+    min-width: 84px; /* 2 × 40px + 4px */
+    min-height: 56px;
+  }
+
+  .player-tray__cards .playing-card {
+    width: 40px;
+    height: 56px;
+    font-size: 0.78rem;
+  }
+
+  .board .playing-card {
+    width: 40px;
+    height: 56px;
+    font-size: 0.78rem;
   }
 
   .raise-panel__slider-wrap {
