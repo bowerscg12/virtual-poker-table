@@ -212,13 +212,18 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: 0.35rem 1rem;
   background: rgba(0, 0, 0, 0.3);
   flex-shrink: 0;
 }
 
 .table-main {
   flex: 1;
+}
+
+.table-header h1 {
+  font-size: 1.1rem;
+  margin: 0;
 }
 
 .status.on {
@@ -267,14 +272,14 @@ select {
 }
 
 .table-meta {
-  margin: 0.25rem 0 0;
-  font-size: 0.85rem;
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
   opacity: 0.85;
 }
 
 .invite-code {
-  margin: 0.2rem 0 0;
-  font-size: 0.9rem;
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -512,6 +517,13 @@ select {
 }
 
 
+.player-hand-cards .playing-card {
+  width: 46px;
+  height: 64px;
+  font-size: 0.9rem;
+  border-radius: 5px;
+}
+
 .seat {
   position: absolute;
   left: var(--seat-x);
@@ -531,8 +543,9 @@ select {
 }
 
 .seat.me.occupied .seat-info {
-  border-color: var(--gold);
-  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+  background: rgba(30, 80, 180, 0.35);
+  border-color: #4a90e2;
+  box-shadow: 0 0 10px rgba(74, 144, 226, 0.5);
 }
 
 .seat.empty .seat-empty-label {
@@ -551,9 +564,16 @@ select {
   margin: 0;
 }
 
-.seat.acting {
-  outline: 2px solid var(--gold);
-  border-radius: 8px;
+.seat.acting .seat-info {
+  background: rgba(180, 140, 0, 0.35);
+  border-color: #f0c040;
+  box-shadow: 0 0 10px rgba(240, 192, 64, 0.55);
+}
+
+.seat.me.acting .seat-info {
+  background: rgba(180, 140, 0, 0.35);
+  border-color: #f0c040;
+  box-shadow: 0 0 10px rgba(240, 192, 64, 0.55);
 }
 
 .seat.folded {
