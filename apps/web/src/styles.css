@@ -413,8 +413,9 @@ select {
 }
 
 .seat.me.occupied .seat-info {
-  border-color: var(--gold);
-  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+  background: rgba(30, 80, 180, 0.35);
+  border-color: #4a90e2;
+  box-shadow: 0 0 10px rgba(74, 144, 226, 0.5);
 }
 
 .seat.empty .seat-empty-label {
@@ -433,9 +434,16 @@ select {
   margin: 0;
 }
 
-.seat.acting {
-  outline: 2px solid var(--gold);
-  border-radius: 8px;
+.seat.acting .seat-info {
+  background: rgba(180, 140, 0, 0.35);
+  border-color: #f0c040;
+  box-shadow: 0 0 10px rgba(240, 192, 64, 0.55);
+}
+
+.seat.me.acting .seat-info {
+  background: rgba(180, 140, 0, 0.35);
+  border-color: #f0c040;
+  box-shadow: 0 0 10px rgba(240, 192, 64, 0.55);
 }
 
 .seat.folded {
