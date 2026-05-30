@@ -14,7 +14,7 @@
     "db:migrate": "npm run db:migrate -w @vct/game-server"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
+    "concurrently": "^9.2.1",
     "typescript": "^5.8.3"
   },
   "engines": {

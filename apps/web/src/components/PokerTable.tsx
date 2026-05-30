@@ -1,19 +1,17 @@
 import React, { useRef, useState, useEffect } from 'react';
-import type { Card } from '@vct/shared-types';
 import type { LobbySummary, PublicTableState } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
 import { useActionTimer } from '../hooks/useActionTimer';
-import { useTableAnimations, type WinnerBannerData } from '../hooks/useTableAnimations';
+import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
 
 interface Props {
   lobby: LobbySummary | null;
   table: PublicTableState | null;
-  privateHoleCards?: Card[];
   myUserId?: string;
-  handComplete?: { seatIndex: number; amount: number; handDescription: string }[] | null;
+  anim: TableAnimState;
 }
 
 interface ChipFlight {
@@ -39,7 +37,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, privateHoleCards, myUserId, handComplete }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 9;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
@@ -55,8 +53,6 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId, handCompl
   const intermissionRemaining = useActionTimer(table?.paused ? undefined : table?.intermissionDeadline);
   const timerSec = lobby?.settings.actionTimerSec ?? 0;
   const isUrgent = remaining !== null && remaining <= 10;
-
-  const anim = useTableAnimations(table, handComplete ?? null);
 
   // ── Chip flight state ─────────────────────────────────────
   const feltRef = useRef<HTMLDivElement>(null);
@@ -273,28 +269,6 @@ export function PokerTable({ lobby, table, privateHoleCards, myUserId, handCompl
           );
         })}
       </ul>
-
-      {privateHoleCards && privateHoleCards.length > 0 && (
-        <div className="player-hand-tray" aria-label="Your hole cards">
-          <div className="player-hand-title">Your hand</div>
-          <div className="player-hand-cards">
-            {privateHoleCards.map((card, index) => {
-              const mySeatIndex = seats.find(s => s.userId === myUserId)?.seatIndex ?? 0;
-              const dealClass = isDealingThisHand
-                ? `dealing ${holeDealDelayClass(mySeatIndex, index as 0 | 1)}`
-                : '';
-              return (
-                <div
-                  key={index}
-                  className={['card-anim-wrapper', dealClass].filter(Boolean).join(' ')}
-                >
-                  <CardView card={card} faceUp />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

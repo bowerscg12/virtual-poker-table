@@ -5,8 +5,10 @@ import { formatChips } from '../utils/formatChips';
 import { useAuth } from '../context/AuthContext';
 import { getLobbyById } from '../api/client';
 import { useGameSocket } from '../hooks/useGameSocket';
+import { useTableAnimations } from '../hooks/useTableAnimations';
 import { PokerTable } from '../components/PokerTable';
 import { ActionBar } from '../components/ActionBar';
+import { CardView } from '../components/CardView';
 import { ChatPanel } from '../components/ChatPanel';
 import { HostControls } from '../components/HostControls';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
@@ -37,6 +39,8 @@ export default function TablePage() {
     send,
   } = useGameSocket(token, lobbyId ?? null);
 
+  const anim = useTableAnimations(table, handComplete ?? null);
+
   useEffect(() => {
     if (!lobbyId) return;
 
@@ -62,8 +66,22 @@ export default function TablePage() {
   const headerLobby = lobby ?? snapshotLobby;
   const isHost = user && headerLobby && headerLobby.hostUserId === user.id;
   const mySeat = headerLobby?.seats.find((s) => s.userId === user?.id);
+  const mySeatIndex = mySeat?.seatIndex ?? 0;
   const tableFull = headerLobby && !mySeat && headerLobby.seats.every((s) => s.userId);
   const buyIn = headerLobby ? getTableBuyIn(headerLobby.settings) : 0;
+  const gameStarted = headerLobby?.status === 'playing' || headerLobby?.status === 'paused';
+
+  // Deal animation helpers for the local player's hole cards
+  const maxSeats = headerLobby?.settings.maxPlayers ?? 9;
+  const dealerSeatIndex = table?.dealerSeatIndex ?? 0;
+  const isDealingThisHand = anim.dealingHandNum === table?.handNumber;
+  function holeDealDelayClass(cardRound: 0 | 1): string {
+    const dealOrder = (mySeatIndex - dealerSeatIndex - 1 + maxSeats) % maxSeats;
+    const idx = dealOrder + cardRound * maxSeats;
+    return `deal-delay-${idx}`;
+  }
+
+  const holeCards = privateState?.holeCards ?? [];
 
   function copyInvite() {
     if (!headerLobby) return;
@@ -120,37 +138,9 @@ export default function TablePage() {
         <PokerTable
           lobby={headerLobby}
           table={table}
-          privateHoleCards={privateState?.holeCards}
           myUserId={user?.id}
-          handComplete={handComplete}
+          anim={anim}
         />
-
-        {mySeat && (
-          <div className="my-stack panel">
-            <ChipStackLabel amount={mySeat.stack} buyIn={buyIn} />
-            <button
-              type="button"
-              className="btn small cash-out-btn"
-              onClick={() => setCashOutOpen(true)}
-            >
-              {cashOutQueued ? 'Cash Out Pending...' : 'Cash Out'}
-            </button>
-          </div>
-        )}
-
-        {mySeat && table && privateState && (
-          <ActionBar
-            legalActions={privateState.legalActions}
-            onAction={(action, amount) => {
-              send({
-                type: 'game_action',
-                actionId: crypto.randomUUID(),
-                action,
-                amount,
-              });
-            }}
-          />
-        )}
 
         {!mySeat && headerLobby && token && connected && (
           <div className="sit-panel panel">
@@ -161,8 +151,11 @@ export default function TablePage() {
             )}
           </div>
         )}
+      </main>
 
-        {isHost && headerLobby && (
+      {/* Host settings — scrollable section below gameplay, host only */}
+      {isHost && headerLobby && (
+        <section className="host-section">
           <HostControls
             lobby={headerLobby}
             onStart={() => send({ type: 'host_start' })}
@@ -171,8 +164,75 @@ export default function TablePage() {
             onSetBuyIn={(amount) => send({ type: 'host_set_buy_in', buyIn: amount })}
             onSetActionTimer={(seconds) => send({ type: 'host_set_action_timer', seconds })}
           />
-        )}
-      </main>
+        </section>
+      )}
+
+      {/* Compact player tray — fixed bottom-left, overlays the table corner.
+          Uses flex-direction: column-reverse so cards always anchor to the bottom.
+          DOM order: cards (renders at bottom) → action bar → host quick (renders at top). */}
+      {mySeat && (
+        <div className="player-tray">
+          {/* 1st in DOM = renders at bottom */}
+          <div className="player-tray__cards-row">
+            <div className="player-tray__cards">
+              {holeCards.map((card, index) => {
+                const dealClass = isDealingThisHand
+                  ? `dealing ${holeDealDelayClass(index as 0 | 1)}`
+                  : '';
+                return (
+                  <div
+                    key={index}
+                    className={['card-anim-wrapper', dealClass].filter(Boolean).join(' ')}
+                  >
+                    <CardView card={card} faceUp />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="player-tray__meta">
+              <span className="player-tray__stack">{formatChips(mySeat.stack)}</span>
+              <button
+                type="button"
+                className="btn small cash-out-btn"
+                onClick={() => setCashOutOpen(true)}
+              >
+                {cashOutQueued ? 'Queued' : 'Cash Out'}
+              </button>
+            </div>
+          </div>
+
+          {/* 2nd in DOM = renders above cards */}
+          {table && privateState && privateState.legalActions.length > 0 && (
+            <ActionBar
+              legalActions={privateState.legalActions}
+              onAction={(action, amount) => {
+                send({ type: 'game_action', actionId: crypto.randomUUID(), action, amount });
+              }}
+            />
+          )}
+
+          {/* 3rd in DOM = renders at top */}
+          {isHost && headerLobby && (
+            <div className="player-tray__host">
+              {!gameStarted && (
+                <button type="button" className="btn small primary" onClick={() => send({ type: 'host_start' })}>
+                  Start
+                </button>
+              )}
+              {gameStarted && headerLobby.status === 'paused' && (
+                <button type="button" className="btn small primary" onClick={() => send({ type: 'host_pause', paused: false })}>
+                  Resume
+                </button>
+              )}
+              {gameStarted && headerLobby.status === 'playing' && (
+                <button type="button" className="btn small" onClick={() => send({ type: 'host_pause', paused: true })}>
+                  Pause
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {chatOpen && (
         <ChatPanel
@@ -198,14 +258,5 @@ export default function TablePage() {
         <SessionResultsModal summary={cashOutSummary} onLeave={handleLeaveTable} />
       )}
     </div>
-  );
-}
-
-function ChipStackLabel({ amount, buyIn }: { amount: number; buyIn: number }) {
-  return (
-    <p className="my-stack-label">
-      Your stack: <strong>{formatChips(amount)}</strong> chips
-      {amount === buyIn && <span className="buy-in-tag"> (table buy-in)</span>}
-    </p>
   );
 }

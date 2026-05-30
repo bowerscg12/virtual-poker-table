@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
 import type { LegalAction, PlayerActionType } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
 
@@ -8,150 +8,98 @@ interface Props {
 }
 
 export function ActionBar({ legalActions, onAction }: Props) {
-  const raiseId = useId();
+  const [showRaise, setShowRaise] = useState(false);
   const [raiseAmount, setRaiseAmount] = useState(0);
-  const [raiseDraft, setRaiseDraft] = useState('');
-  const [raiseError, setRaiseError] = useState<string | null>(null);
+
   const raise = legalActions.find((a) => a.type === 'raise');
   const raiseMin = raise?.minAmount ?? 0;
   const raiseMax = raise?.maxAmount ?? 0;
-  const hasRaiseBounds = !!raise && raiseMin > 0 && raiseMax > 0;
+  const hasRaise = !!raise && raiseMin > 0 && raiseMax > 0;
 
+  // Reset whenever legal actions change (new betting round or new turn)
   useEffect(() => {
-    if (!hasRaiseBounds) {
-      setRaiseAmount(0);
-      setRaiseDraft('');
-      setRaiseError(null);
-      return;
-    }
-
-    setRaiseAmount(raiseMin);
-    setRaiseDraft(String(raiseMin));
-    setRaiseError(null);
-  }, [hasRaiseBounds, raiseMin, raiseMax]);
+    setShowRaise(false);
+    if (hasRaise) setRaiseAmount(raiseMin);
+  }, [legalActions, hasRaise, raiseMin]);
 
   if (legalActions.length === 0) return null;
 
-  function clampRaiseAmount(amount: number) {
-    return Math.min(raiseMax, Math.max(raiseMin, amount));
-  }
-
-  function updateRaiseAmount(amount: number) {
-    const clamped = clampRaiseAmount(amount);
-    setRaiseAmount(clamped);
-    setRaiseDraft(String(clamped));
-    setRaiseError(null);
-  }
-
-  function handleRaiseInputChange(event: ChangeEvent<HTMLInputElement>) {
-    const nextValue = event.target.value;
-
-    if (nextValue !== '' && !/^\d+$/.test(nextValue)) {
-      setRaiseError('Raise amounts must be whole numbers.');
-      return;
-    }
-
-    setRaiseDraft(nextValue);
-
-    if (nextValue.length === 0) {
-      setRaiseError('Enter a raise amount.');
-      return;
-    }
-
-    const parsed = Number(nextValue);
-    if (!Number.isFinite(parsed)) {
-      setRaiseError('Enter a valid raise amount.');
-      return;
-    }
-
-    if (parsed < raiseMin || parsed > raiseMax) {
-      setRaiseError(`Raise must be between ${formatChips(raiseMin)} and ${formatChips(raiseMax)} chips.`);
-      return;
-    }
-
-    setRaiseAmount(parsed);
-    setRaiseError(null);
-  }
-
-  function handleRaiseBlur() {
-    if (!hasRaiseBounds) return;
-
-    const parsed = Number(raiseDraft);
-    updateRaiseAmount(Number.isFinite(parsed) ? parsed : raiseMin);
-  }
+  const callAction = legalActions.find((a) => a.type === 'call');
 
   return (
     <div className="action-bar" role="toolbar" aria-label="Your actions">
-      {legalActions.some((a) => a.type === 'fold') && (
-        <button type="button" className="btn danger" onClick={() => onAction('fold')}>
-          Fold <kbd>F</kbd>
-        </button>
-      )}
-      {legalActions.some((a) => a.type === 'check') && (
-        <button type="button" className="btn" onClick={() => onAction('check')}>
-          Check <kbd>K</kbd>
-        </button>
-      )}
-      {legalActions.filter((a) => a.type === 'call').map((a, i) => (
-        <button key={i} type="button" className="btn" onClick={() => onAction('call', a.amount)}>
-          Call {a.amount}
-        </button>
-      ))}
-      {raise && (
-        <div className="raise-control">
-          <div className="raise-control__top">
-            <label className="raise-control__label" htmlFor={raiseId}>
-              Raise to
-            </label>
-            <strong className="raise-control__value">{formatChips(raiseAmount)} chips</strong>
+      {/* Buttons first in DOM — with column-reverse on parent they render closest to cards */}
+      <div className="action-bar__btns">
+        {legalActions.some((a) => a.type === 'fold') && (
+          <button type="button" className="btn danger small" onClick={() => onAction('fold')}>
+            Fold
+          </button>
+        )}
+        {legalActions.some((a) => a.type === 'check') && (
+          <button type="button" className="btn small" onClick={() => onAction('check')}>
+            Check
+          </button>
+        )}
+        {callAction && (
+          <button type="button" className="btn small" onClick={() => onAction('call', callAction.amount)}>
+            Call {formatChips(callAction.amount ?? 0)}
+          </button>
+        )}
+        {hasRaise && (
+          <button
+            type="button"
+            className={`btn small${showRaise ? ' primary' : ''}`}
+            onClick={() => setShowRaise((s) => !s)}
+            aria-expanded={showRaise}
+          >
+            Raise {showRaise ? '▾' : '▸'}
+          </button>
+        )}
+        {legalActions.some((a) => a.type === 'all_in') && (
+          <button type="button" className="btn warn small" onClick={() => onAction('all_in')}>
+            All-in
+          </button>
+        )}
+      </div>
+
+      {/* Raise panel second in DOM — column-reverse positions it above the buttons */}
+      {showRaise && hasRaise && (
+        <div className="raise-panel" role="group" aria-label="Set raise amount">
+          <div className="raise-panel__slider-col">
+            <span className="raise-panel__bound">{formatChips(raiseMax)}</span>
+            <div className="raise-panel__slider-wrap">
+              <input
+                className="raise-panel__slider"
+                type="range"
+                min={raiseMin}
+                max={raiseMax}
+                step={1}
+                value={raiseAmount}
+                onChange={(e) => setRaiseAmount(Number(e.target.value))}
+                aria-label="Raise amount"
+              />
+            </div>
+            <span className="raise-panel__bound">{formatChips(raiseMin)}</span>
           </div>
-          <input
-            className="raise-control__range"
-            type="range"
-            min={raiseMin}
-            max={raiseMax}
-            step={1}
-            value={raiseAmount}
-            onChange={(event) => updateRaiseAmount(Number(event.target.value))}
-            aria-label="Raise amount slider"
-          />
-          <div className="raise-control__inputs">
-            <input
-              id={raiseId}
-              className="raise-control__input"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={raiseDraft}
-              onChange={handleRaiseInputChange}
-              onBlur={handleRaiseBlur}
-              aria-invalid={!!raiseError}
-              aria-describedby={raiseError ? `${raiseId}-error` : `${raiseId}-hint`}
-              aria-label="Raise amount"
-            />
+          <div className="raise-panel__right">
+            <span className="raise-panel__amount">{formatChips(raiseAmount)}</span>
             <button
               type="button"
-              className="btn primary"
-              onClick={() => onAction('raise', raiseAmount)}
-              disabled={!!raiseError || !raiseDraft}
+              className="btn primary small"
+              onClick={() => { onAction('raise', raiseAmount); setShowRaise(false); }}
             >
               Raise
             </button>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => setShowRaise(false)}
+              aria-label="Cancel raise"
+            >
+              ✕
+            </button>
           </div>
-          <p id={`${raiseId}-hint`} className="raise-control__hint">
-            Minimum {formatChips(raiseMin)} chips, all-in {formatChips(raiseMax)} chips.
-          </p>
-          {raiseError && (
-            <p id={`${raiseId}-error`} className="raise-control__error" role="status">
-              {raiseError}
-            </p>
-          )}
         </div>
-      )}
-      {legalActions.some((a) => a.type === 'all_in') && (
-        <button type="button" className="btn warn" onClick={() => onAction('all_in')}>
-          All-in
-        </button>
       )}
     </div>
   );
