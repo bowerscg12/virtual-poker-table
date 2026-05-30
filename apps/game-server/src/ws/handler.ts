@@ -279,10 +279,11 @@ async function onActionTimerExpired(
   if (!lobby) return;
 
   const action = getAutoAction(state, config, seatIndex);
+  const preActionStreet = state.street;
   const result = await processGameAction(lobbyId, config, userId, crypto.randomUUID(), action);
   if ('error' in result) return;
 
-  recordAction(lobbyId, userId, action);
+  recordAction(lobbyId, userId, action, preActionStreet);
 
   if (result.state.street === 'complete') {
     recordHandEnd(lobbyId, result.state, config);
@@ -339,7 +340,7 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
           'fold'
         );
         if (!('error' in result)) {
-          recordAction(lobbyId, userId, 'fold');
+          recordAction(lobbyId, userId, 'fold', game.street);
 
           if (result.state.street === 'complete') {
             recordHandEnd(lobbyId, result.state, lobby.settings);
@@ -385,7 +386,11 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
     const seat = lobby.seats.find((s) => s.userId === userId);
     if (!seat) return;
 
-    const finalStack = seat.stack;
+    // Prefer the game engine's stack — more reliable than the lobby in Postgres mode,
+    // where syncStacksToLobby is a no-op and table_seats.stack can lag behind.
+    const game = await getActiveGame(lobbyId);
+    const gameSeat = game?.seats.find((s) => s.userId === userId);
+    const finalStack = gameSeat?.stack ?? seat.stack;
     const summary = finalizeCashOut(lobbyId, userId, finalStack);
 
     await removeSeat(lobbyId, userId);
@@ -557,6 +562,17 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (session.lobbyId) {
         if (!lobbyClients.has(session.lobbyId)) lobbyClients.set(session.lobbyId, new Set());
         lobbyClients.get(session.lobbyId)!.add(ws);
+      }
+
+      // Re-init session stats in case the server restarted and wiped in-memory stats.
+      // initSession is idempotent — no-op when the entry already exists.
+      if (session.lobbyId) {
+        const reconnUser = await getUserById(session.userId);
+        const reconnLobby = await getLobbyById(session.lobbyId);
+        const reconnSeat = reconnLobby?.seats.find((s) => s.userId === session.userId);
+        if (reconnSeat) {
+          initSession(session.lobbyId, session.userId, reconnUser?.displayName ?? 'Player', reconnSeat.stack);
+        }
       }
 
       send(ws, { type: 'session_ready', userId: session.userId, lobbyId: session.lobbyId ?? '' });
@@ -825,6 +841,9 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       cancelActionTimer(st.lobbyId);
       const lobby = await getLobbyById(st.lobbyId);
       if (!lobby) return;
+      // Snapshot the street BEFORE the action so PFR tracking knows which street this was.
+      const preActionState = await getActiveGame(st.lobbyId);
+      const preActionStreet = preActionState?.street;
       const result = await processGameAction(
         st.lobbyId,
         lobby.settings,
@@ -840,7 +859,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         if (current) scheduleActionTimer(st.lobbyId, lobby.settings, current);
         return;
       }
-      recordAction(st.lobbyId, st.userId, msg.action);
+      recordAction(st.lobbyId, st.userId, msg.action, preActionStreet);
 
       if (result.state.street === 'complete') {
         recordHandEnd(st.lobbyId, result.state, lobby.settings);

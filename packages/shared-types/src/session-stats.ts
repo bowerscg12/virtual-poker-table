@@ -32,4 +32,6 @@ export interface CashOutSummary {
   actionCounts: ActionCounts;
   sessionDurationMs: number;
   averagePotWon: number;
+  pfrHandsRaised: number;
+  pfr: number;
 }

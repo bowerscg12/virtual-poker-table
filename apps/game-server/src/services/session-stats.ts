@@ -16,6 +16,7 @@ interface StatsAccumulator {
   actionCounts: { fold: number; check: number; call: number; raise: number; all_in: number };
   totalPotsWon: number;
   potsWonCount: number;
+  pfrHandsRaised: number;
 }
 
 /** lobbyId → userId → accumulator */
@@ -23,6 +24,9 @@ const sessions = new Map<string, Map<string, StatsAccumulator>>();
 
 /** lobbyId → userId → stack at start of current hand */
 const handStartStacks = new Map<string, Map<string, number>>();
+
+/** lobbyId → set of userIds who raised during the preflop street this hand */
+const preflopRaisers = new Map<string, Set<string>>();
 
 function normalizeStartingHand(holeCards: Card[]): string {
   if (holeCards.length === 2) {
@@ -67,6 +71,7 @@ export function initSession(
     actionCounts: { fold: 0, check: 0, call: 0, raise: 0, all_in: 0 },
     totalPotsWon: 0,
     potsWonCount: 0,
+    pfrHandsRaised: 0,
   });
 }
 
@@ -74,6 +79,9 @@ export function initSession(
 export function recordHandStart(lobbyId: string, state: GameTableState): void {
   const lobbyMap = sessions.get(lobbyId);
   const startMap = new Map<string, number>();
+
+  // Reset per-hand preflop raiser tracking
+  preflopRaisers.set(lobbyId, new Set<string>());
 
   for (const seat of state.seats) {
     startMap.set(seat.userId, seat.stack);
@@ -90,10 +98,20 @@ export function recordHandStart(lobbyId: string, state: GameTableState): void {
 }
 
 /** Call after each successful processGameAction. */
-export function recordAction(lobbyId: string, userId: string, action: PlayerActionType): void {
+export function recordAction(
+  lobbyId: string,
+  userId: string,
+  action: PlayerActionType,
+  street?: string
+): void {
   const acc = sessions.get(lobbyId)?.get(userId);
   if (!acc) return;
   acc.actionCounts[action] = (acc.actionCounts[action] ?? 0) + 1;
+
+  // Track preflop raises for PFR — only voluntary raises (not blinds/antes) reach this path
+  if (action === 'raise' && street === 'preflop') {
+    preflopRaisers.get(lobbyId)?.add(userId);
+  }
 }
 
 /** Call when street === 'complete' to update all seated players' stats. */
@@ -108,6 +126,7 @@ export function recordHandEnd(
   const startStacks = handStartStacks.get(lobbyId);
   const winners = new Set(state.lastWinningSeatIndices);
   const variantModule = getVariantModule(config);
+  const thisHandPreflopRaisers = preflopRaisers.get(lobbyId) ?? new Set<string>();
 
   for (const seat of state.seats) {
     const acc = lobbyMap.get(seat.userId);
@@ -124,8 +143,16 @@ export function recordHandEnd(
         acc.totalPotsWon += delta;
         acc.potsWonCount++;
       }
-    } else if (delta < 0 && -delta > acc.biggestLoss) {
+    }
+
+    // Track biggest loss independently — a player can win one pot and still net lose the hand
+    if (delta < 0 && -delta > acc.biggestLoss) {
       acc.biggestLoss = -delta;
+    }
+
+    // PFR: count this hand if the player raised preflop at least once
+    if (thisHandPreflopRaisers.has(seat.userId)) {
+      acc.pfrHandsRaised++;
     }
 
     // Evaluate best hand (skip if folded or board too short)
@@ -142,6 +169,7 @@ export function recordHandEnd(
   }
 
   handStartStacks.delete(lobbyId);
+  preflopRaisers.delete(lobbyId);
 }
 
 /** Compute the final CashOutSummary and clean up the player's stats entry. */
@@ -157,6 +185,7 @@ export function finalizeCashOut(
   const startingStack = acc?.startingStack ?? finalStack;
   const handsPlayed = acc?.handsPlayed ?? 0;
   const handsWon = acc?.handsWon ?? 0;
+  const pfrHandsRaised = acc?.pfrHandsRaised ?? 0;
 
   let mostCommonStartingHand: CashOutSummary['mostCommonStartingHand'] = null;
   if (acc && acc.startingHandCounts.size > 0) {
@@ -193,6 +222,8 @@ export function finalizeCashOut(
     actionCounts: acc?.actionCounts ?? { fold: 0, check: 0, call: 0, raise: 0, all_in: 0 },
     sessionDurationMs,
     averagePotWon: acc && acc.potsWonCount > 0 ? acc.totalPotsWon / acc.potsWonCount : 0,
+    pfrHandsRaised,
+    pfr: handsPlayed > 0 ? pfrHandsRaised / handsPlayed : 0,
   };
 
   // Clean up
@@ -206,4 +237,5 @@ export function finalizeCashOut(
 export function clearLobbyStats(lobbyId: string): void {
   sessions.delete(lobbyId);
   handStartStacks.delete(lobbyId);
+  preflopRaisers.delete(lobbyId);
 }
