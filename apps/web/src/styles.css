@@ -382,6 +382,13 @@ select {
   gap: 0.4rem;
 }
 
+.player-hand-cards .playing-card {
+  width: 46px;
+  height: 64px;
+  font-size: 0.9rem;
+  border-radius: 5px;
+}
+
 .seat {
   position: absolute;
   left: var(--seat-x);
