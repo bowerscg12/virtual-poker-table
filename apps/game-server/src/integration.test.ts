@@ -43,13 +43,12 @@ describe('API integration', () => {
       payload: { displayName: 'Tester' },
     });
     expect(guest.statusCode).toBe(200);
-    const { token } = guest.json() as { token: string };
+    expect(guest.json()).toHaveProperty('token');
 
     const lobby = await app.inject({
       method: 'POST',
       url: '/lobbies',
-      headers: { authorization: `Bearer ${token}` },
-      payload: { presetId: 'nlhe-standard' },
+      payload: { displayName: 'Tester', presetId: 'nlhe-standard' },
     });
     expect(lobby.statusCode).toBe(200);
     const body = lobby.json() as { lobby: { inviteCode: string } };

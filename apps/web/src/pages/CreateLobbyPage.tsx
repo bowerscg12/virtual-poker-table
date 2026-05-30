@@ -271,9 +271,14 @@ export default function CreateLobbyPage() {
           Each player receives the buy-in stack on join. Blinds must be positive, and straddle amounts must be at
           least the big blind.
         </p>
-        <button type="submit" className="btn primary" disabled={!isFormValid}>
-          Next: Choose your name
-        </button>
+        <div className="name-selection-actions">
+          <button type="submit" className="btn primary" disabled={!isFormValid}>
+            Next: Choose your name
+          </button>
+          <button type="button" className="btn" onClick={() => navigate(-1)}>
+            Back
+          </button>
+        </div>
       </form>
     </div>
   );
