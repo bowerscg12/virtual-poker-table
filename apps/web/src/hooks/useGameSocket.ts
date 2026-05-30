@@ -32,6 +32,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [cashOutQueued, setCashOutQueued] = useState(false);
   const [cashOutSummary, setCashOutSummary] = useState<CashOutSummary | null>(null);
   const [handComplete, setHandComplete] = useState<{ seatIndex: number; amount: number; handDescription: string }[] | null>(null);
+  const [rebuyAvailable, setRebuyAvailable] = useState<{ amount: number } | null>(null);
+  const [rebuyQueued, setRebuyQueued] = useState(false);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -200,7 +202,24 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             // Remove session so reconnect doesn't restore us to the cashed-out lobby
             localStorage.removeItem(SESSION_ID_KEY);
             setCashOutQueued(false);
+            setRebuyAvailable(null);
+            setRebuyQueued(false);
             setCashOutSummary(msg.summary);
+            break;
+
+          case 'rebuy_available':
+            setRebuyAvailable({ amount: msg.amount });
+            setRebuyQueued(false);
+            break;
+
+          case 'rebuy_queued':
+            setRebuyAvailable(null);
+            setRebuyQueued(true);
+            break;
+
+          case 'rebuy_confirmed':
+            setRebuyAvailable(null);
+            setRebuyQueued(false);
             break;
 
           case 'error':
@@ -254,6 +273,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     cashOutQueued,
     cashOutSummary,
     handComplete,
+    rebuyAvailable,
+    rebuyQueued,
     clearCashOutSummary,
     send,
   };

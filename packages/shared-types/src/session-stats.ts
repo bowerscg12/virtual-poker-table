@@ -34,4 +34,6 @@ export interface CashOutSummary {
   averagePotWon: number;
   pfrHandsRaised: number;
   pfr: number;
+  totalBuyIns: number;
+  totalChipsPurchased: number;
 }

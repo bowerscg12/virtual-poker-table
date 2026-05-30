@@ -410,6 +410,27 @@ export async function setActionTimerSetting(
   return (await getLobbyById(lobbyId))!;
 }
 
+/**
+ * Add chips to a busted player's seat. Only valid when the player is at 0 chips.
+ * In Postgres mode we set stack = amount directly since table_seats.stack lags behind the game engine.
+ */
+export async function rebuyPlayer(lobbyId: string, userId: string, amount: number): Promise<LobbySummary | null> {
+  if (useMemory) {
+    const lobby = memoryStore.lobbies.get(lobbyId);
+    if (!lobby) return null;
+    const seat = lobby.seats.find((s) => s.userId === userId);
+    if (seat) seat.stack = amount;
+    return toSummary(lobby);
+  }
+  const db = getDb();
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const seat = seats.find((s) => s.userId === userId);
+  if (seat) {
+    await db.update(tableSeats).set({ stack: amount }).where(eq(tableSeats.id, seat.id));
+  }
+  return getLobbyById(lobbyId);
+}
+
 export async function removeSeat(lobbyId: string, userId: string): Promise<LobbySummary | null> {
   if (useMemory) {
     const mem = memoryStore.lobbies.get(lobbyId);

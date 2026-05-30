@@ -22,6 +22,7 @@ export type ClientMessage =
   | { type: 'spectate' }
   | { type: 'cash_out' }
   | { type: 'cash_out_cancel' }
+  | { type: 'rebuy' }
   | { type: 'ping' };
 
 /** Server -> Client */
@@ -38,6 +39,9 @@ export type ServerMessage =
   | { type: 'cash_out_queued' }
   | { type: 'cash_out_cancelled' }
   | { type: 'cashed_out'; summary: CashOutSummary }
+  | { type: 'rebuy_available'; amount: number }
+  | { type: 'rebuy_queued' }
+  | { type: 'rebuy_confirmed'; newStack: number }
   | { type: 'pong' };
 
 export interface ChatMessage {

@@ -75,7 +75,11 @@ export function SessionResultsModal({ summary, onLeave }: Props) {
           <section className="results-section">
             <h3 className="results-section-title">Session</h3>
             <StatRow label="Duration" value={formatDuration(summary.sessionDurationMs)} />
-            <StatRow label="Started with" value={`${formatChips(summary.startingStack)} chips`} />
+            <StatRow label="Initial buy-in" value={`${formatChips(summary.startingStack)} chips`} />
+            <StatRow label="Buy-ins" value={String(summary.totalBuyIns)} />
+            {summary.totalBuyIns > 1 && (
+              <StatRow label="Total purchased" value={`${formatChips(summary.totalChipsPurchased)} chips`} />
+            )}
             <StatRow label="Ended with" value={`${formatChips(summary.finalStack)} chips`} />
           </section>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getTableBuyIn, type LobbySummary } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
@@ -13,6 +14,7 @@ import { ChatPanel } from '../components/ChatPanel';
 import { HostControls } from '../components/HostControls';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
 import { CashOutModal } from '../components/CashOutModal';
+import { RebuyModal } from '../components/RebuyModal';
 import { SessionResultsModal } from '../components/SessionResultsModal';
 
 export default function TablePage() {
@@ -23,6 +25,7 @@ export default function TablePage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
   const [cashOutOpen, setCashOutOpen] = useState(false);
+  const [rebuyClicked, setRebuyClicked] = useState(false);
 
   const {
     connected,
@@ -35,6 +38,8 @@ export default function TablePage() {
     cashOutQueued,
     cashOutSummary,
     handComplete,
+    rebuyAvailable,
+    rebuyQueued,
     clearCashOutSummary,
     send,
   } = useGameSocket(token, lobbyId ?? null);
@@ -62,6 +67,11 @@ export default function TablePage() {
   useEffect(() => {
     if (cashOutQueued) setCashOutOpen(true);
   }, [cashOutQueued]);
+
+  // Reset the clicked flag whenever the rebuy state resets (new bust or confirmed)
+  useEffect(() => {
+    if (!rebuyAvailable && !rebuyQueued) setRebuyClicked(false);
+  }, [rebuyAvailable, rebuyQueued]);
 
   const headerLobby = lobby ?? snapshotLobby;
   const isHost = user && headerLobby && headerLobby.hostUserId === user.id;
@@ -167,10 +177,9 @@ export default function TablePage() {
         </section>
       )}
 
-      {/* Compact player tray — fixed bottom-left, overlays the table corner.
-          Uses flex-direction: column-reverse so cards always anchor to the bottom.
-          DOM order: cards (renders at bottom) → action bar → host quick (renders at top). */}
-      {mySeat && (
+      {/* Compact player tray — portalled to document.body so no ancestor transform/filter
+          can break position:fixed. Cards always anchor to the bottom via column-reverse. */}
+      {mySeat && createPortal(
         <div className="player-tray">
           {/* 1st in DOM = renders at bottom */}
           <div className="player-tray__cards-row">
@@ -191,13 +200,17 @@ export default function TablePage() {
             </div>
             <div className="player-tray__meta">
               <span className="player-tray__stack">{formatChips(mySeat.stack)}</span>
-              <button
-                type="button"
-                className="btn small cash-out-btn"
-                onClick={() => setCashOutOpen(true)}
-              >
-                {cashOutQueued ? 'Queued' : 'Cash Out'}
-              </button>
+              {rebuyQueued || rebuyClicked ? (
+                <span className="rebuy-pending-badge">Rebuy pending...</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn small cash-out-btn"
+                  onClick={() => setCashOutOpen(true)}
+                >
+                  {cashOutQueued ? 'Queued' : 'Cash Out'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -231,7 +244,8 @@ export default function TablePage() {
               )}
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
 
       {chatOpen && (
@@ -251,6 +265,17 @@ export default function TablePage() {
           onConfirm={handleCashOutConfirm}
           onCancel={() => setCashOutOpen(false)}
           onCancelQueue={handleCancelQueue}
+        />
+      )}
+
+      {rebuyAvailable && !rebuyClicked && !cashOutSummary && (
+        <RebuyModal
+          amount={rebuyAvailable.amount}
+          onRebuy={() => {
+            setRebuyClicked(true);
+            send({ type: 'rebuy' });
+          }}
+          onLeave={() => send({ type: 'cash_out' })}
         />
       )}
 

@@ -17,6 +17,8 @@ interface StatsAccumulator {
   totalPotsWon: number;
   potsWonCount: number;
   pfrHandsRaised: number;
+  totalBuyIns: number;
+  totalChipsPurchased: number;
 }
 
 /** lobbyId → userId → accumulator */
@@ -72,6 +74,8 @@ export function initSession(
     totalPotsWon: 0,
     potsWonCount: 0,
     pfrHandsRaised: 0,
+    totalBuyIns: 1,
+    totalChipsPurchased: startingStack,
   });
 }
 
@@ -112,6 +116,14 @@ export function recordAction(
   if (action === 'raise' && street === 'preflop') {
     preflopRaisers.get(lobbyId)?.add(userId);
   }
+}
+
+/** Call after a successful rebuy. Increments buy-in count and total chips purchased. */
+export function recordRebuy(lobbyId: string, userId: string, amount: number): void {
+  const acc = sessions.get(lobbyId)?.get(userId);
+  if (!acc) return;
+  acc.totalBuyIns++;
+  acc.totalChipsPurchased += amount;
 }
 
 /** Call when street === 'complete' to update all seated players' stats. */
@@ -186,6 +198,8 @@ export function finalizeCashOut(
   const handsPlayed = acc?.handsPlayed ?? 0;
   const handsWon = acc?.handsWon ?? 0;
   const pfrHandsRaised = acc?.pfrHandsRaised ?? 0;
+  const totalBuyIns = acc?.totalBuyIns ?? 1;
+  const totalChipsPurchased = acc?.totalChipsPurchased ?? startingStack;
 
   let mostCommonStartingHand: CashOutSummary['mostCommonStartingHand'] = null;
   if (acc && acc.startingHandCounts.size > 0) {
@@ -209,7 +223,7 @@ export function finalizeCashOut(
     displayName: acc?.displayName ?? 'Player',
     startingStack,
     finalStack,
-    netProfit: finalStack - startingStack,
+    netProfit: finalStack - totalChipsPurchased,
     handsPlayed,
     handsWon,
     winPercentage: handsPlayed > 0 ? handsWon / handsPlayed : 0,
@@ -224,6 +238,8 @@ export function finalizeCashOut(
     averagePotWon: acc && acc.potsWonCount > 0 ? acc.totalPotsWon / acc.potsWonCount : 0,
     pfrHandsRaised,
     pfr: handsPlayed > 0 ? pfrHandsRaised / handsPlayed : 0,
+    totalBuyIns,
+    totalChipsPurchased,
   };
 
   // Clean up

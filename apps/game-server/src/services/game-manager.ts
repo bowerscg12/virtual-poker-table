@@ -316,6 +316,19 @@ export async function getActiveGame(lobbyId: string): Promise<GameTableState | n
   return loadGame(lobbyId);
 }
 
+/**
+ * Update a seat's stack in the active game after a rebuy so the next broadcast
+ * immediately reflects the new chip count. No-op if no game exists.
+ */
+export async function updateSeatStackAfterRebuy(lobbyId: string, userId: string, amount: number): Promise<void> {
+  const state = activeGames.get(lobbyId);
+  if (!state) return;
+  const seat = state.seats.find((s) => s.userId === userId);
+  if (!seat) return;
+  seat.stack = amount;
+  await persistGame(lobbyId, state);
+}
+
 export function clearGame(lobbyId: string): void {
   activeGames.delete(lobbyId);
 }

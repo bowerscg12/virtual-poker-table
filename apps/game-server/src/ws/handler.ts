@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { ClientMessage, ServerMessage, VariantConfig } from '@vct/shared-types';
+import { getTableBuyIn } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
 import { getUserById } from '../services/auth.js';
 import {
@@ -7,6 +8,7 @@ import {
   autoSeatPlayer,
   getLobbyById,
   kickSeat,
+  rebuyPlayer,
   removeSeat,
   setActionTimerSetting,
   setTableBuyIn,
@@ -27,6 +29,7 @@ import {
   setIntermissionDeadline,
   startHand,
   toPublicState,
+  updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
 import { addChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
 import { getMemoryLobby } from '../services/lobby.js';
@@ -45,6 +48,7 @@ import {
   recordAction,
   recordHandEnd,
   recordHandStart,
+  recordRebuy,
 } from '../services/session-stats.js';
 
 interface ClientState {
@@ -95,6 +99,9 @@ const intermissionPausedRemainingMs = new Map<string, number>();
 
 /** userId → pending cash-out request (deferred until hand ends) */
 const pendingCashOuts = new Map<string, PendingCashOut>();
+
+/** userId → pending rebuy request (deferred when hand is in progress) */
+const pendingRebuys = new Map<string, { lobbyId: string; amount: number }>();
 
 /** userId set to prevent duplicate cash-out processing */
 const cashOutInProgress = new Set<string>();
@@ -304,6 +311,10 @@ async function onActionTimerExpired(
   }
 
   await broadcastTableState(lobbyId);
+  if (result.state.street === 'complete') {
+    await processPendingRebuys(lobbyId);
+    await notifyBustedPlayers(lobbyId);
+  }
 }
 
 /** Called when a player's grace period expires without reconnection. */
@@ -361,6 +372,10 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
           }
 
           await broadcastTableState(lobbyId);
+          if (result.state.street === 'complete') {
+            await processPendingRebuys(lobbyId);
+            await notifyBustedPlayers(lobbyId);
+          }
         }
       }
     }
@@ -460,6 +475,46 @@ async function processPendingCashOuts(lobbyId: string): Promise<void> {
   const updatedLobby = await getLobbyById(lobbyId, connected);
   if (updatedLobby) {
     broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
+  }
+}
+
+/**
+ * After a hand completes, send rebuy_available to any player who is still seated
+ * but has 0 chips (busted). Players who already requested a cash-out will have been
+ * processed by processPendingCashOuts and removed from the lobby before this runs.
+ */
+async function notifyBustedPlayers(lobbyId: string): Promise<void> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return;
+  const game = await getActiveGame(lobbyId);
+  if (!game) return;
+  const buyIn = getTableBuyIn(lobby.settings);
+
+  for (const gameSeat of game.seats) {
+    if (gameSeat.stack > 0) continue;
+    // Skip players whose seats were already removed (cashed out or kicked)
+    if (!lobby.seats.some((s) => s.userId === gameSeat.userId)) continue;
+    const ws = connectedUserSockets.get(gameSeat.userId);
+    if (!ws) continue;
+    send(ws, { type: 'rebuy_available', amount: buyIn });
+  }
+}
+
+/** Process any queued rebuy requests for a lobby after a hand completes. */
+async function processPendingRebuys(lobbyId: string): Promise<void> {
+  const toProcess: string[] = [];
+  for (const [userId, pending] of pendingRebuys) {
+    if (pending.lobbyId === lobbyId) toProcess.push(userId);
+  }
+  for (const userId of toProcess) {
+    const pending = pendingRebuys.get(userId);
+    if (!pending) continue;
+    pendingRebuys.delete(userId);
+    await rebuyPlayer(lobbyId, userId, pending.amount);
+    await updateSeatStackAfterRebuy(lobbyId, userId, pending.amount);
+    recordRebuy(lobbyId, userId, pending.amount);
+    const ws = connectedUserSockets.get(userId);
+    if (ws) send(ws, { type: 'rebuy_confirmed', newStack: pending.amount });
   }
 }
 
@@ -587,6 +642,18 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           send(ws, { type: 'chat', message: m });
         }
         await broadcastTableState(session.lobbyId);
+
+        // If the player reconnects with 0 chips, show them the rebuy prompt
+        if (!pendingCashOuts.has(session.userId)) {
+          const reconnGame = await getActiveGame(session.lobbyId);
+          const reconnGameSeat = reconnGame?.seats.find((s) => s.userId === session.userId);
+          if (reconnGameSeat && reconnGameSeat.stack === 0) {
+            const reconnLobby2 = await getLobbyById(session.lobbyId);
+            if (reconnLobby2) {
+              send(ws, { type: 'rebuy_available', amount: getTableBuyIn(reconnLobby2.settings) });
+            }
+          }
+        }
       }
       return;
     }
@@ -880,6 +947,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
 
       await broadcastTableState(st.lobbyId);
+      if (result.state.street === 'complete') {
+        await processPendingRebuys(st.lobbyId);
+        await notifyBustedPlayers(st.lobbyId);
+      }
       return;
     }
 
@@ -899,6 +970,46 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
       broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
       await broadcastTableState(st.lobbyId);
+      return;
+    }
+
+    case 'rebuy': {
+      if (!st.userId || !st.lobbyId) return;
+      const userId = st.userId;
+      const lobbyId = st.lobbyId;
+
+      const lobby = await getLobbyById(lobbyId);
+      if (!lobby) return;
+
+      // Verify the player is still seated
+      const lobbySeat = lobby.seats.find((s) => s.userId === userId);
+      if (!lobbySeat) { send(ws, { type: 'error', message: 'Not seated' }); return; }
+
+      // Check game engine stack (authoritative; lobby lags in Postgres mode)
+      const game = await getActiveGame(lobbyId);
+      const gameSeat = game?.seats.find((s) => s.userId === userId);
+      const currentStack = gameSeat?.stack ?? lobbySeat.stack;
+
+      if (currentStack > 0) {
+        send(ws, { type: 'error', message: 'You still have chips', code: 'REBUY_NOT_NEEDED' });
+        return;
+      }
+
+      const buyIn = getTableBuyIn(lobby.settings);
+
+      // If a hand is in progress, queue the rebuy for after the hand completes
+      if (game && game.street !== 'complete' && game.street !== 'waiting') {
+        pendingRebuys.set(userId, { lobbyId, amount: buyIn });
+        send(ws, { type: 'rebuy_queued' });
+        return;
+      }
+
+      await rebuyPlayer(lobbyId, userId, buyIn);
+      await updateSeatStackAfterRebuy(lobbyId, userId, buyIn);
+      recordRebuy(lobbyId, userId, buyIn);
+
+      send(ws, { type: 'rebuy_confirmed', newStack: buyIn });
+      await broadcastTableState(lobbyId);
       return;
     }
 
