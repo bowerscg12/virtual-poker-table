@@ -34,6 +34,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [handComplete, setHandComplete] = useState<{ seatIndex: number; amount: number; handDescription: string }[] | null>(null);
   const [rebuyAvailable, setRebuyAvailable] = useState<{ amount: number } | null>(null);
   const [rebuyQueued, setRebuyQueued] = useState(false);
+  const [showCardsPrompt, setShowCardsPrompt] = useState<{ deadline: string } | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -173,10 +174,11 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
           case 'table_state':
             setTable(msg.public);
             setPrivateState(msg.private ?? null);
-            // Clear hand result when a fresh hand begins
+            // Clear hand result and show-cards prompt when a fresh hand begins
             if (msg.public.street === 'preflop' && msg.public.handNumber > handNumberRef.current) {
               handNumberRef.current = msg.public.handNumber;
               setHandComplete(null);
+              setShowCardsPrompt(null);
             }
             readyToFlushRef.current = true;
             flushPending(ws);
@@ -205,6 +207,14 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             setRebuyAvailable(null);
             setRebuyQueued(false);
             setCashOutSummary(msg.summary);
+            break;
+
+          case 'show_cards_prompt':
+            setShowCardsPrompt({ deadline: msg.deadline });
+            break;
+
+          case 'show_cards_result':
+            setShowCardsPrompt(null);
             break;
 
           case 'rebuy_available':
@@ -275,6 +285,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     handComplete,
     rebuyAvailable,
     rebuyQueued,
+    showCardsPrompt,
     clearCashOutSummary,
     send,
   };

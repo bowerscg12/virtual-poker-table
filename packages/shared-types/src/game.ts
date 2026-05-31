@@ -66,4 +66,6 @@ export interface HandHistoryEntry {
   board: Card[];
   winners: { seatIndex: number; amount: number; handDescription: string }[];
   actions: { seatIndex: number; street: Street; action: PlayerActionType; amount?: number }[];
+  /** Present when hand ended by folds; cards set if winner chose to reveal, absent if mucked */
+  shownAtFoldWin?: { seatIndex: number; cards?: Card[] };
 }

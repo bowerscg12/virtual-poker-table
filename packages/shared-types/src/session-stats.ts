@@ -36,4 +36,6 @@ export interface CashOutSummary {
   pfr: number;
   totalBuyIns: number;
   totalChipsPurchased: number;
+  foldWinsShown: number;
+  foldWinsMucked: number;
 }

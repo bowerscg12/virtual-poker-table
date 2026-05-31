@@ -20,7 +20,6 @@ export const RULES_PRESETS: RulesPreset[] = [
       buyIn: 500,
       minBuyIn: 500,
       maxBuyIn: 2000,
-      actionTimerSec: 30,
     },
   },
   {
@@ -35,7 +34,6 @@ export const RULES_PRESETS: RulesPreset[] = [
       buyIn: 1000,
       minBuyIn: 1000,
       maxBuyIn: 4000,
-      actionTimerSec: 25,
     },
   },
   {
@@ -50,7 +48,6 @@ export const RULES_PRESETS: RulesPreset[] = [
       buyIn: 500,
       minBuyIn: 500,
       maxBuyIn: 2000,
-      actionTimerSec: 35,
     },
   },
   {
@@ -66,7 +63,6 @@ export const RULES_PRESETS: RulesPreset[] = [
       buyIn: 1000,
       minBuyIn: 1000,
       maxBuyIn: 5000,
-      actionTimerSec: 30,
     },
   },
   {
@@ -82,7 +78,6 @@ export const RULES_PRESETS: RulesPreset[] = [
       buyIn: 200,
       minBuyIn: 200,
       maxBuyIn: 1000,
-      actionTimerSec: 20,
     },
   },
 ];

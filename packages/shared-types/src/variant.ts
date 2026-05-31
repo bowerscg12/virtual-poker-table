@@ -58,5 +58,4 @@ export const DEFAULT_VARIANT_CONFIG: VariantConfig = {
   buyIn: 500,
   minBuyIn: 500,
   maxBuyIn: 2000,
-  actionTimerSec: 30,
 };

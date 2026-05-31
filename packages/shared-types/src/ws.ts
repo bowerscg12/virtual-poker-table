@@ -23,6 +23,7 @@ export type ClientMessage =
   | { type: 'cash_out' }
   | { type: 'cash_out_cancel' }
   | { type: 'rebuy' }
+  | { type: 'show_cards'; show: boolean }
   | { type: 'ping' };
 
 /** Server -> Client */
@@ -42,6 +43,8 @@ export type ServerMessage =
   | { type: 'rebuy_available'; amount: number }
   | { type: 'rebuy_queued' }
   | { type: 'rebuy_confirmed'; newStack: number }
+  | { type: 'show_cards_prompt'; deadline: string }
+  | { type: 'show_cards_result'; seatIndex: number; cards?: Card[] }
   | { type: 'pong' };
 
 export interface ChatMessage {

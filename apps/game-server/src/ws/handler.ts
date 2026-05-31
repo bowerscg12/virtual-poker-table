@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-import type { ClientMessage, ServerMessage, VariantConfig } from '@vct/shared-types';
+import type { Card, ClientMessage, ServerMessage, VariantConfig } from '@vct/shared-types';
 import { getTableBuyIn } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
 import { getUserById } from '../services/auth.js';
@@ -27,8 +27,10 @@ import {
   processGameAction,
   setActionDeadline,
   setIntermissionDeadline,
+  setSeatShownCards,
   startHand,
   toPublicState,
+  updateLastHandHistoryFoldWin,
   updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
 import { addChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
@@ -46,6 +48,7 @@ import {
   finalizeCashOut,
   initSession,
   recordAction,
+  recordFoldWinChoice,
   recordHandEnd,
   recordHandStart,
   recordRebuy,
@@ -102,6 +105,25 @@ const pendingCashOuts = new Map<string, PendingCashOut>();
 
 /** userId → pending rebuy request (deferred when hand is in progress) */
 const pendingRebuys = new Map<string, { lobbyId: string; amount: number }>();
+
+/** lobbyId → pending show-cards decision after a fold win */
+const showCardsPending = new Map<string, {
+  winnerId: string;
+  winnerSeatIndex: number;
+  holeCards: Card[];
+  config: VariantConfig;
+  gen: number;
+  deadline: string;
+}>();
+
+/** lobbyId → active show-cards auto-muck timer */
+const showCardsTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Monotonic generation counter for show-cards timers */
+const showCardsGenerations = new Map<string, number>();
+
+/** How long the winner has to decide before cards are auto-mucked */
+const SHOW_CARDS_TIMEOUT_MS = 5_000;
 
 /** userId set to prevent duplicate cash-out processing */
 const cashOutInProgress = new Set<string>();
@@ -293,27 +315,10 @@ async function onActionTimerExpired(
   recordAction(lobbyId, userId, action, preActionStreet);
 
   if (result.state.street === 'complete') {
-    recordHandEnd(lobbyId, result.state, config);
-    await processPendingCashOuts(lobbyId);
-    const histories = getHandHistories(lobbyId);
-    const last = histories[histories.length - 1];
-    if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
-    if (result.state.winnerPayouts.length > 0) {
-      const payouts = result.state.winnerPayouts;
-      broadcastLobby(lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
-    }
-    const updatedLobby = await getLobbyById(lobbyId);
-    if (updatedLobby?.status === 'playing') {
-      scheduleIntermission(lobbyId, config);
-    }
+    await handleHandComplete(lobbyId, result.state, config);
   } else {
     scheduleActionTimer(lobbyId, config, result.state);
-  }
-
-  await broadcastTableState(lobbyId);
-  if (result.state.street === 'complete') {
-    await processPendingRebuys(lobbyId);
-    await notifyBustedPlayers(lobbyId);
+    await broadcastTableState(lobbyId);
   }
 }
 
@@ -354,27 +359,10 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
           recordAction(lobbyId, userId, 'fold', game.street);
 
           if (result.state.street === 'complete') {
-            recordHandEnd(lobbyId, result.state, lobby.settings);
-            await processPendingCashOuts(lobbyId);
-            const histories = getHandHistories(lobbyId);
-            const last = histories[histories.length - 1];
-            if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
-            if (result.state.winnerPayouts.length > 0) {
-              const payouts = result.state.winnerPayouts;
-              broadcastLobby(lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
-            }
-            const currentLobby = await getLobbyById(lobbyId);
-            if (currentLobby?.status === 'playing') {
-              scheduleIntermission(lobbyId, lobby.settings);
-            }
+            await handleHandComplete(lobbyId, result.state, lobby.settings);
           } else {
             scheduleActionTimer(lobbyId, lobby.settings, result.state);
-          }
-
-          await broadcastTableState(lobbyId);
-          if (result.state.street === 'complete') {
-            await processPendingRebuys(lobbyId);
-            await notifyBustedPlayers(lobbyId);
+            await broadcastTableState(lobbyId);
           }
         }
       }
@@ -500,6 +488,18 @@ async function notifyBustedPlayers(lobbyId: string): Promise<void> {
   }
 }
 
+/** True when the hand ended because all opponents folded (no showdown). */
+function isFoldWin(state: GameTableState): boolean {
+  return state.winnerPayouts.length === 1 && state.winnerPayouts[0].handDescription === '';
+}
+
+/** Cancel any running show-cards timer. Increments generation to invalidate stale callbacks. */
+function cancelShowCardsTimer(lobbyId: string): void {
+  const t = showCardsTimers.get(lobbyId);
+  if (t) { clearTimeout(t); showCardsTimers.delete(lobbyId); }
+  showCardsGenerations.set(lobbyId, (showCardsGenerations.get(lobbyId) ?? 0) + 1);
+}
+
 /** Process any queued rebuy requests for a lobby after a hand completes. */
 async function processPendingRebuys(lobbyId: string): Promise<void> {
   const toProcess: string[] = [];
@@ -515,6 +515,122 @@ async function processPendingRebuys(lobbyId: string): Promise<void> {
     recordRebuy(lobbyId, userId, pending.amount);
     const ws = connectedUserSockets.get(userId);
     if (ws) send(ws, { type: 'rebuy_confirmed', newStack: pending.amount });
+  }
+}
+
+/**
+ * Apply a show/muck decision for a fold-win hand, broadcast the outcome,
+ * record hand history, and finally start the between-hand intermission.
+ */
+async function finalizeFoldWin(
+  lobbyId: string,
+  show: boolean,
+  pending: { winnerId: string; winnerSeatIndex: number; holeCards: Card[]; config: VariantConfig } | null,
+  config: VariantConfig
+): Promise<void> {
+  cancelShowCardsTimer(lobbyId);
+  showCardsPending.delete(lobbyId);
+
+  if (show && pending) {
+    await setSeatShownCards(lobbyId, pending.winnerSeatIndex, pending.holeCards);
+    updateLastHandHistoryFoldWin(lobbyId, pending.winnerSeatIndex, pending.holeCards);
+    recordFoldWinChoice(lobbyId, pending.winnerId, true);
+  } else if (pending) {
+    updateLastHandHistoryFoldWin(lobbyId, pending.winnerSeatIndex, null);
+    recordFoldWinChoice(lobbyId, pending.winnerId, false);
+  }
+
+  if (pending) {
+    broadcastLobby(lobbyId, () => ({
+      type: 'show_cards_result' as const,
+      seatIndex: pending.winnerSeatIndex,
+      cards: show ? pending.holeCards : undefined,
+    }));
+  }
+
+  const histories = getHandHistories(lobbyId);
+  const last = histories[histories.length - 1];
+  if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
+
+  const updatedLobby = await getLobbyById(lobbyId);
+  if (updatedLobby?.status === 'playing') {
+    scheduleIntermission(lobbyId, config);
+  }
+  await broadcastTableState(lobbyId);
+}
+
+/**
+ * Send the show-cards prompt to a fold-win winner and schedule the auto-muck timer.
+ * Intermission is deferred until finalizeFoldWin is called.
+ */
+async function promptShowCards(lobbyId: string, state: GameTableState, config: VariantConfig): Promise<void> {
+  const winningSeatIndex = state.lastWinningSeatIndices[0];
+  const winner = state.seats.find((s) => s.seatIndex === winningSeatIndex);
+  if (!winner) {
+    await finalizeFoldWin(lobbyId, false, null, config);
+    return;
+  }
+
+  const ws = connectedUserSockets.get(winner.userId);
+  if (!ws) {
+    await finalizeFoldWin(lobbyId, false, null, config);
+    return;
+  }
+
+  cancelShowCardsTimer(lobbyId);
+  const gen = showCardsGenerations.get(lobbyId) ?? 0;
+  const deadline = new Date(Date.now() + SHOW_CARDS_TIMEOUT_MS).toISOString();
+
+  const pending = {
+    winnerId: winner.userId,
+    winnerSeatIndex: winner.seatIndex,
+    holeCards: [...winner.holeCards],
+    config,
+    gen,
+    deadline,
+  };
+  showCardsPending.set(lobbyId, pending);
+
+  send(ws, { type: 'show_cards_prompt', deadline });
+
+  showCardsTimers.set(lobbyId, setTimeout(() => {
+    if ((showCardsGenerations.get(lobbyId) ?? 0) !== gen) return;
+    const p = showCardsPending.get(lobbyId);
+    showCardsPending.delete(lobbyId);
+    showCardsTimers.delete(lobbyId);
+    finalizeFoldWin(lobbyId, false, p ?? null, config).catch(() => {});
+  }, SHOW_CARDS_TIMEOUT_MS));
+}
+
+/**
+ * Unified post-hand handler called from all three action paths
+ * (game_action, onActionTimerExpired, onGracePeriodExpired).
+ */
+async function handleHandComplete(lobbyId: string, state: GameTableState, config: VariantConfig): Promise<void> {
+  cancelActionTimer(lobbyId);
+  recordHandEnd(lobbyId, state, config);
+  await processPendingCashOuts(lobbyId);
+
+  if (state.winnerPayouts.length > 0) {
+    const payouts = state.winnerPayouts;
+    broadcastLobby(lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
+  }
+
+  await broadcastTableState(lobbyId);
+  await processPendingRebuys(lobbyId);
+  await notifyBustedPlayers(lobbyId);
+
+  if (isFoldWin(state)) {
+    await promptShowCards(lobbyId, state, config);
+  } else {
+    const histories = getHandHistories(lobbyId);
+    const last = histories[histories.length - 1];
+    if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
+    const updatedLobby = await getLobbyById(lobbyId);
+    if (updatedLobby?.status === 'playing') {
+      scheduleIntermission(lobbyId, config);
+    }
+    await broadcastTableState(lobbyId);
   }
 }
 
@@ -653,6 +769,12 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
               send(ws, { type: 'rebuy_available', amount: getTableBuyIn(reconnLobby2.settings) });
             }
           }
+        }
+
+        // Re-send the show-cards prompt if the winner reconnects during the decision window
+        const reconnPending = showCardsPending.get(session.lobbyId);
+        if (reconnPending && reconnPending.winnerId === session.userId) {
+          send(ws, { type: 'show_cards_prompt', deadline: reconnPending.deadline });
         }
       }
       return;
@@ -929,27 +1051,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       recordAction(st.lobbyId, st.userId, msg.action, preActionStreet);
 
       if (result.state.street === 'complete') {
-        recordHandEnd(st.lobbyId, result.state, lobby.settings);
-        await processPendingCashOuts(st.lobbyId);
-        const histories = getHandHistories(st.lobbyId);
-        const last = histories[histories.length - 1];
-        if (last) broadcastLobby(st.lobbyId, () => ({ type: 'hand_history', entry: last }));
-        if (result.state.winnerPayouts.length > 0) {
-          const payouts = result.state.winnerPayouts;
-          broadcastLobby(st.lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
-        }
-        const updatedLobby = await getLobbyById(st.lobbyId);
-        if (updatedLobby?.status === 'playing') {
-          scheduleIntermission(st.lobbyId, lobby.settings);
-        }
+        await handleHandComplete(st.lobbyId, result.state, lobby.settings);
       } else {
         scheduleActionTimer(st.lobbyId, lobby.settings, result.state);
-      }
-
-      await broadcastTableState(st.lobbyId);
-      if (result.state.street === 'complete') {
-        await processPendingRebuys(st.lobbyId);
-        await notifyBustedPlayers(st.lobbyId);
+        await broadcastTableState(st.lobbyId);
       }
       return;
     }
@@ -1010,6 +1115,16 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
       send(ws, { type: 'rebuy_confirmed', newStack: buyIn });
       await broadcastTableState(lobbyId);
+      return;
+    }
+
+    case 'show_cards': {
+      if (!st.userId || !st.lobbyId) return;
+      const lobbyId = st.lobbyId;
+      const pending = showCardsPending.get(lobbyId);
+      if (!pending || pending.winnerId !== st.userId) return;
+      showCardsPending.delete(lobbyId);
+      await finalizeFoldWin(lobbyId, msg.show, pending, pending.config);
       return;
     }
 

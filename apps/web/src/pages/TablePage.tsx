@@ -15,6 +15,7 @@ import { HostControls } from '../components/HostControls';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
 import { CashOutModal } from '../components/CashOutModal';
 import { RebuyModal } from '../components/RebuyModal';
+import { ShowCardsModal } from '../components/ShowCardsModal';
 import { SessionResultsModal } from '../components/SessionResultsModal';
 
 export default function TablePage() {
@@ -40,6 +41,7 @@ export default function TablePage() {
     handComplete,
     rebuyAvailable,
     rebuyQueued,
+    showCardsPrompt,
     clearCashOutSummary,
     send,
   } = useGameSocket(token, lobbyId ?? null);
@@ -82,6 +84,10 @@ export default function TablePage() {
   const gameStarted = headerLobby?.status === 'playing' || headerLobby?.status === 'paused';
 
   // Deal animation helpers for the local player's hole cards
+  const totalPot = table
+    ? table.pots.reduce((s, p) => s + p.amount, 0) + table.seats.reduce((s, seat) => s + seat.betThisStreet, 0)
+    : 0;
+
   const maxSeats = headerLobby?.settings.maxPlayers ?? 9;
   const dealerSeatIndex = table?.dealerSeatIndex ?? 0;
   const isDealingThisHand = anim.dealingHandNum === table?.handNumber;
@@ -218,6 +224,8 @@ export default function TablePage() {
           {table && privateState && privateState.legalActions.length > 0 && (
             <ActionBar
               legalActions={privateState.legalActions}
+              pot={totalPot}
+              currentBet={table.currentBet}
               onAction={(action, amount) => {
                 send({ type: 'game_action', actionId: crypto.randomUUID(), action, amount });
               }}
@@ -265,6 +273,14 @@ export default function TablePage() {
           onConfirm={handleCashOutConfirm}
           onCancel={() => setCashOutOpen(false)}
           onCancelQueue={handleCancelQueue}
+        />
+      )}
+
+      {showCardsPrompt && !cashOutSummary && (
+        <ShowCardsModal
+          deadline={showCardsPrompt.deadline}
+          onShow={() => send({ type: 'show_cards', show: true })}
+          onMuck={() => send({ type: 'show_cards', show: false })}
         />
       )}
 

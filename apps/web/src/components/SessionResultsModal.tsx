@@ -96,6 +96,12 @@ export function SessionResultsModal({ summary, onLeave }: Props) {
               label="PFR"
               value={summary.handsPlayed > 0 ? `${Math.round(summary.pfr * 100)}%` : '—'}
             />
+            {(summary.foldWinsShown + summary.foldWinsMucked) > 0 && (
+              <StatRow
+                label="Showed after fold-win"
+                value={`${summary.foldWinsShown} / ${summary.foldWinsShown + summary.foldWinsMucked}`}
+              />
+            )}
             <StatRow
               label="Biggest pot won"
               value={summary.biggestPotWon > 0 ? `+${formatChips(summary.biggestPotWon)}` : '—'}

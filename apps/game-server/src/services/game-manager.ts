@@ -329,6 +329,30 @@ export async function updateSeatStackAfterRebuy(lobbyId: string, userId: string,
   await persistGame(lobbyId, state);
 }
 
+/** Set shownCards on a seat so the next broadcastTableState reveals them. */
+export async function setSeatShownCards(lobbyId: string, seatIndex: number, cards: Card[]): Promise<void> {
+  const state = activeGames.get(lobbyId);
+  if (!state) return;
+  const seat = state.seats.find((s) => s.seatIndex === seatIndex);
+  if (!seat) return;
+  seat.shownCards = cards;
+  await persistGame(lobbyId, state);
+}
+
+/** Annotate the last recorded hand history entry with fold-win reveal data.
+ *  Always call with the winner's seatIndex; pass cards only if they chose to show.
+ */
+export function updateLastHandHistoryFoldWin(
+  lobbyId: string,
+  seatIndex: number,
+  cards: Card[] | null
+): void {
+  const list = handHistories.get(lobbyId);
+  if (!list || list.length === 0) return;
+  const last = list[list.length - 1];
+  last.shownAtFoldWin = cards ? { seatIndex, cards } : { seatIndex };
+}
+
 export function clearGame(lobbyId: string): void {
   activeGames.delete(lobbyId);
 }

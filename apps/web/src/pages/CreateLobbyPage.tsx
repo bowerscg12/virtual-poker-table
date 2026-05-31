@@ -33,7 +33,7 @@ function loadPresetIntoForm(
   setStraddleEnabled(config.game === 'holdem' && !!config.straddle);
   setStraddleAmount(String(Math.max(config.blinds.big, config.straddleAmount ?? config.blinds.big * 2)));
   setSevenDeuceRule(config.game === 'holdem' && !!config.sevenDeuceRule);
-  setActionTimerSec(config.actionTimerSec ?? 30);
+  setActionTimerSec(config.actionTimerSec ?? 0);
 }
 
 export default function CreateLobbyPage() {
@@ -45,7 +45,7 @@ export default function CreateLobbyPage() {
   const [straddleEnabled, setStraddleEnabled] = useState(false);
   const [straddleAmount, setStraddleAmount] = useState('20');
   const [sevenDeuceRule, setSevenDeuceRule] = useState(false);
-  const [actionTimerSec, setActionTimerSec] = useState(30);
+  const [actionTimerSec, setActionTimerSec] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 

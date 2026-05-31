@@ -19,6 +19,8 @@ interface StatsAccumulator {
   pfrHandsRaised: number;
   totalBuyIns: number;
   totalChipsPurchased: number;
+  foldWinsShown: number;
+  foldWinsMucked: number;
 }
 
 /** lobbyId → userId → accumulator */
@@ -76,6 +78,8 @@ export function initSession(
     pfrHandsRaised: 0,
     totalBuyIns: 1,
     totalChipsPurchased: startingStack,
+    foldWinsShown: 0,
+    foldWinsMucked: 0,
   });
 }
 
@@ -116,6 +120,14 @@ export function recordAction(
   if (action === 'raise' && street === 'preflop') {
     preflopRaisers.get(lobbyId)?.add(userId);
   }
+}
+
+/** Call when a fold-win winner decides to show or muck their cards. */
+export function recordFoldWinChoice(lobbyId: string, userId: string, shown: boolean): void {
+  const acc = sessions.get(lobbyId)?.get(userId);
+  if (!acc) return;
+  if (shown) acc.foldWinsShown++;
+  else acc.foldWinsMucked++;
 }
 
 /** Call after a successful rebuy. Increments buy-in count and total chips purchased. */
@@ -200,6 +212,8 @@ export function finalizeCashOut(
   const pfrHandsRaised = acc?.pfrHandsRaised ?? 0;
   const totalBuyIns = acc?.totalBuyIns ?? 1;
   const totalChipsPurchased = acc?.totalChipsPurchased ?? startingStack;
+  const foldWinsShown = acc?.foldWinsShown ?? 0;
+  const foldWinsMucked = acc?.foldWinsMucked ?? 0;
 
   let mostCommonStartingHand: CashOutSummary['mostCommonStartingHand'] = null;
   if (acc && acc.startingHandCounts.size > 0) {
@@ -240,6 +254,8 @@ export function finalizeCashOut(
     pfr: handsPlayed > 0 ? pfrHandsRaised / handsPlayed : 0,
     totalBuyIns,
     totalChipsPurchased,
+    foldWinsShown,
+    foldWinsMucked,
   };
 
   // Clean up
