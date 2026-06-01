@@ -25,7 +25,7 @@ async function main() {
   });
 
   await app.register(websocket);
-  await registerApiRoutes(app);
+  await app.register(registerApiRoutes, { prefix: '/api' });
 
   setTokenVerifier(async (token) => app.jwt.verify<{ sub: string }>(token));
 
