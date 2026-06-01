@@ -239,6 +239,31 @@ export async function setTableBuyIn(
   return (await getLobbyById(lobbyId))!;
 }
 
+export async function setFlipAnte(
+  lobbyId: string,
+  hostUserId: string,
+  ante: number
+): Promise<LobbySummary | { error: string }> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only host can set ante' };
+  if (!isValidBuyIn(ante)) {
+    return { error: 'Ante must be between 10 and 10000 in increments of 5' };
+  }
+  const settings: VariantConfig = { ...lobby.settings, twelveCardFlipAnte: ante };
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
+}
+
 export async function getLobbyByInvite(code: string): Promise<LobbySummary | null> {
   if (useMemory) {
     const id = memoryStore.inviteIndex.get(code.toUpperCase()) ?? memoryStore.inviteIndex.get(code);

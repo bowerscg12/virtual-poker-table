@@ -5,19 +5,28 @@ import { formatChips } from '../utils/formatChips';
 
 interface Props {
   lobby: LobbySummary;
+  handActive: boolean;
   onStart: () => void;
   onPause: (paused: boolean) => void;
   onKick: (seatIndex: number) => void;
   onSetBuyIn: (amount: number) => void;
   onSetActionTimer: (seconds: number) => void;
+  onSetFlipAnte?: (ante: number) => void;
 }
 
-export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer }: Props) {
+export function HostControls({ lobby, handActive, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer, onSetFlipAnte }: Props) {
+  const isTcf = lobby.settings.game === 'twelve_card_flip';
   const currentBuyIn = getTableBuyIn(lobby.settings);
   const [buyIn, setBuyIn] = useState(String(currentBuyIn));
   const parsedBuyIn = Number.parseInt(buyIn, 10);
   const isValidBuyIn =
     Number.isInteger(parsedBuyIn) && parsedBuyIn >= 10 && parsedBuyIn <= 10000 && parsedBuyIn % 5 === 0;
+
+  const currentAnte = lobby.settings.twelveCardFlipAnte ?? currentBuyIn;
+  const [ante, setAnte] = useState(String(currentAnte));
+  const parsedAnte = Number.parseInt(ante, 10);
+  const isValidAnte =
+    Number.isInteger(parsedAnte) && parsedAnte >= 10 && parsedAnte <= 10000 && parsedAnte % 5 === 0;
 
   const currentTimerSec = lobby.settings.actionTimerSec ?? 0;
   const gameStarted = lobby.status === 'playing' || lobby.status === 'paused';
@@ -27,25 +36,66 @@ export function HostControls({ lobby, onStart, onPause, onKick, onSetBuyIn, onSe
     onSetBuyIn(parsedBuyIn);
   }
 
+  function handleUpdateAnte() {
+    if (!isValidAnte || !onSetFlipAnte) return;
+    onSetFlipAnte(parsedAnte);
+  }
+
   return (
     <div className="host-controls panel">
       <h3>Host controls</h3>
-      <label className="host-buy-in">
-        Table buy-in (chips for new players)
-        <div className="host-buy-in-row">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={buyIn}
-            onChange={(e) => setBuyIn(e.target.value.replace(/[^\d]/g, ''))}
-          />
-          <button type="button" className="btn small" onClick={handleUpdateBuyIn} disabled={!isValidBuyIn}>
-            Update
-          </button>
-        </div>
-      </label>
-      <p className="field-hint">Current seated stacks stay as-is; new joiners get the updated amount.</p>
+
+      {isTcf && onSetFlipAnte && (
+        <>
+          <label className="host-buy-in">
+            Ante per hand
+            <div className="host-buy-in-row">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={ante}
+                disabled={handActive}
+                onChange={(e) => setAnte(e.target.value.replace(/[^\d]/g, ''))}
+              />
+              <button
+                type="button"
+                className="btn small"
+                onClick={handleUpdateAnte}
+                disabled={!isValidAnte || handActive}
+              >
+                Update
+              </button>
+            </div>
+          </label>
+          <p className="field-hint">
+            {handActive
+              ? 'Ante cannot be changed while a hand is in progress.'
+              : `Current ante: ${formatChips(currentAnte)} chips. Takes effect next hand.`}
+          </p>
+        </>
+      )}
+
+      {!isTcf && (
+        <>
+          <label className="host-buy-in">
+            Table buy-in (chips for new players)
+            <div className="host-buy-in-row">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={buyIn}
+                onChange={(e) => setBuyIn(e.target.value.replace(/[^\d]/g, ''))}
+              />
+              <button type="button" className="btn small" onClick={handleUpdateBuyIn} disabled={!isValidBuyIn}>
+                Update
+              </button>
+            </div>
+          </label>
+          <p className="field-hint">Current seated stacks stay as-is; new joiners get the updated amount.</p>
+        </>
+      )}
 
       <label className="host-timer">
         Action timer

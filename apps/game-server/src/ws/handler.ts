@@ -11,6 +11,7 @@ import {
   rebuyPlayer,
   removeSeat,
   setActionTimerSetting,
+  setFlipAnte,
   setTableBuyIn,
   setSittingOut,
   sitAtSeat,
@@ -1077,6 +1078,22 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
       broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
       await broadcastTableState(st.lobbyId);
+      return;
+    }
+
+    case 'host_set_flip_ante': {
+      if (!st.userId || !st.lobbyId) return;
+      const currentGame = await getActiveGame(st.lobbyId);
+      if (currentGame && currentGame.street !== 'complete') {
+        send(ws, { type: 'error', message: 'Cannot change ante while a hand is in progress' });
+        return;
+      }
+      const result = await setFlipAnte(st.lobbyId, st.userId, msg.ante);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
       return;
     }
 

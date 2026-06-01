@@ -1,10 +1,15 @@
 import type {
   AvatarConfig,
   Gender,
-  SkinTone,
   HairStyle,
-  HairColor,
-  EyeColor,
+} from '@vct/shared-types';
+import {
+  SKIN_TONES,
+  HAIR_COLORS,
+  EYE_COLORS,
+  SHORT_HAIR_STYLES,
+  LONG_HAIR_STYLES,
+  defaultHairStyleFor,
 } from '@vct/shared-types';
 import { AvatarSvg, SKIN_TONE_COLORS, HAIR_COLOR_VALUES, EYE_COLOR_VALUES, HAIR_STYLE_LABELS } from './AvatarSvg';
 
@@ -13,14 +18,14 @@ interface Props {
   onChange: (next: AvatarConfig) => void;
 }
 
-const SKIN_TONES = Object.keys(SKIN_TONE_COLORS) as SkinTone[];
-const HAIR_STYLES = Object.keys(HAIR_STYLE_LABELS) as HairStyle[];
-const HAIR_COLORS = Object.keys(HAIR_COLOR_VALUES) as HairColor[];
-const EYE_COLORS = Object.keys(EYE_COLOR_VALUES) as EyeColor[];
-
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'male',   label: 'Male'   },
   { value: 'female', label: 'Female' },
+];
+
+const HAIR_GROUPS: { title: string; styles: HairStyle[] }[] = [
+  { title: 'Short & cropped', styles: SHORT_HAIR_STYLES },
+  { title: 'Long & styled',   styles: LONG_HAIR_STYLES },
 ];
 
 export function AvatarCreator({ value, onChange }: Props) {
@@ -28,11 +33,18 @@ export function AvatarCreator({ value, onChange }: Props) {
     onChange({ ...value, ...partial });
   }
 
+  // Switching gender swaps to that gender's default hairstyle but preserves every
+  // other setting (skin tone, hair color, eye color). Users can re-pick any style.
+  function selectGender(gender: Gender) {
+    if (gender === value.gender) return;
+    onChange({ ...value, gender, hairStyle: defaultHairStyleFor(gender) });
+  }
+
   return (
     <div className="avatar-creator">
       {/* Live preview */}
       <div className="avatar-preview-wrap">
-        <AvatarSvg config={value} size={96} />
+        <AvatarSvg config={value} size={120} />
       </div>
 
       {/* Gender */}
@@ -44,7 +56,7 @@ export function AvatarCreator({ value, onChange }: Props) {
               key={opt.value}
               type="button"
               className={`avatar-toggle-btn${value.gender === opt.value ? ' active' : ''}`}
-              onClick={() => patch({ gender: opt.value })}
+              onClick={() => selectGender(opt.value)}
             >
               {opt.label}
             </button>
@@ -70,23 +82,6 @@ export function AvatarCreator({ value, onChange }: Props) {
         </div>
       </div>
 
-      {/* Hair Style */}
-      <div className="avatar-row avatar-row-wrap">
-        <span className="avatar-label">Hair</span>
-        <div className="avatar-chips">
-          {HAIR_STYLES.map((style) => (
-            <button
-              key={style}
-              type="button"
-              className={`avatar-chip${value.hairStyle === style ? ' selected' : ''}`}
-              onClick={() => patch({ hairStyle: style })}
-            >
-              {HAIR_STYLE_LABELS[style]}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Hair Color */}
       <div className="avatar-row">
         <span className="avatar-label">Hair color</span>
@@ -101,6 +96,32 @@ export function AvatarCreator({ value, onChange }: Props) {
               aria-label={color}
               title={color}
             />
+          ))}
+        </div>
+      </div>
+
+      {/* Hair Style — large live previews grouped for easy browsing */}
+      <div className="avatar-hair-section">
+        <span className="avatar-label">Hairstyle</span>
+        <div className="avatar-hair-groups">
+          {HAIR_GROUPS.map((group) => (
+            <div key={group.title} className="avatar-hair-group">
+              <span className="avatar-hair-group-title">{group.title}</span>
+              <div className="avatar-hair-grid">
+                {group.styles.map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    className={`avatar-hair-tile${value.hairStyle === style ? ' selected' : ''}`}
+                    onClick={() => patch({ hairStyle: style })}
+                    title={HAIR_STYLE_LABELS[style]}
+                  >
+                    <AvatarSvg config={{ ...value, hairStyle: style }} size={54} />
+                    <span className="avatar-hair-tile-label">{HAIR_STYLE_LABELS[style]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>

@@ -64,6 +64,8 @@ export function TwelveCardFlip({ lobby, table, myUserId, privateHoleCards, legal
   const isComplete = table?.street === 'complete';
   const canFlip = legalActions.some((a) => a.type === 'flip_card');
 
+  const anteAmount = lobby?.settings.twelveCardFlipAnte ?? lobby?.settings.buyIn ?? 0;
+
   // Track the index of the most recently flipped card per seat for animation
   const prevRevealedCountsRef = useRef<Record<number, number>>({});
   const [justFlipped, setJustFlipped] = useState<Record<number, number | null>>({});
@@ -77,7 +79,7 @@ export function TwelveCardFlip({ lobby, table, myUserId, privateHoleCards, legal
       const prev = prevRevealedCountsRef.current[seat.seatIndex] ?? 0;
       const curr = (flipReveal.revealedCards[i] ?? []).length;
       if (curr > prev) {
-        newJust[seat.seatIndex] = curr - 1; // index of the newly revealed card
+        newJust[seat.seatIndex] = curr - 1;
         changed = true;
       } else {
         newJust[seat.seatIndex] = null;
@@ -127,12 +129,10 @@ export function TwelveCardFlip({ lobby, table, myUserId, privateHoleCards, legal
   const isMyTurn = table.actionSeatIndex === mySeatData?.seatIndex;
   const isOpponentTurn = table.actionSeatIndex === opponentSeatData?.seatIndex;
 
-  // Winner info for complete hands
   const winners = anim.winnerBanner?.winners ?? [];
   const myWin = mySeatData && winners.some((w) => w.seatIndex === mySeatData.seatIndex);
   const opponentWin = opponentSeatData && winners.some((w) => w.seatIndex === opponentSeatData.seatIndex);
 
-  // Final shownCards when complete
   const myShownCards = isComplete ? (mySeatData?.shownCards ?? myCardsForDisplay) : myCardsForDisplay;
   const opponentShownCards = isComplete ? (opponentSeatData?.shownCards ?? []) : [];
 
@@ -175,13 +175,15 @@ export function TwelveCardFlip({ lobby, table, myUserId, privateHoleCards, legal
           )}
         </div>
 
-        <CardGrid
-          cards={opponentShownCards}
-          revealedCards={isComplete ? opponentShownCards : opponentRevealed}
-          isMe={false}
-          isActive={isOpponentTurn && !isComplete}
-          justFlippedIdx={opponentSeatData ? (justFlipped[opponentSeatData.seatIndex] ?? null) : null}
-        />
+        <div className="flip-card-area">
+          <CardGrid
+            cards={opponentShownCards}
+            revealedCards={isComplete ? opponentShownCards : opponentRevealed}
+            isMe={false}
+            isActive={isOpponentTurn && !isComplete}
+            justFlippedIdx={opponentSeatData ? (justFlipped[opponentSeatData.seatIndex] ?? null) : null}
+          />
+        </div>
       </div>
 
       {/* Center info */}
@@ -189,6 +191,12 @@ export function TwelveCardFlip({ lobby, table, myUserId, privateHoleCards, legal
         <div className="flip-pot">
           Pot: <strong>{formatChips(pot)}</strong>
         </div>
+
+        {!isComplete && anteAmount > 0 && (
+          <div className="flip-ante">
+            Ante: <strong>{formatChips(anteAmount)}</strong>
+          </div>
+        )}
 
         {isTied && !isComplete && (
           <div className="flip-tied-badge">TIED</div>
@@ -253,13 +261,15 @@ export function TwelveCardFlip({ lobby, table, myUserId, privateHoleCards, legal
           )}
         </div>
 
-        <CardGrid
-          cards={isComplete ? myShownCards : myCardsForDisplay}
-          revealedCards={isComplete ? myShownCards : myRevealed}
-          isMe={!isComplete}
-          isActive={isMyTurn && !isComplete}
-          justFlippedIdx={mySeatData ? (justFlipped[mySeatData.seatIndex] ?? null) : null}
-        />
+        <div className="flip-card-area">
+          <CardGrid
+            cards={isComplete ? myShownCards : myCardsForDisplay}
+            revealedCards={isComplete ? myShownCards : myRevealed}
+            isMe={!isComplete}
+            isActive={isMyTurn && !isComplete}
+            justFlippedIdx={mySeatData ? (justFlipped[mySeatData.seatIndex] ?? null) : null}
+          />
+        </div>
 
         {canFlip && !isComplete && (
           <button

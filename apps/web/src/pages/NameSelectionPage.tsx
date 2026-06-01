@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import type { AvatarConfig, VariantConfig } from '@vct/shared-types';
-import { DEFAULT_AVATAR } from '@vct/shared-types';
+import { DEFAULT_AVATAR, coerceAvatar } from '@vct/shared-types';
 import { createTableAndEnter, enterLobby, getLobbyById } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AvatarCreator } from '../components/AvatarCreator';
@@ -23,7 +23,9 @@ const AVATAR_STORAGE_KEY = 'vct_avatar';
 function loadSavedAvatar(): AvatarConfig {
   try {
     const raw = localStorage.getItem(AVATAR_STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AvatarConfig;
+    // Coerce so older saved configs that reference removed hairstyles fall back
+    // to a valid style rather than rendering a broken avatar.
+    if (raw) return coerceAvatar(JSON.parse(raw) as Partial<AvatarConfig>);
   } catch {
     // ignore
   }

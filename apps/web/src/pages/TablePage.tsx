@@ -120,8 +120,11 @@ export default function TablePage() {
     navigate('/');
   }
 
+  const isTcf = headerLobby?.settings.game === 'twelve_card_flip';
+  const handActive = !!(table && table.street !== 'complete' && table.street !== 'waiting');
+
   return (
-    <div className="table-layout">
+    <div className={`table-layout${isTcf ? ' table-layout--tcf' : ''}`}>
       <header className="table-header">
         <div>
           <h1>{headerLobby ? `${headerLobby.hostDisplayName}'s Table` : 'Table ...'}</h1>
@@ -191,11 +194,13 @@ export default function TablePage() {
         <section className="host-section">
           <HostControls
             lobby={headerLobby}
+            handActive={handActive}
             onStart={() => send({ type: 'host_start' })}
             onPause={(paused) => send({ type: 'host_pause', paused })}
             onKick={(seatIndex) => send({ type: 'host_kick', seatIndex })}
             onSetBuyIn={(amount) => send({ type: 'host_set_buy_in', buyIn: amount })}
             onSetActionTimer={(seconds) => send({ type: 'host_set_action_timer', seconds })}
+            onSetFlipAnte={(ante) => send({ type: 'host_set_flip_ante', ante })}
           />
         </section>
       )}

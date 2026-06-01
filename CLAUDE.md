@@ -180,6 +180,7 @@ disconnectTimers:     Map<string, setTimeout>  // sessionId → grace timer
 `markSessionDisconnected` → `setTimeout(onGracePeriodExpired, GRACE_PERIOD_MS)`
 
 **On `reconnect` message:**
+
 1. Look up session; send `session_invalid` and return if missing/expired
 2. `evictSocket` any existing socket for that userId
 3. **Synchronously** `clearTimeout` + `disconnectTimers.delete` (before any `await`)
