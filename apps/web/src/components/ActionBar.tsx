@@ -127,10 +127,10 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
             <button
               type="button"
               className="btn small raise-quick-btn"
-              onClick={() => applyRaiseAmount(raiseMax)}
-              title={`All-in: ${formatChips(raiseMax)}`}
+              onClick={() => applyRaiseAmount(raiseMin)}
+              title={`Minimum: ${formatChips(raiseMin)}`}
             >
-              Max
+              Min
             </button>
             <button
               type="button"
@@ -143,10 +143,10 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
             <button
               type="button"
               className="btn small raise-quick-btn"
-              onClick={() => applyRaiseAmount(raiseMin)}
-              title={`Minimum: ${formatChips(raiseMin)}`}
+              onClick={() => applyRaiseAmount(raiseMax)}
+              title={`All-in: ${formatChips(raiseMax)}`}
             >
-              Min
+              Max / All-In
             </button>
           </div>
 
