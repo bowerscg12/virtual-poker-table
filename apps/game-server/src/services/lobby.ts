@@ -1,6 +1,6 @@
-import type { AvatarConfig, CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
+import type { ActiveSeatInfo, AvatarConfig, CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
 import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, TIMER_STEPS_SEC, getTableBuyIn } from '@vct/shared-types';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { lobbies, tableSeats, users } from '../db/schema.js';
 import {
@@ -498,6 +498,62 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
       .where(eq(tableSeats.id, seat.id));
   }
   return getLobbyById(lobbyId);
+}
+
+/**
+ * Find the active reserved seat for a user across all open/playing/paused lobbies.
+ * Returns null if the user has no seat or their only seat is in a closed lobby.
+ */
+export async function getActiveSeatForUser(userId: string): Promise<ActiveSeatInfo | null> {
+  if (useMemory) {
+    for (const [lobbyId, lobby] of memoryStore.lobbies) {
+      if (lobby.status === 'closed') continue;
+      const seat = lobby.seats.find((s) => s.userId === userId);
+      if (seat) {
+        const host = memoryStore.users.get(lobby.hostUserId);
+        return {
+          lobbyId,
+          inviteCode: lobby.inviteCode,
+          hostDisplayName: host?.displayName ?? 'Host',
+          seatIndex: seat.seatIndex,
+          stack: seat.stack,
+        };
+      }
+    }
+    return null;
+  }
+
+  const db = getDb();
+  const rows = await db
+    .select({
+      lobbyId: tableSeats.lobbyId,
+      seatIndex: tableSeats.seatIndex,
+      stack: tableSeats.stack,
+      inviteCode: lobbies.inviteCode,
+      status: lobbies.status,
+      hostUserId: lobbies.hostUserId,
+    })
+    .from(tableSeats)
+    .innerJoin(lobbies, eq(tableSeats.lobbyId, lobbies.id))
+    .where(and(eq(tableSeats.userId, userId), ne(lobbies.status, 'closed')))
+    .limit(1);
+
+  if (rows.length === 0) return null;
+  const row = rows[0];
+
+  const [host] = await db
+    .select({ displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, row.hostUserId))
+    .limit(1);
+
+  return {
+    lobbyId: row.lobbyId,
+    inviteCode: row.inviteCode,
+    hostDisplayName: host?.displayName ?? 'Host',
+    seatIndex: row.seatIndex,
+    stack: row.stack,
+  };
 }
 
 export function isMemoryMode(): boolean {

@@ -6,12 +6,14 @@ import { guestLogin, getUserById, loginUser, registerUser, toAuthResponse, updat
 import {
   autoSeatPlayer,
   createLobby,
+  getActiveSeatForUser,
   getLobbyById,
   getLobbyByInvite,
+  removeSeat,
   withLobbyEntryLock,
 } from '../services/lobby.js';
 import { getHandHistories } from '../services/game-manager.js';
-import { createSession } from '../services/session.js';
+import { createSession, deleteSessionsByUserId } from '../services/session.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   const displayNameSchema = z.string().trim().min(1).max(10);
@@ -205,6 +207,24 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   app.get('/lobbies/:id/hands', async (req) => {
     const { id } = req.params as { id: string };
     return { hands: getHandHistories(id) };
+  });
+
+  /** Return the player's active reserved seat, if any. */
+  app.get('/me/seat', { onRequest: [app.authenticate] }, async (req) => {
+    const userId = (req.user as { sub: string }).sub;
+    const seat = await getActiveSeatForUser(userId);
+    return { seat };
+  });
+
+  /** Release the player's active reserved seat (decline rejoin). */
+  app.delete('/me/seat', { onRequest: [app.authenticate] }, async (req) => {
+    const userId = (req.user as { sub: string }).sub;
+    const seat = await getActiveSeatForUser(userId);
+    if (seat) {
+      await removeSeat(seat.lobbyId, userId);
+      await deleteSessionsByUserId(userId);
+    }
+    return { ok: true };
   });
 
   app.get('/presets', async () => ({ presets: RULES_PRESETS }));

@@ -33,3 +33,12 @@ export interface EnterLobbyResponse {
   token: string;
   sessionId: string;
 }
+
+/** Returned by GET /api/me/seat when the player has an active reserved seat */
+export interface ActiveSeatInfo {
+  lobbyId: string;
+  inviteCode: string;
+  hostDisplayName: string;
+  seatIndex: number;
+  stack: number;
+}

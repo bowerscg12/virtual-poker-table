@@ -1,12 +1,14 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
-import type { AuthUser } from '@vct/shared-types';
-import { guestLogin, loginAccount as apiLoginAccount, registerAccount as apiRegisterAccount, updateDisplayName as apiUpdateDisplayName } from '../api/client';
+import type { ActiveSeatInfo, AuthUser } from '@vct/shared-types';
+import { getActiveSeat, guestLogin, loginAccount as apiLoginAccount, registerAccount as apiRegisterAccount, updateDisplayName as apiUpdateDisplayName } from '../api/client';
 
 interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   /** True while verifying a stored token on first load — prevents a flash-to-login. */
   loading: boolean;
+  activeSeat: ActiveSeatInfo | null;
+  clearActiveSeat: () => void;
   loginGuest: (name: string) => Promise<void>;
   loginAccount: (email: string, password: string) => Promise<void>;
   registerAccount: (displayName: string, email: string, password: string) => Promise<void>;
@@ -22,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('vct_token'));
   const [loading, setLoading] = useState(() => !!localStorage.getItem('vct_token'));
+  const [activeSeat, setActiveSeat] = useState<ActiveSeatInfo | null>(null);
 
   useEffect(() => {
     const t = localStorage.getItem('vct_token');
@@ -31,10 +34,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     fetch('/api/auth/me', { headers: { Authorization: `Bearer ${t}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { user: AuthUser } | null) => {
+      .then(async (data: { user: AuthUser } | null) => {
         if (data?.user) {
           setUser(data.user);
           setToken(t);
+          // Check for a reserved seat on the server
+          const { seat } = await getActiveSeat();
+          setActiveSeat(seat);
         } else {
           localStorage.removeItem('vct_token');
         }
@@ -48,6 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('vct_token', res.token);
     setUser(res.user);
     setToken(res.token);
+    const { seat } = await getActiveSeat();
+    setActiveSeat(seat);
   }, []);
 
   const loginAccount = useCallback(async (email: string, password: string) => {
@@ -55,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('vct_token', res.token);
     setUser(res.user);
     setToken(res.token);
+    const { seat } = await getActiveSeat();
+    setActiveSeat(seat);
   }, []);
 
   const registerAccount = useCallback(async (displayName: string, email: string, password: string) => {
@@ -62,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('vct_token', res.token);
     setUser(res.user);
     setToken(res.token);
+    setActiveSeat(null);
   }, []);
 
   const updateDisplayName = useCallback(async (displayName: string) => {
@@ -74,6 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('vct_session_id', sessionId);
     setUser(u);
     setToken(t);
+    setActiveSeat(null);
+  }, []);
+
+  const clearActiveSeat = useCallback(() => {
+    setActiveSeat(null);
   }, []);
 
   const logout = useCallback(() => {
@@ -81,10 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('vct_session_id');
     setUser(null);
     setToken(null);
+    setActiveSeat(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, loginGuest, loginAccount, registerAccount, setAuthDirect, updateDisplayName, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, activeSeat, clearActiveSeat, loginGuest, loginAccount, registerAccount, setAuthDirect, updateDisplayName, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,4 +1,4 @@
-import type { AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
+import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
 
 const API = '/api';
 
@@ -151,6 +151,24 @@ export async function getPresets(): Promise<{ presets: RulesPreset[] }> {
 export async function getHandHistory(lobbyId: string): Promise<{ hands: unknown[] }> {
   const res = await fetch(`${API}/lobbies/${lobbyId}/hands`);
   return res.json();
+}
+
+export async function getActiveSeat(): Promise<{ seat: ActiveSeatInfo | null }> {
+  try {
+    const res = await fetch(`${API}/me/seat`, { headers: authHeaders() });
+    if (!res.ok) return { seat: null };
+    return res.json() as Promise<{ seat: ActiveSeatInfo | null }>;
+  } catch {
+    return { seat: null };
+  }
+}
+
+export async function releaseActiveSeat(): Promise<void> {
+  try {
+    await fetch(`${API}/me/seat`, { method: 'DELETE', headers: authHeaders() });
+  } catch {
+    // ignore — seat will be released by server-side timer anyway
+  }
 }
 
 export function getWsUrl(): string {

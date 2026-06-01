@@ -1,15 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { RejoinPrompt } from '../components/RejoinPrompt';
+import { releaseActiveSeat } from '../api/client';
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { user, logout, updateDisplayName } = useAuth();
+  const { user, logout, updateDisplayName, activeSeat, clearActiveSeat } = useAuth();
 
   const [editing, setEditing] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [declining, setDeclining] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -54,12 +57,37 @@ export default function HomePage() {
     }
   }
 
+  function handleRejoin() {
+    if (!activeSeat) return;
+    navigate(`/table/${activeSeat.lobbyId}`);
+  }
+
+  async function handleDecline() {
+    if (!activeSeat) return;
+    setDeclining(true);
+    try {
+      await releaseActiveSeat();
+      clearActiveSeat();
+    } finally {
+      setDeclining(false);
+    }
+  }
+
   return (
     <div className="page home">
       <header className="hero">
         <h1>Virtual Card Table</h1>
         <p>Host home games online — shuffle, deal, and chips handled in-app. Settle up with friends IRL.</p>
       </header>
+
+      {activeSeat && (
+        <RejoinPrompt
+          seat={activeSeat}
+          onRejoin={handleRejoin}
+          onDecline={handleDecline}
+          declining={declining}
+        />
+      )}
 
       <div className="panel home-identity-panel">
         {editing ? (

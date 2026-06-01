@@ -5,8 +5,11 @@ import { playerSessions } from '../db/schema.js';
 import { memoryStore, type MemorySession } from '../store/memory-fallback.js';
 import { isMemoryMode } from './lobby.js';
 
-/** Configurable via env. Default: 3 minutes. */
+/** Auto-act timeout: how long to wait on a disconnected player's turn before folding. Default: 3 minutes. */
 export const GRACE_PERIOD_MS = parseInt(process.env.DISCONNECT_GRACE_PERIOD_MS ?? '180000', 10);
+
+/** Seat reservation period: how long to hold a disconnected player's seat before releasing it. Default: 10 minutes. */
+export const SEAT_RELEASE_MS = parseInt(process.env.SEAT_RELEASE_MS ?? '600000', 10);
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -111,6 +114,17 @@ export async function deleteSession(sessionId: string): Promise<void> {
   }
   const db = getDb();
   await db.delete(playerSessions).where(eq(playerSessions.id, sessionId));
+}
+
+export async function deleteSessionsByUserId(userId: string): Promise<void> {
+  if (isMemoryMode()) {
+    for (const [id, s] of memoryStore.sessions) {
+      if (s.userId === userId) memoryStore.sessions.delete(id);
+    }
+    return;
+  }
+  const db = getDb();
+  await db.delete(playerSessions).where(eq(playerSessions.userId, userId));
 }
 
 export async function cleanExpiredSessions(): Promise<void> {

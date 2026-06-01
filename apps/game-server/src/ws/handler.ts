@@ -6,6 +6,7 @@ import { getUserById } from '../services/auth.js';
 import {
   approveRebuy,
   autoSeatPlayer,
+  getActiveSeatForUser,
   getLobbyById,
   kickSeat,
   rebuyPlayer,
@@ -41,11 +42,13 @@ import { redisDel, keys } from '../store/redis.js';
 import {
   createSession,
   deleteSession,
+  deleteSessionsByUserId,
   getSession,
   markSessionConnected,
   markSessionDisconnected,
   updateSessionLobby,
   GRACE_PERIOD_MS,
+  SEAT_RELEASE_MS,
 } from '../services/session.js';
 import {
   finalizeCashOut,
@@ -75,8 +78,11 @@ const lobbyClients = new Map<string, Set<WebSocket>>();
 /** userId → the single authoritative WebSocket for that user */
 const connectedUserSockets = new Map<string, WebSocket>();
 
-/** sessionId → grace-period expiry timer */
+/** sessionId → auto-act timer (fires GRACE_PERIOD_MS after disconnect; auto-folds if player's turn) */
 const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** userId → seat release timer (fires SEAT_RELEASE_MS after disconnect; releases the seat entirely) */
+const seatReleaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** lobbyId → active action-turn timer */
 const actionTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -364,15 +370,17 @@ async function onActionTimerExpired(
   }
 }
 
-/** Called when a player's grace period expires without reconnection. */
+/**
+ * Called when a disconnected player's auto-act timer fires (GRACE_PERIOD_MS).
+ * Marks the player as sitting-out and auto-folds if it's their turn.
+ * Does NOT delete the session — the seat release timer handles that separately.
+ */
 async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: string): Promise<void> {
   disconnectTimers.delete(sessionId);
 
   // Re-fetch to confirm player has not reconnected (reconnect sets disconnectedAt = null)
   const session = await getSession(sessionId);
   if (!session || !session.disconnectedAt) return;
-
-  await deleteSession(sessionId);
 
   const updatedLobby = await setSittingOut(lobbyId, userId, true);
   if (updatedLobby) {
@@ -414,6 +422,29 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
 }
 
 /**
+ * Called when a disconnected player's seat reservation expires (SEAT_RELEASE_MS).
+ * Deletes the session and removes the player's seat so it becomes available.
+ */
+async function onSeatReleaseExpired(sessionId: string, userId: string, lobbyId: string): Promise<void> {
+  seatReleaseTimers.delete(userId);
+
+  // Guard: player may have reconnected
+  if (connectedUserSockets.has(userId)) return;
+
+  const session = await getSession(sessionId);
+  if (session && !session.disconnectedAt) return; // reconnected
+
+  await deleteSession(sessionId);
+  await removeSeat(lobbyId, userId);
+
+  const connected = getConnectedSet(lobbyId);
+  const updatedLobby = await getLobbyById(lobbyId, connected);
+  if (updatedLobby) {
+    broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
+  }
+}
+
+/**
  * Execute a cash-out for a connected player: finalize stats, remove from seat,
  * invalidate session, disconnect from lobby, send summary.
  */
@@ -424,6 +455,13 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
 
   if (cashOutInProgress.has(userId)) return;
   cashOutInProgress.add(userId);
+
+  // Cancel any pending seat release timer — player is leaving intentionally
+  const releaseTimer = seatReleaseTimers.get(userId);
+  if (releaseTimer) {
+    clearTimeout(releaseTimer);
+    seatReleaseTimers.delete(userId);
+  }
 
   try {
     const lobby = await getLobbyById(lobbyId);
@@ -703,14 +741,22 @@ export function registerClient(ws: WebSocket): void {
       connectedUserSockets.delete(st.userId);
     }
 
-    // Start grace period if this was a tracked session with a lobby
+    // Start grace-period timers if this was a tracked session with a lobby
     if (st.sessionId && st.userId && st.lobbyId) {
       const { sessionId, userId, lobbyId } = st;
       markSessionDisconnected(sessionId).catch(() => {});
-      const timer = setTimeout(() => {
+
+      // Auto-act timer: auto-fold/check if it's their turn after GRACE_PERIOD_MS
+      const autoActTimer = setTimeout(() => {
         onGracePeriodExpired(sessionId, userId, lobbyId).catch(() => {});
       }, GRACE_PERIOD_MS);
-      disconnectTimers.set(sessionId, timer);
+      disconnectTimers.set(sessionId, autoActTimer);
+
+      // Seat release timer: release the seat after SEAT_RELEASE_MS (longer window for rejoin)
+      const releaseTimer = setTimeout(() => {
+        onSeatReleaseExpired(sessionId, userId, lobbyId).catch(() => {});
+      }, SEAT_RELEASE_MS);
+      seatReleaseTimers.set(userId, releaseTimer);
     }
 
     clients.delete(ws);
@@ -760,11 +806,16 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const existing = connectedUserSockets.get(session.userId);
       if (existing && existing !== ws) evictSocket(existing);
 
-      // Cancel any pending grace-period timer synchronously before awaiting
+      // Cancel any pending disconnect timers synchronously before awaiting
       const timer = disconnectTimers.get(session.id);
       if (timer) {
         clearTimeout(timer);
         disconnectTimers.delete(session.id);
+      }
+      const releaseTimer = seatReleaseTimers.get(session.userId);
+      if (releaseTimer) {
+        clearTimeout(releaseTimer);
+        seatReleaseTimers.delete(session.userId);
       }
 
       // Restore authoritative client state
@@ -846,12 +897,36 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         return;
       }
 
+      // Release any reserved seat in a different lobby before joining this one
+      const priorSeat = await getActiveSeatForUser(st.userId);
+      if (priorSeat && priorSeat.lobbyId !== msg.lobbyId) {
+        const priorReleaseTimer = seatReleaseTimers.get(st.userId);
+        if (priorReleaseTimer) {
+          clearTimeout(priorReleaseTimer);
+          seatReleaseTimers.delete(st.userId);
+        }
+        await removeSeat(priorSeat.lobbyId, st.userId);
+        await deleteSessionsByUserId(st.userId);
+        const priorConnected = getConnectedSet(priorSeat.lobbyId);
+        const priorLobbyState = await getLobbyById(priorSeat.lobbyId, priorConnected);
+        if (priorLobbyState) {
+          broadcastLobby(priorSeat.lobbyId, () => ({ type: 'lobby_state', lobby: priorLobbyState }));
+        }
+      }
+
       // Attempt seating with name check BEFORE connecting the socket to the lobby.
       // This ensures a rejected join never triggers a broadcast.
       const seatResult = await autoSeatPlayer(msg.lobbyId, st.userId, user.displayName);
       if (seatResult && 'error' in seatResult) {
         send(ws, { type: 'error', message: seatResult.error, code: seatResult.code });
         return;
+      }
+
+      // If player is rejoining their own reserved seat while sitting-out, re-activate them
+      const lobbyAfterSeat = await getLobbyById(msg.lobbyId);
+      const mySeat = lobbyAfterSeat?.seats.find((s) => s.userId === st.userId);
+      if (mySeat?.sittingOut) {
+        await setSittingOut(msg.lobbyId, st.userId, false);
       }
 
       // Seating succeeded — now wire up the socket
@@ -869,10 +944,9 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
 
       // Init session stats for this player
-      const lobbyAfterSeat = await getLobbyById(msg.lobbyId);
-      const mySeat = lobbyAfterSeat?.seats.find((s) => s.userId === st.userId);
-      if (mySeat) {
-        initSession(msg.lobbyId, st.userId, user.displayName, mySeat.stack);
+      const freshSeat = (await getLobbyById(msg.lobbyId))?.seats.find((s) => s.userId === st.userId);
+      if (freshSeat) {
+        initSession(msg.lobbyId, st.userId, user.displayName, freshSeat.stack);
       }
 
       const connected = getConnectedSet(msg.lobbyId);
@@ -1059,6 +1133,16 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!st.userId || !st.lobbyId) return;
       const lobby = await getLobbyById(st.lobbyId);
       if (!lobby || lobby.hostUserId !== st.userId) return;
+      // Cancel any seat release timer for the kicked player
+      const kickedSeat = lobby.seats.find((s) => s.seatIndex === msg.seatIndex);
+      if (kickedSeat?.userId) {
+        const kickReleaseTimer = seatReleaseTimers.get(kickedSeat.userId);
+        if (kickReleaseTimer) {
+          clearTimeout(kickReleaseTimer);
+          seatReleaseTimers.delete(kickedSeat.userId);
+        }
+        await deleteSessionsByUserId(kickedSeat.userId);
+      }
       const updated = await kickSeat(st.lobbyId, msg.seatIndex);
       if (updated) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: updated }));
       return;

@@ -161,6 +161,49 @@ a {
 
 /* ── Home identity row ───────────────────────────────────────────────────── */
 
+.rejoin-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.rejoin-prompt-icon {
+  flex-shrink: 0;
+  color: var(--gold);
+  margin-top: 0.15rem;
+}
+
+.rejoin-prompt-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.rejoin-prompt-title {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  color: var(--gold);
+}
+
+.rejoin-prompt-detail {
+  margin: 0 0 0.15rem;
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+.rejoin-prompt-stack {
+  margin: 0 0 0.85rem;
+  font-size: 0.875rem;
+  opacity: 0.7;
+}
+
+.rejoin-prompt-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
 .home-identity-panel {
   display: flex;
   align-items: center;
