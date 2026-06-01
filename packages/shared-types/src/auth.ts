@@ -1,7 +1,9 @@
+import type { AvatarConfig } from './avatar.js';
+
 export interface AuthUser {
   id: string;
   displayName: string;
-  avatarUrl?: string;
+  avatar?: AvatarConfig;
   isGuest: boolean;
 }
 

@@ -63,10 +63,11 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
         displayName: displayNameSchema,
         presetId: z.string().optional(),
         settings: z.any().optional(),
+        avatar: z.any().optional(),
       })
       .parse(req.body);
 
-    const user = await guestLogin(body.displayName);
+    const user = await guestLogin(body.displayName, body.avatar);
     const token = await reply.jwtSign({ sub: user.id });
 
     const lobbyReq: CreateLobbyRequest = { presetId: body.presetId, settings: body.settings };
@@ -87,7 +88,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/lobbies/:id/enter', async (req, reply) => {
     const { id: lobbyId } = req.params as { id: string };
-    const body = z.object({ displayName: displayNameSchema }).parse(req.body);
+    const body = z.object({ displayName: displayNameSchema, avatar: z.any().optional() }).parse(req.body);
 
     const lobby = await getLobbyById(lobbyId);
     if (!lobby) return reply.status(404).send({ error: 'Lobby not found' });
@@ -116,7 +117,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // All checks passed — create user, seat, and session
-      const user = await guestLogin(body.displayName);
+      const user = await guestLogin(body.displayName, body.avatar);
       const seatResult = await autoSeatPlayer(lobbyId, user.id, body.displayName);
       if (!seatResult || 'error' in seatResult) {
         return reply.status(409).send({ error: seatResult?.error ?? 'Could not join table', code: 'SEAT_FAILED' });

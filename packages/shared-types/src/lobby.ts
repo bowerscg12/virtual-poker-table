@@ -1,17 +1,19 @@
 import type { VariantConfig } from './variant.js';
+import type { AvatarConfig } from './avatar.js';
 
 export type LobbyStatus = 'open' | 'playing' | 'paused' | 'closed';
 
 export interface UserProfile {
   id: string;
   displayName: string;
-  avatarUrl?: string;
+  avatar?: AvatarConfig;
 }
 
 export interface TableSeat {
   seatIndex: number;
   userId: string | null;
   displayName: string | null;
+  avatar?: AvatarConfig;
   stack: number;
   sittingOut: boolean;
   isConnected: boolean;

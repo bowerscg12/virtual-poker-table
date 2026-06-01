@@ -1,4 +1,4 @@
-import type { VariantConfig } from '@vct/shared-types';
+import type { AvatarConfig, VariantConfig } from '@vct/shared-types';
 import type { LobbyStatus } from '@vct/shared-types';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
@@ -11,6 +11,7 @@ export interface MemoryUser {
   email?: string;
   passwordHash?: string;
   avatarUrl?: string;
+  avatar?: AvatarConfig;
   isGuest: boolean;
 }
 

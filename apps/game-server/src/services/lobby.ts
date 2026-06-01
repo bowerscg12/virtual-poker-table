@@ -1,4 +1,4 @@
-import type { CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
+import type { AvatarConfig, CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
 import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, TIMER_STEPS_SEC, getTableBuyIn } from '@vct/shared-types';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
@@ -52,16 +52,30 @@ function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): Lobb
     hostDisplayName,
     status: lobby.status,
     settings: lobby.settings,
-    seats: lobby.seats.map((s) => ({
-      seatIndex: s.seatIndex,
-      userId: s.userId,
-      displayName: s.userId ? memoryStore.users.get(s.userId)?.displayName ?? null : null,
-      stack: s.stack,
-      sittingOut: s.sittingOut,
-      isConnected: s.userId ? connected.has(s.userId) : false,
-    })),
+    seats: lobby.seats.map((s) => {
+      const u = s.userId ? memoryStore.users.get(s.userId) : undefined;
+      return {
+        seatIndex: s.seatIndex,
+        userId: s.userId,
+        displayName: u?.displayName ?? null,
+        avatar: u?.avatar,
+        stack: s.stack,
+        sittingOut: s.sittingOut,
+        isConnected: s.userId ? connected.has(s.userId) : false,
+      };
+    }),
     createdAt: lobby.createdAt,
   };
+}
+
+function deserializeAvatar(value?: string | null): AvatarConfig | undefined {
+  if (!value) return undefined;
+  try {
+    if (value.startsWith('{')) return JSON.parse(value) as AvatarConfig;
+  } catch {
+    // not JSON
+  }
+  return undefined;
 }
 
 async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()): Promise<LobbySummary | null> {
@@ -73,14 +87,17 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
   const seatSummaries: TableSeat[] = [];
   for (const s of seats) {
     let displayName: string | null = null;
+    let avatar: AvatarConfig | undefined;
     if (s.userId) {
       const [u] = await db.select().from(users).where(eq(users.id, s.userId)).limit(1);
       displayName = u?.displayName ?? null;
+      avatar = deserializeAvatar(u?.avatarUrl);
     }
     seatSummaries.push({
       seatIndex: s.seatIndex,
       userId: s.userId,
       displayName,
+      avatar,
       stack: s.stack,
       sittingOut: s.sittingOut,
       isConnected: s.userId ? connected.has(s.userId) : false,

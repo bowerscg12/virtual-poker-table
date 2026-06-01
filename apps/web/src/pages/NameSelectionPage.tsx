@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import type { VariantConfig } from '@vct/shared-types';
+import type { AvatarConfig, VariantConfig } from '@vct/shared-types';
+import { DEFAULT_AVATAR } from '@vct/shared-types';
 import { createTableAndEnter, enterLobby, getLobbyById } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { AvatarCreator } from '../components/AvatarCreator';
 
 interface CreateState {
   mode: 'create';
@@ -16,6 +18,26 @@ interface JoinState {
 
 type LocationState = CreateState | JoinState | null;
 
+const AVATAR_STORAGE_KEY = 'vct_avatar';
+
+function loadSavedAvatar(): AvatarConfig {
+  try {
+    const raw = localStorage.getItem(AVATAR_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as AvatarConfig;
+  } catch {
+    // ignore
+  }
+  return DEFAULT_AVATAR;
+}
+
+function saveAvatar(avatar: AvatarConfig) {
+  try {
+    localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(avatar));
+  } catch {
+    // ignore
+  }
+}
+
 export default function NameSelectionPage() {
   const { lobbyId } = useParams<{ lobbyId?: string }>();
   const location = useLocation();
@@ -26,6 +48,7 @@ export default function NameSelectionPage() {
   const isCreate = state?.mode === 'create';
 
   const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState<AvatarConfig>(loadSavedAvatar);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [lobbyName, setLobbyName] = useState<string | null>(null);
@@ -51,6 +74,11 @@ export default function NameSelectionPage() {
     }
   }, [isCreate, lobbyId]);
 
+  function handleAvatarChange(next: AvatarConfig) {
+    setAvatar(next);
+    saveAvatar(next);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
@@ -64,11 +92,11 @@ export default function NameSelectionPage() {
         const res = await createTableAndEnter(trimmed, {
           presetId: state.presetId,
           settings: state.settings,
-        });
+        }, avatar);
         setAuthDirect(res.user, res.token, res.sessionId);
         navigate(`/table/${res.lobby.id}`, { replace: true });
       } else if (lobbyId) {
-        const res = await enterLobby(lobbyId, trimmed);
+        const res = await enterLobby(lobbyId, trimmed, avatar);
         setAuthDirect(res.user, res.token, res.sessionId);
         navigate(`/table/${lobbyId}`, { replace: true });
       }
@@ -86,7 +114,6 @@ export default function NameSelectionPage() {
     }
   }
 
-  const title = isCreate ? 'Choose your name' : 'Choose your name';
   const subtitle = isCreate
     ? 'Pick the display name others will see at your table.'
     : lobbyName
@@ -96,8 +123,9 @@ export default function NameSelectionPage() {
   return (
     <div className="page">
       <form className="panel" onSubmit={handleSubmit}>
-        <h2>{title}</h2>
+        <h2>Create your player</h2>
         <p className="field-hint">{subtitle}</p>
+
         <input
           type="text"
           placeholder="Your display name"
@@ -111,15 +139,23 @@ export default function NameSelectionPage() {
           autoFocus
           disabled={loading}
         />
+        <p className="field-hint">Max 10 characters.</p>
+
         {error && (
           <p className="form-error" role="alert">
             {error}
           </p>
         )}
-        <p className="field-hint">Max 10 characters.</p>
+
+        <hr className="avatar-divider" />
+
+        <AvatarCreator value={avatar} onChange={handleAvatarChange} />
+
         <div className="name-selection-actions">
           <button type="submit" className="btn primary" disabled={loading || !name.trim()}>
-            {loading ? (isCreate ? 'Creating table…' : 'Joining…') : isCreate ? 'Create & enter table' : 'Enter table'}
+            {loading
+              ? (isCreate ? 'Creating table…' : 'Joining…')
+              : isCreate ? 'Create & enter table' : 'Enter table'}
           </button>
           <button
             type="button"

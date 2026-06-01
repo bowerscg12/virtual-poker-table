@@ -1,4 +1,4 @@
-import type { AuthResponse, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
+import type { AuthResponse, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
 
 const API = '/api';
 
@@ -38,14 +38,15 @@ export async function register(displayName: string, email: string, password: str
  */
 export async function createTableAndEnter(
   displayName: string,
-  req: CreateLobbyRequest
+  req: CreateLobbyRequest,
+  avatar?: AvatarConfig
 ): Promise<EnterLobbyResponse & { lobby: LobbySummary }> {
   let res: Response;
   try {
     res = await fetch(`${API}/lobbies`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName, ...req }),
+      body: JSON.stringify({ displayName, avatar, ...req }),
     });
   } catch {
     throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
@@ -67,13 +68,13 @@ export async function createTableAndEnter(
  * No auth required — identity is created server-side after name validation.
  * Throws with code 'NAME_TAKEN' if the name is already in use at this table.
  */
-export async function enterLobby(lobbyId: string, displayName: string): Promise<EnterLobbyResponse> {
+export async function enterLobby(lobbyId: string, displayName: string, avatar?: AvatarConfig): Promise<EnterLobbyResponse> {
   let res: Response;
   try {
     res = await fetch(`${API}/lobbies/${lobbyId}/enter`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName }),
+      body: JSON.stringify({ displayName, avatar }),
     });
   } catch {
     throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');

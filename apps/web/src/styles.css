@@ -1494,3 +1494,150 @@ select {
     opacity: 0;
   }
 }
+
+/* ── Avatar creator ────────────────────────────────────────────────────────── */
+
+.avatar-divider {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0.75rem 0 0.5rem;
+}
+
+.avatar-creator {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.avatar-preview-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.avatar-preview-wrap svg {
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.4), 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+}
+
+.avatar-row-wrap {
+  flex-wrap: wrap;
+}
+
+.avatar-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  min-width: 62px;
+}
+
+/* Gender toggle */
+.avatar-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.avatar-toggle-btn {
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.avatar-toggle-btn.active {
+  background: rgba(212, 175, 55, 0.25);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.avatar-toggle-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Color swatches */
+.avatar-swatches {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.avatar-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.15s;
+}
+
+.avatar-swatch:hover {
+  transform: scale(1.15);
+}
+
+.avatar-swatch.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  transform: scale(1.15);
+}
+
+/* Hair style chips */
+.avatar-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.avatar-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.avatar-chip.selected {
+  background: rgba(212, 175, 55, 0.2);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.avatar-chip:hover:not(.selected) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Name-selection bottom actions */
+.name-selection-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+/* ── Seat avatar on the felt ──────────────────────────────────────────────── */
+
+.seat-avatar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.seat-avatar svg {
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+}

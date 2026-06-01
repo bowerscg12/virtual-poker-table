@@ -3,6 +3,7 @@ import type { LobbySummary, PublicTableState } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
+import { AvatarSvg } from './AvatarSvg';
 import { useActionTimer } from '../hooks/useActionTimer';
 import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
@@ -221,6 +222,11 @@ export function PokerTable({ lobby, table, myUserId, anim }: Props) {
               style={{ '--seat-x': `${x}%`, '--seat-y': `${y}%` } as React.CSSProperties}
             >
               <div className="seat-info">
+                {occupied && seat.avatar && (
+                  <div className="seat-avatar">
+                    <AvatarSvg config={seat.avatar} size={38} />
+                  </div>
+                )}
                 <strong>{seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}</strong>
                 {occupied && stack > 0 && <ChipStack amount={stack} />}
                 {!occupied && <span className="seat-empty-label">Open</span>}
