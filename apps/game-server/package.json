@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "echo ok",
-    "db:migrate": "tsx --env-file=.env src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:local": "tsx --env-file=.env src/db/migrate.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
