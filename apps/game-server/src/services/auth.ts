@@ -85,6 +85,20 @@ export async function guestLogin(displayName: string, avatar?: AvatarConfig): Pr
   return { id: row.id, displayName: row.displayName, avatar: deserializeAvatar(row.avatarUrl), isGuest: true };
 }
 
+export async function updateUserDisplayName(id: string, displayName: string): Promise<AuthUser | null> {
+  const normalizedDisplayName = assertDisplayName(displayName);
+  if (useMemory) {
+    const u = memoryStore.users.get(id);
+    if (!u) return null;
+    u.displayName = normalizedDisplayName;
+    return { id: u.id, displayName: u.displayName, avatar: u.avatar, isGuest: u.isGuest };
+  }
+  const db = getDb();
+  const [row] = await db.update(users).set({ displayName: normalizedDisplayName }).where(eq(users.id, id)).returning();
+  if (!row) return null;
+  return { id: row.id, displayName: row.displayName, avatar: deserializeAvatar(row.avatarUrl), isGuest: row.isGuest };
+}
+
 export async function getUserById(id: string): Promise<AuthUser | null> {
   if (useMemory) {
     const u = memoryStore.users.get(id);

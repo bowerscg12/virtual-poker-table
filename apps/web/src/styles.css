@@ -184,6 +184,63 @@ a {
   vertical-align: middle;
 }
 
+.home-name-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.45rem;
+  padding: 0.15rem 0.25rem;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: color 0.15s, background 0.15s;
+}
+.home-name-edit-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.home-name-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.home-name-edit-label {
+  font-size: 0.9rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.home-name-edit-input {
+  width: 9ch;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  color: inherit;
+}
+.home-name-edit-input:focus {
+  outline: none;
+  border-color: var(--gold, #c9a84c);
+}
+
+.home-name-edit-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.home-name-edit-error {
+  font-size: 0.78rem;
+  color: #f87171;
+  width: 100%;
+}
+
 /* ── Name-display (read-only name in NameSelectionPage) ─────────────────── */
 
 .name-display {

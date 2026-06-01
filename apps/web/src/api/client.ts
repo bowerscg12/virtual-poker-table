@@ -1,4 +1,4 @@
-import type { AuthResponse, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
+import type { AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
 
 const API = '/api';
 
@@ -116,6 +116,19 @@ export async function enterLobby(lobbyId: string, displayName: string, avatar?: 
   localStorage.setItem('vct_token', data.token);
   localStorage.setItem('vct_session_id', data.sessionId);
   return data;
+}
+
+export async function updateDisplayName(displayName: string): Promise<{ user: AuthUser }> {
+  const res = await fetch(`${API}/auth/me`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ displayName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not update display name.');
+  }
+  return res.json() as Promise<{ user: AuthUser }>;
 }
 
 export async function getLobbyByInvite(code: string): Promise<{ lobby: LobbySummary }> {

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AuthUser, CreateLobbyRequest } from '@vct/shared-types';
 import { RULES_PRESETS } from '@vct/shared-types';
-import { guestLogin, getUserById, loginUser, registerUser, toAuthResponse } from '../services/auth.js';
+import { guestLogin, getUserById, loginUser, registerUser, toAuthResponse, updateUserDisplayName } from '../services/auth.js';
 import {
   autoSeatPlayer,
   createLobby,
@@ -48,6 +48,14 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     const userId = (req.user as { sub: string }).sub;
     const user = await getUserById(userId);
     if (!user) throw app.httpErrors.notFound();
+    return { user };
+  });
+
+  app.patch('/auth/me', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const body = z.object({ displayName: displayNameSchema }).parse(req.body);
+    const user = await updateUserDisplayName(userId, body.displayName);
+    if (!user) return reply.status(404).send({ error: 'User not found' });
     return { user };
   });
 

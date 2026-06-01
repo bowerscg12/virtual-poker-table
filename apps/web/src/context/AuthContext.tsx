@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import type { AuthUser } from '@vct/shared-types';
-import { guestLogin, loginAccount as apiLoginAccount, registerAccount as apiRegisterAccount } from '../api/client';
+import { guestLogin, loginAccount as apiLoginAccount, registerAccount as apiRegisterAccount, updateDisplayName as apiUpdateDisplayName } from '../api/client';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -12,6 +12,7 @@ interface AuthContextValue {
   registerAccount: (displayName: string, email: string, password: string) => Promise<void>;
   /** Set auth state directly from an EnterLobbyResponse (bypasses guest-login flow). */
   setAuthDirect: (user: AuthUser, token: string, sessionId: string) => void;
+  updateDisplayName: (displayName: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -63,6 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.token);
   }, []);
 
+  const updateDisplayName = useCallback(async (displayName: string) => {
+    const data = await apiUpdateDisplayName(displayName);
+    setUser(data.user);
+  }, []);
+
   const setAuthDirect = useCallback((u: AuthUser, t: string, sessionId: string) => {
     localStorage.setItem('vct_token', t);
     localStorage.setItem('vct_session_id', sessionId);
@@ -78,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, loginGuest, loginAccount, registerAccount, setAuthDirect, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, loginGuest, loginAccount, registerAccount, setAuthDirect, updateDisplayName, logout }}>
       {children}
     </AuthContext.Provider>
   );
