@@ -7,10 +7,9 @@ export type SkinTone =
 
 export type HairStyle =
   // Cropped & short (default-masculine set, but selectable by anyone)
-  | 'bald' | 'buzz' | 'crew' | 'side-part' | 'spiky' | 'afro' | 'man-bun' | 'mohawk'
+  | 'bald' | 'buzz' | 'side-part' | 'afro' | 'beanie'
   // Long & styled (default-feminine set, but selectable by anyone)
-  | 'pixie' | 'bob' | 'shoulder' | 'long-straight' | 'long-wavy'
-  | 'ponytail' | 'bun' | 'braid' | 'curly' | 'pigtails';
+  | 'bob' | 'long-straight' | 'long-wavy' | 'bun' | 'curly';
 
 export type HairColor = 'black' | 'brown' | 'blonde' | 'red' | 'gray';
 
@@ -38,20 +37,19 @@ export const EYE_COLORS: EyeColor[] = ['brown', 'blue', 'green', 'hazel', 'gray'
 
 /** Shorter, cropped, and tied-up styles. Used as the default group for male avatars. */
 export const SHORT_HAIR_STYLES: HairStyle[] = [
-  'bald', 'buzz', 'crew', 'side-part', 'spiky', 'afro', 'man-bun', 'mohawk',
+  'bald', 'buzz', 'side-part', 'afro', 'beanie',
 ];
 
 /** Longer and more elaborately styled cuts. Used as the default group for female avatars. */
 export const LONG_HAIR_STYLES: HairStyle[] = [
-  'pixie', 'bob', 'shoulder', 'long-straight', 'long-wavy',
-  'ponytail', 'bun', 'braid', 'curly', 'pigtails',
+  'bob', 'long-straight', 'long-wavy', 'bun', 'curly',
 ];
 
 export const ALL_HAIR_STYLES: HairStyle[] = [...SHORT_HAIR_STYLES, ...LONG_HAIR_STYLES];
 
 // ── Per-gender defaults ────────────────────────────────────────────────────────
 
-export const DEFAULT_MALE_HAIR_STYLE: HairStyle = 'crew';
+export const DEFAULT_MALE_HAIR_STYLE: HairStyle = 'side-part';
 export const DEFAULT_FEMALE_HAIR_STYLE: HairStyle = 'long-wavy';
 
 export function defaultHairStyleFor(gender: Gender): HairStyle {

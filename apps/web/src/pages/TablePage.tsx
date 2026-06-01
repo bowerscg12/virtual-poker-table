@@ -175,6 +175,7 @@ export default function TablePage() {
             table={table}
             myUserId={user?.id}
             anim={anim}
+            messages={chat}
           />
         )}
 

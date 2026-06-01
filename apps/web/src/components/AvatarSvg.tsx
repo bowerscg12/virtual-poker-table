@@ -34,22 +34,14 @@ export const EYE_COLOR_VALUES: Record<EyeColor, string> = {
 export const HAIR_STYLE_LABELS: Record<HairStyle, string> = {
   bald:           'Bald',
   buzz:           'Buzz',
-  crew:           'Crew Cut',
   'side-part':    'Side Part',
-  spiky:          'Spiky',
   afro:           'Afro',
-  'man-bun':      'Man Bun',
-  mohawk:         'Mohawk',
-  pixie:          'Pixie',
   bob:            'Bob',
-  shoulder:       'Shoulder',
   'long-straight':'Long Straight',
   'long-wavy':    'Long Wavy',
-  ponytail:       'Ponytail',
   bun:            'Bun',
-  braid:          'Braid',
   curly:          'Curly',
-  pigtails:       'Pigtails',
+  beanie:         'Beanie',
 };
 
 // ── Color helpers ───────────────────────────────────────────────────────────────
@@ -67,12 +59,14 @@ function shade(hex: string, factor: number): string {
 // ── Hair rendering ────────────────────────────────────────────────────────────
 //
 // Face circle: cx=50, cy=52, r=34 in a 100×110 viewBox.
-// Hair is rendered in two layers: `back` sits behind the face circle (long hair,
-// buns, tails) and `front` sits on top (caps, fringes, partings). Each style is
-// designed for a clearly different SILHOUETTE so it reads at poker-table size.
+// Hair is rendered in two layers: `back` sits behind BOTH the shoulders and the
+// face circle (long hair, buns) so any length below the neck flows behind the
+// avatar instead of covering the lower head or body; `front` sits on top of the
+// face (caps, fringes, partings). Each style is designed for a clearly different
+// SILHOUETTE so it reads at poker-table size.
 
 interface HairElements {
-  back?: React.ReactNode;   // rendered behind the face circle
+  back?: React.ReactNode;   // rendered behind the shoulders and face circle
   front?: React.ReactNode;  // rendered on top of the face circle
 }
 
@@ -93,33 +87,42 @@ function renderHair(style: HairStyle, color: string): HairElements {
       // Even stubble covering the whole scalp with a softly rounded hairline.
       return {
         front: (
-          <>
-            <path
-              d="M 16 52 A 34 34 0 0 1 84 52 Q 82 39 72 36 Q 50 32 28 36 Q 18 39 16 52 Z"
-              fill={color}
-            />
-            <path d="M 27 39 Q 50 34 73 39" stroke={light} strokeWidth="1.6" fill="none" opacity="0.3" />
-          </>
+          <path
+            d="M 16 52 A 34 34 0 0 1 84 52 Q 82 39 72 36 Q 50 32 28 36 Q 18 39 16 52 Z"
+            fill={color}
+          />
         ),
       };
 
-    case 'crew':
-      // Rounded cap with a flat, squared-off top sitting above the crown.
+    case 'beanie': {
+      // A knit beanie pulled down to the hairline. Hair is fully hidden, so this
+      // style ignores the selected hair colour and always renders in blue.
+      const beanie = '#2F6BD8';
+      const beanieDark = shade(beanie, 0.74);
+      const beanieLight = shade(beanie, 1.18);
       return {
         front: (
           <>
+            {/* rounded crown / dome (its lower edge is covered by the cuff) */}
             <path
-              d="M 16 52 A 34 34 0 0 1 84 52 Q 82 40 72 36 Q 50 32 28 36 Q 18 40 16 52 Z"
-              fill={color}
+              d="M 13 37 Q 11 12 50 11 Q 89 12 87 37 Q 50 40 13 37 Z"
+              fill={beanie}
             />
+            {/* folded cuff band hugging the forehead, sitting just above the brows */}
             <path
-              d="M 28 32 Q 28 16 39 15 L 61 15 Q 72 16 72 32 Q 50 27 28 32 Z"
-              fill={color}
+              d="M 11 30 Q 50 25 89 30 Q 91 34 89 38 Q 50 42 11 38 Q 9 34 11 30 Z"
+              fill={beanieDark}
             />
-            <path d="M 34 19 Q 50 16 66 19" stroke={light} strokeWidth="1.6" fill="none" opacity="0.25" />
+            {/* seam where the cuff meets the dome */}
+            <path d="M 13 31 Q 50 27 87 31" stroke={beanieLight} strokeWidth="1.3" fill="none" opacity="0.4" />
+            {/* subtle knit ribs on the cuff */}
+            <path d="M 28 31 L 28 39" stroke={beanieLight} strokeWidth="1" fill="none" opacity="0.3" />
+            <path d="M 50 30 L 50 40" stroke={beanieLight} strokeWidth="1" fill="none" opacity="0.3" />
+            <path d="M 72 31 L 72 39" stroke={beanieLight} strokeWidth="1" fill="none" opacity="0.3" />
           </>
         ),
       };
+    }
 
     case 'side-part':
       // Hair swept across from a defined parting line on the left.
@@ -132,24 +135,6 @@ function renderHair(style: HairStyle, color: string): HairElements {
             />
             <path d="M 38 22 Q 42 30 47 37" stroke={dark} strokeWidth="1.6" fill="none" opacity="0.5" />
             <path d="M 54 31 Q 64 31 71 35" stroke={light} strokeWidth="1.6" fill="none" opacity="0.35" />
-          </>
-        ),
-      };
-
-    case 'spiky':
-      // Solid base cap (no bald scalp) with jagged spikes layered on top.
-      return {
-        front: (
-          <>
-            <path
-              d="M 16 52 A 34 34 0 0 1 84 52 Q 82 40 70 36 Q 50 32 30 36 Q 18 40 16 52 Z"
-              fill={color}
-            />
-            <path
-              d="M 18 42 L 24 18 L 30 31 L 36 13 L 43 27 L 50 9 L 57 27 L 64 13 L 70 31 L 76 18 L 82 42
-                 Q 72 31 50 29 Q 28 31 18 42 Z"
-              fill={color}
-            />
           </>
         ),
       };
@@ -179,52 +164,7 @@ function renderHair(style: HairStyle, color: string): HairElements {
       };
     }
 
-    case 'man-bun':
-      // Slicked-back hair gathered into a small knot above the crown.
-      return {
-        front: (
-          <>
-            <path
-              d="M 16 52 A 34 34 0 0 1 84 52 Q 82 36 50 32 Q 18 36 16 52 Z"
-              fill={color}
-            />
-            <path d="M 43 20 Q 50 16 57 20 L 55 27 Q 50 29 45 27 Z" fill={color} />
-            <circle cx="50" cy="14" r="8" fill={color} />
-            <ellipse cx="50" cy="22" rx="8" ry="2" fill={dark} opacity="0.5" />
-          </>
-        ),
-      };
-
-    case 'mohawk':
-      // Bold central crest with cleanly shaved (bare) sides — intentionally so.
-      return {
-        front: (
-          <>
-            <path
-              d="M 39 47 L 40 24 L 45 12 L 49 22 L 50 7 L 51 22 L 55 12 L 60 24 L 61 47 Q 50 51 39 47 Z"
-              fill={color}
-            />
-            <path d="M 50 10 L 50 46" stroke={dark} strokeWidth="1.3" fill="none" opacity="0.3" />
-          </>
-        ),
-      };
-
     // ── Long & styled ────────────────────────────────────────────────────────────
-    case 'pixie':
-      // Short layered cut hugging the head with a side-swept fringe.
-      return {
-        front: (
-          <>
-            <path
-              d="M 16 53 A 34 34 0 0 1 84 51 Q 83 44 75 43 Q 78 38 66 38 Q 58 33 48 36
-                 Q 36 39 32 47 Q 25 47 20 53 Q 18 54 16 53 Z"
-              fill={color}
-            />
-            <path d="M 44 38 Q 56 35 68 41" stroke={light} strokeWidth="1.5" fill="none" opacity="0.3" />
-          </>
-        ),
-      };
-
     case 'bob':
       // Chin-length blunt cut with straight bangs.
       return {
@@ -237,23 +177,6 @@ function renderHair(style: HairStyle, color: string): HairElements {
         front: (
           <path
             d="M 16 50 A 34 34 0 0 1 84 50 Q 84 43 76 42 Q 50 37 24 42 Q 16 43 16 50 Z"
-            fill={color}
-          />
-        ),
-      };
-
-    case 'shoulder':
-      // Shoulder-length with a center part and a soft flare.
-      return {
-        back: (
-          <path
-            d="M 16 52 Q 11 72 15 92 Q 19 97 28 92 Q 50 86 72 92 Q 81 97 85 92 Q 89 72 84 52 A 34 34 0 0 0 16 52 Z"
-            fill={color}
-          />
-        ),
-        front: (
-          <path
-            d="M 16 52 A 34 34 0 0 1 84 52 Q 82 39 66 35 Q 56 33 50 41 Q 44 33 34 35 Q 18 39 16 52 Z"
             fill={color}
           />
         ),
@@ -301,26 +224,6 @@ function renderHair(style: HairStyle, color: string): HairElements {
         ),
       };
 
-    case 'ponytail':
-      // Smoothed-back hair gathered into a tail that falls down one side.
-      return {
-        back: (
-          <path
-            d="M 56 22 Q 80 26 84 50 Q 90 78 74 99 Q 68 101 69 93 Q 82 74 78 52 Q 75 32 54 31 Z"
-            fill={color}
-          />
-        ),
-        front: (
-          <>
-            <path
-              d="M 16 52 A 34 34 0 0 1 84 52 Q 82 35 50 31 Q 18 35 16 52 Z"
-              fill={color}
-            />
-            <circle cx="62" cy="27" r="4" fill={dark} />
-          </>
-        ),
-      };
-
     case 'bun':
       // Hair pulled up into a round bun centered above the crown.
       return {
@@ -337,32 +240,6 @@ function renderHair(style: HairStyle, color: string): HairElements {
             d="M 16 52 A 34 34 0 0 1 84 52 Q 82 34 50 30 Q 18 34 16 52 Z"
             fill={color}
           />
-        ),
-      };
-
-    case 'braid':
-      // Center-parted hair framing both sides with a single braid over the front.
-      return {
-        back: (
-          <path
-            d="M 16 52 Q 13 64 17 73 Q 22 77 29 74 Q 50 70 71 74 Q 78 77 83 73 Q 87 64 84 52 A 34 34 0 0 0 16 52 Z"
-            fill={color}
-          />
-        ),
-        front: (
-          <>
-            <path
-              d="M 16 52 A 34 34 0 0 1 84 52 Q 82 38 66 35 Q 56 33 50 41 Q 44 33 34 35 Q 18 38 16 52 Z"
-              fill={color}
-            />
-            {/* braid draped from the left side hair down over the chest */}
-            <path d="M 24 72 Q 17 86 22 100 Q 26 107 33 102 Q 40 84 35 70 Q 31 66 24 72 Z" fill={color} />
-            <ellipse cx="28" cy="71" rx="6.5" ry="4.5" fill={color} />
-            <path d="M 22 80 Q 28 85 34 80" stroke={dark} strokeWidth="1.5" fill="none" opacity="0.5" />
-            <path d="M 22 89 Q 27 94 33 89" stroke={dark} strokeWidth="1.5" fill="none" opacity="0.5" />
-            <path d="M 24 98 Q 28 102 32 98" stroke={dark} strokeWidth="1.5" fill="none" opacity="0.5" />
-            <path d="M 25 102 Q 28 105 31 102" stroke={dark} strokeWidth="2" fill="none" opacity="0.6" />
-          </>
         ),
       };
 
@@ -391,27 +268,6 @@ function renderHair(style: HairStyle, color: string): HairElements {
         ),
       };
     }
-
-    case 'pigtails':
-      // Center part with a tied bunch falling on each side.
-      return {
-        back: (
-          <g>
-            <path d="M 24 50 Q 6 56 9 78 Q 11 90 22 86 Q 17 70 26 58 Z" fill={color} />
-            <path d="M 76 50 Q 94 56 91 78 Q 89 90 78 86 Q 83 70 74 58 Z" fill={color} />
-          </g>
-        ),
-        front: (
-          <>
-            <path
-              d="M 16 52 A 34 34 0 0 1 84 52 Q 82 38 66 35 Q 56 33 50 41 Q 44 33 34 35 Q 18 38 16 52 Z"
-              fill={color}
-            />
-            <circle cx="24" cy="52" r="4" fill={dark} />
-            <circle cx="76" cy="52" r="4" fill={dark} />
-          </>
-        ),
-      };
 
     default:
       return {};
@@ -446,14 +302,17 @@ export function AvatarSvg({ config, size = 60 }: Props) {
       aria-hidden
       style={{ display: 'block', flexShrink: 0 }}
     >
+      {/* Hair — back layer (long hair, buns). Rendered first so any length that
+          falls below the neck flows BEHIND the shoulders and body rather than
+          sitting on top of them. The shoulders and face are drawn over it, which
+          keeps a clean head silhouette and neck transition from the front. */}
+      {hair.back}
+
       {/* Shoulders */}
       <path
         d="M 5 110 Q 8 92 26 87 Q 50 82 74 87 Q 92 92 95 110 Z"
         fill={skin.base}
       />
-
-      {/* Hair — back layer (long hair, buns, tails) */}
-      {hair.back}
 
       {/* Face */}
       <circle cx="50" cy="52" r="34" fill={skin.base} />

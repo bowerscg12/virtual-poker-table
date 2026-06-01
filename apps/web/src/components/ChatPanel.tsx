@@ -34,7 +34,7 @@ export function ChatPanel({ messages, onSend, onClose }: Props) {
         {messages.map((m) => (
           <div key={m.id} className={`chat-msg ${m.isHost ? 'host' : ''}`}>
             <strong>{m.displayName}</strong>
-            <span>{m.text}</span>
+            <span>: {m.text}</span>
           </div>
         ))}
         <div ref={endRef} />

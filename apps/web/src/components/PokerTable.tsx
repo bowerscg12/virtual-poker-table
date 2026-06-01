@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import type { LobbySummary, PublicTableState } from '@vct/shared-types';
+import type { LobbySummary, PublicTableState, ChatMessage } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
@@ -8,11 +8,20 @@ import { useActionTimer } from '../hooks/useActionTimer';
 import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
 
+const BUBBLE_DURATION_MS = 5000;
+const BUBBLE_MAX_LENGTH = 120;
+
+interface ActiveBubble {
+  text: string;
+  key: string;
+}
+
 interface Props {
   lobby: LobbySummary | null;
   table: PublicTableState | null;
   myUserId?: string;
   anim: TableAnimState;
+  messages?: ChatMessage[];
 }
 
 interface ChipFlight {
@@ -38,7 +47,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 9;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
@@ -54,6 +63,46 @@ export function PokerTable({ lobby, table, myUserId, anim }: Props) {
   const intermissionRemaining = useActionTimer(table?.paused ? undefined : table?.intermissionDeadline);
   const timerSec = lobby?.settings.actionTimerSec ?? 0;
   const isUrgent = remaining !== null && remaining <= 10;
+
+  // ── Chat bubble state ─────────────────────────────────────
+  const [activeBubbles, setActiveBubbles] = useState<Map<string, ActiveBubble>>(new Map());
+  const bubbleTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const processedMsgCountRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!messages) return;
+    if (processedMsgCountRef.current === null) {
+      processedMsgCountRef.current = messages.length;
+      return;
+    }
+    const prev = processedMsgCountRef.current;
+    if (messages.length <= prev) return;
+    const newMessages = messages.slice(prev);
+    processedMsgCountRef.current = messages.length;
+
+    newMessages.forEach((msg) => {
+      const existing = bubbleTimers.current.get(msg.userId);
+      if (existing !== undefined) clearTimeout(existing);
+
+      setActiveBubbles((b) => new Map(b).set(msg.userId, { text: msg.text, key: msg.id }));
+
+      const tid = setTimeout(() => {
+        setActiveBubbles((b) => {
+          const next = new Map(b);
+          if (next.get(msg.userId)?.key === msg.id) next.delete(msg.userId);
+          return next;
+        });
+        bubbleTimers.current.delete(msg.userId);
+      }, BUBBLE_DURATION_MS);
+
+      bubbleTimers.current.set(msg.userId, tid);
+    });
+  }, [messages]);
+
+  useEffect(() => {
+    const timers = bubbleTimers.current;
+    return () => { timers.forEach((t) => clearTimeout(t)); };
+  }, []);
 
   // ── Chip flight state ─────────────────────────────────────
   const feltRef = useRef<HTMLDivElement>(null);
@@ -215,12 +264,21 @@ export function PokerTable({ lobby, table, myUserId, anim }: Props) {
             .filter(Boolean)
             .join(' ');
 
+          const bubble = seat.userId ? activeBubbles.get(seat.userId) : undefined;
+
           return (
             <li
               key={seat.seatIndex}
               className={seatClass}
               style={{ '--seat-x': `${x}%`, '--seat-y': `${y}%` } as React.CSSProperties}
             >
+              {bubble && (
+                <div key={bubble.key} className="chat-bubble" aria-live="polite">
+                  {bubble.text.length > BUBBLE_MAX_LENGTH
+                    ? bubble.text.slice(0, BUBBLE_MAX_LENGTH) + '…'
+                    : bubble.text}
+                </div>
+              )}
               <div className="seat-info">
                 {occupied && seat.avatar && (
                   <div className="seat-avatar">
