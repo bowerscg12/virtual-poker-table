@@ -27,6 +27,10 @@ jobs:
         image: redis:7-alpine
         ports:
           - 6379:6379
+    env:
+      DATABASE_URL: postgresql://vct:vct@localhost:5432/virtual_card_table
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-test-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,9 +38,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - run: npm run build -w @vct/shared-types
+      - run: npm run db:migrate -w @vct/game-server
       - run: npm run typecheck
       - run: npm run test
-        env:
-          DATABASE_URL: postgresql://vct:vct@localhost:5432/virtual_card_table
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: ci-test-secret
