@@ -21,6 +21,21 @@ interface StatsAccumulator {
   totalChipsPurchased: number;
   foldWinsShown: number;
   foldWinsMucked: number;
+  /** Hands where this player folded preflop */
+  preflopFoldsCount: number;
+  /** Hands where this player voluntarily put chips in preflop (call/raise/all_in) */
+  vpipHands: number;
+}
+
+/** Raw stats used to compute session-based superlative badges. */
+export interface SessionBadgeData {
+  userId: string;
+  handsPlayed: number;
+  callCount: number;
+  preflopFoldsCount: number;
+  vpipHands: number;
+  totalRaises: number;
+  totalChipsPurchased: number;
 }
 
 /** lobbyId → userId → accumulator */
@@ -31,6 +46,9 @@ const handStartStacks = new Map<string, Map<string, number>>();
 
 /** lobbyId → set of userIds who raised during the preflop street this hand */
 const preflopRaisers = new Map<string, Set<string>>();
+
+/** lobbyId → set of userIds who voluntarily put chips in preflop (call/raise/all_in) this hand */
+const preflopVolunteers = new Map<string, Set<string>>();
 
 function normalizeStartingHand(holeCards: Card[]): string {
   if (holeCards.length === 2) {
@@ -80,6 +98,8 @@ export function initSession(
     totalChipsPurchased: startingStack,
     foldWinsShown: 0,
     foldWinsMucked: 0,
+    preflopFoldsCount: 0,
+    vpipHands: 0,
   });
 }
 
@@ -88,8 +108,9 @@ export function recordHandStart(lobbyId: string, state: GameTableState): void {
   const lobbyMap = sessions.get(lobbyId);
   const startMap = new Map<string, number>();
 
-  // Reset per-hand preflop raiser tracking
+  // Reset per-hand preflop tracking
   preflopRaisers.set(lobbyId, new Set<string>());
+  preflopVolunteers.set(lobbyId, new Set<string>());
 
   for (const seat of state.seats) {
     startMap.set(seat.userId, seat.stack);
@@ -116,9 +137,18 @@ export function recordAction(
   if (!acc) return;
   acc.actionCounts[action] = (acc.actionCounts[action] ?? 0) + 1;
 
-  // Track preflop raises for PFR — only voluntary raises (not blinds/antes) reach this path
-  if (action === 'raise' && street === 'preflop') {
-    preflopRaisers.get(lobbyId)?.add(userId);
+  if (street === 'preflop') {
+    // PFR: raised preflop at least once this hand
+    if (action === 'raise') preflopRaisers.get(lobbyId)?.add(userId);
+    // VPIP: voluntarily put chips in preflop (call, raise, or all_in)
+    if (action === 'call' || action === 'raise' || action === 'all_in') {
+      preflopVolunteers.get(lobbyId)?.add(userId);
+    }
+    // Charlie: folded preflop (one fold per hand, so direct increment is safe)
+    if (action === 'fold') {
+      const acc = sessions.get(lobbyId)?.get(userId);
+      if (acc) acc.preflopFoldsCount++;
+    }
   }
 }
 
@@ -151,6 +181,7 @@ export function recordHandEnd(
   const winners = new Set(state.lastWinningSeatIndices);
   const variantModule = getVariantModule(config);
   const thisHandPreflopRaisers = preflopRaisers.get(lobbyId) ?? new Set<string>();
+  const thisHandPreflopVolunteers = preflopVolunteers.get(lobbyId) ?? new Set<string>();
 
   for (const seat of state.seats) {
     const acc = lobbyMap.get(seat.userId);
@@ -159,6 +190,8 @@ export function recordHandEnd(
     const stackBefore = startStacks?.get(seat.userId) ?? seat.stack;
     const delta = seat.stack - stackBefore;
     acc.handsPlayed++;
+
+    if (thisHandPreflopVolunteers.has(seat.userId)) acc.vpipHands++;
 
     if (winners.has(seat.seatIndex)) {
       acc.handsWon++;
@@ -194,6 +227,7 @@ export function recordHandEnd(
 
   handStartStacks.delete(lobbyId);
   preflopRaisers.delete(lobbyId);
+  preflopVolunteers.delete(lobbyId);
 }
 
 /** Compute the final CashOutSummary and clean up the player's stats entry. */
@@ -265,9 +299,25 @@ export function finalizeCashOut(
   return summary;
 }
 
+/** Returns lightweight stat snapshots for all seated players — used to compute superlative badges. */
+export function getSessionBadgeData(lobbyId: string): SessionBadgeData[] {
+  const lobbyMap = sessions.get(lobbyId);
+  if (!lobbyMap) return [];
+  return [...lobbyMap.values()].map((acc) => ({
+    userId: acc.userId,
+    handsPlayed: acc.handsPlayed,
+    callCount: acc.actionCounts.call,
+    preflopFoldsCount: acc.preflopFoldsCount,
+    vpipHands: acc.vpipHands,
+    totalRaises: acc.actionCounts.raise + acc.actionCounts.all_in,
+    totalChipsPurchased: acc.totalChipsPurchased,
+  }));
+}
+
 /** Remove all stats for a lobby (e.g., lobby closed). */
 export function clearLobbyStats(lobbyId: string): void {
   sessions.delete(lobbyId);
   handStartStacks.delete(lobbyId);
   preflopRaisers.delete(lobbyId);
+  preflopVolunteers.delete(lobbyId);
 }

@@ -4,6 +4,17 @@ export type Street = 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdo
 
 export type PlayerActionType = 'fold' | 'check' | 'call' | 'raise' | 'all_in' | 'flip_card';
 
+/** Table superlative badges awarded to a single clear leader in each category. */
+export type BadgeType =
+  | 'big_stack'       // current chip leader
+  | 'short_stack'     // current lowest chip count
+  | 'hot_streak'      // 3+ consecutive hand wins
+  | 'calling_station' // highest calls-per-hand rate this session
+  | 'charlie'         // highest preflop fold rate this session
+  | 'whale'           // largest net chip loss this session
+  | 'maniac'          // most raises this session
+  | 'loose_cannon';   // highest VPIP rate this session
+
 export interface PotInfo {
   amount: number;
   eligibleSeatIndices: number[];
@@ -27,6 +38,8 @@ export interface SeatGameState {
   shownCards?: Card[];
   /** Last action this player took — persists until their next action */
   lastAction?: { action: PlayerActionType; amount?: number };
+  /** Active superlative badges — computed server-side each broadcast */
+  badges?: BadgeType[];
 }
 
 export interface PublicTableState {

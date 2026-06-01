@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import type { Card, HandHistoryEntry, PlayerActionType, PublicTableState, VariantConfig } from '@vct/shared-types';
+import type { BadgeType, Card, HandHistoryEntry, PlayerActionType, PublicTableState, VariantConfig } from '@vct/shared-types';
 import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
@@ -16,6 +16,7 @@ import { tableSeats, users } from '../db/schema.js';
 import { keys, redisGet, redisSet } from '../store/redis.js';
 import { getMemoryLobby, isMemoryMode } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
+import { getSessionBadgeData } from './session-stats.js';
 
 interface SerializedGame extends Omit<GameTableState, 'processedActionIds' | 'seats' | 'revealedCards'> {
   processedActionIds: string[];
@@ -40,6 +41,9 @@ let dealerRotations = new Map<string, number>();
 
 /** Per-seat last action, keyed lobbyId → seatIndex. Cleared on street advance and new hand. */
 const seatLastActions = new Map<string, Map<number, { action: PlayerActionType; amount?: number }>>();
+
+/** Consecutive hand wins, keyed lobbyId → userId → streak count. Persists across hands. */
+const consecutiveWins = new Map<string, Map<string, number>>();
 
 function recordSeatLastAction(lobbyId: string, seatIndex: number, action: PlayerActionType, amount?: number): void {
   let m = seatLastActions.get(lobbyId);
@@ -250,10 +254,11 @@ export async function processGameAction(
 
   if (!result.ok) return { error: result.error };
 
-  // Clear all badges when the street advances; otherwise record this action's badge.
+  // Clear action badges when the street advances; update win streaks when hand ends.
   // state.street is still the pre-action street here (reassignment happens below).
   if (result.state.street !== state.street) {
     seatLastActions.delete(lobbyId);
+    if (result.state.street === 'complete') updateConsecutiveWins(lobbyId, result.state);
   } else if (action !== 'flip_card') {
     const badgeAmount = action === 'all_in' ? allInTotal : amount;
     recordSeatLastAction(lobbyId, actingSeatIndex, action, badgeAmount);
@@ -307,6 +312,112 @@ export function getHandHistories(lobbyId: string): HandHistoryEntry[] {
   return handHistories.get(lobbyId) ?? [];
 }
 
+/** Called when a hand completes; updates each player's consecutive-win streak. */
+function updateConsecutiveWins(lobbyId: string, state: GameTableState): void {
+  let m = consecutiveWins.get(lobbyId);
+  if (!m) { m = new Map(); consecutiveWins.set(lobbyId, m); }
+  const winners = new Set(state.lastWinningSeatIndices ?? []);
+  for (const seat of state.seats) {
+    if (winners.has(seat.seatIndex)) {
+      m.set(seat.userId, (m.get(seat.userId) ?? 0) + 1);
+    } else {
+      m.set(seat.userId, 0);
+    }
+  }
+}
+
+/**
+ * Computes which superlative badges each seat currently earns.
+ * Only awards a badge when there is a single clear leader — ties are never awarded.
+ */
+function computeBadges(lobbyId: string, state: GameTableState): Map<number, BadgeType[]> {
+  const result = new Map<number, BadgeType[]>();
+
+  function award(seatIndex: number, badge: BadgeType) {
+    const existing = result.get(seatIndex) ?? [];
+    result.set(seatIndex, [...existing, badge]);
+  }
+
+  // ── Stack-based (live, no session history needed) ─────────────────────────
+  if (state.seats.length >= 2) {
+    const maxStack = Math.max(...state.seats.map((s) => s.stack));
+    const bigStackers = state.seats.filter((s) => s.stack === maxStack);
+    if (bigStackers.length === 1) award(bigStackers[0].seatIndex, 'big_stack');
+
+    const withChips = state.seats.filter((s) => s.stack > 0);
+    if (withChips.length >= 2) {
+      const minStack = Math.min(...withChips.map((s) => s.stack));
+      const shortStackers = withChips.filter((s) => s.stack === minStack);
+      if (shortStackers.length === 1) award(shortStackers[0].seatIndex, 'short_stack');
+    }
+  }
+
+  // ── Hot streak (individual threshold, not comparative — multiple players can hold) ──
+  const streaks = consecutiveWins.get(lobbyId);
+  if (streaks) {
+    for (const seat of state.seats) {
+      if ((streaks.get(seat.userId) ?? 0) >= 3) award(seat.seatIndex, 'hot_streak');
+    }
+  }
+
+  // ── Session-based (require ≥2 seated players with data; ties → no badge) ──
+  const badgeData = getSessionBadgeData(lobbyId);
+  const seatedIds = new Set(state.seats.map((s) => s.userId));
+  const seated = badgeData.filter((d) => seatedIds.has(d.userId));
+  if (seated.length < 2) return result;
+
+  function seatIdxFor(userId: string): number | undefined {
+    return state.seats.find((s) => s.userId === userId)?.seatIndex;
+  }
+
+  /** Awards badge to the sole leader of a numeric score; skips if tied or all at minScore. */
+  function awardLeader(
+    scoreFn: (d: typeof seated[0]) => number,
+    minScore: number,
+    badge: BadgeType,
+    subset: typeof seated = seated,
+  ) {
+    if (subset.length < 2) return;
+    const scores = subset.map((d) => ({ userId: d.userId, score: scoreFn(d) }));
+    const max = Math.max(...scores.map((s) => s.score));
+    if (max <= minScore) return;
+    const leaders = scores.filter((s) => s.score === max);
+    if (leaders.length !== 1) return;
+    const si = seatIdxFor(leaders[0].userId);
+    if (si !== undefined) award(si, badge);
+  }
+
+  const withHands = seated.filter((d) => d.handsPlayed > 0);
+
+  // calling_station: highest calls per hand
+  awardLeader((d) => d.callCount / d.handsPlayed, 0, 'calling_station', withHands);
+
+  // charlie: highest preflop fold rate
+  awardLeader((d) => d.preflopFoldsCount / d.handsPlayed, 0, 'charlie', withHands);
+
+  // maniac: most total raises (raise + all_in)
+  awardLeader((d) => d.totalRaises, 0, 'maniac');
+
+  // loose_cannon: highest VPIP rate
+  awardLeader((d) => d.vpipHands / d.handsPlayed, 0, 'loose_cannon', withHands);
+
+  // whale: largest net chip loss (total invested − current stack)
+  const withLoss = seated.map((d) => {
+    const currentStack = state.seats.find((s) => s.userId === d.userId)?.stack ?? 0;
+    return { userId: d.userId, score: d.totalChipsPurchased - currentStack };
+  });
+  const maxLoss = Math.max(...withLoss.map((w) => w.score));
+  if (maxLoss > 0) {
+    const whales = withLoss.filter((w) => w.score === maxLoss);
+    if (whales.length === 1) {
+      const si = seatIdxFor(whales[0].userId);
+      if (si !== undefined) award(si, 'whale');
+    }
+  }
+
+  return result;
+}
+
 export function toPublicState(
   lobbyId: string,
   state: GameTableState,
@@ -322,6 +433,7 @@ export function toPublicState(
   const isTwelveCardFlip = config.game === 'twelve_card_flip';
   const showCards = state.street === 'showdown' || state.street === 'complete';
   const lastActions = seatLastActions.get(lobbyId);
+  const badges = computeBadges(lobbyId, state);
 
   const publicState: PublicTableState = {
     lobbyId,
@@ -342,6 +454,7 @@ export function toPublicState(
       isBigBlind: false,
       shownCards: showCards ? s.shownCards : undefined,
       lastAction: lastActions?.get(s.seatIndex),
+      badges: badges.get(s.seatIndex),
     })),
     pots: state.pots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
     dealerSeatIndex: state.dealerSeatIndex,
@@ -422,4 +535,5 @@ export function updateLastHandHistoryFoldWin(
 export function clearGame(lobbyId: string): void {
   activeGames.delete(lobbyId);
   seatLastActions.delete(lobbyId);
+  consecutiveWins.delete(lobbyId);
 }

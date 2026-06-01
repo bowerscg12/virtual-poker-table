@@ -2,6 +2,13 @@ import type { AuthResponse, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse
 
 const API = '/api';
 
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra };
+  const token = localStorage.getItem('vct_token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
 export async function guestLogin(displayName: string): Promise<AuthResponse> {
   let res: Response;
   try {
@@ -14,26 +21,46 @@ export async function guestLogin(displayName: string): Promise<AuthResponse> {
     throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
   }
   if (!res.ok) throw new Error('Login failed');
-  const data = (await res.json()) as AuthResponse;
-  localStorage.setItem('vct_token', data.token);
-  return data;
+  return res.json() as Promise<AuthResponse>;
 }
 
-export async function register(displayName: string, email: string, password: string): Promise<AuthResponse> {
-  const res = await fetch(`${API}/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName, email, password }),
-  });
-  if (!res.ok) throw new Error('Register failed');
-  const data = (await res.json()) as AuthResponse;
-  localStorage.setItem('vct_token', data.token);
-  return data;
+export async function loginAccount(email: string, password: string): Promise<AuthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
+  }
+  if (res.status === 401) throw new Error('Invalid email or password.');
+  if (!res.ok) throw new Error('Sign in failed. Please try again.');
+  return res.json() as Promise<AuthResponse>;
+}
+
+export async function registerAccount(displayName: string, email: string, password: string): Promise<AuthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName, email, password }),
+    });
+  } catch {
+    throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Registration failed. Please try again.');
+  }
+  return res.json() as Promise<AuthResponse>;
 }
 
 /**
  * Create a new table and enter it in one request.
- * No auth required — identity is created server-side.
+ * If the user is already authenticated, their existing identity is reused.
  * Returns user, token, sessionId, and the new lobby.
  */
 export async function createTableAndEnter(
@@ -45,7 +72,7 @@ export async function createTableAndEnter(
   try {
     res = await fetch(`${API}/lobbies`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ displayName, avatar, ...req }),
     });
   } catch {
@@ -64,16 +91,16 @@ export async function createTableAndEnter(
 }
 
 /**
- * Join an existing table by lobbyId with a chosen display name.
- * No auth required — identity is created server-side after name validation.
- * Throws with code 'NAME_TAKEN' if the name is already in use at this table.
+ * Join an existing table by lobbyId.
+ * If the user is already authenticated, their existing identity is reused.
+ * Throws with code 'NAME_TAKEN' if the name is already in use (unauthenticated path only).
  */
 export async function enterLobby(lobbyId: string, displayName: string, avatar?: AvatarConfig): Promise<EnterLobbyResponse> {
   let res: Response;
   try {
     res = await fetch(`${API}/lobbies/${lobbyId}/enter`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ displayName, avatar }),
     });
   } catch {

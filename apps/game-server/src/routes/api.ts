@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { CreateLobbyRequest } from '@vct/shared-types';
+import type { AuthUser, CreateLobbyRequest } from '@vct/shared-types';
 import { RULES_PRESETS } from '@vct/shared-types';
-import { guestLogin, loginUser, registerUser, toAuthResponse } from '../services/auth.js';
+import { guestLogin, getUserById, loginUser, registerUser, toAuthResponse } from '../services/auth.js';
 import {
   autoSeatPlayer,
   createLobby,
@@ -46,30 +46,52 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/auth/me', { onRequest: [app.authenticate] }, async (req) => {
     const userId = (req.user as { sub: string }).sub;
-    const { getUserById } = await import('../services/auth.js');
     const user = await getUserById(userId);
     if (!user) throw app.httpErrors.notFound();
     return { user };
   });
 
+  /** Try to extract an existing authenticated user from the request JWT. Returns null if missing/invalid. */
+  async function tryGetAuthUser(req: Parameters<typeof app.authenticate>[0]): Promise<AuthUser | null> {
+    try {
+      await req.jwtVerify();
+      const userId = (req.user as { sub: string }).sub;
+      return getUserById(userId);
+    } catch {
+      return null;
+    }
+  }
+
   /**
-   * Create a new table. Identity is created here — no JWT required.
-   * Body: { displayName, presetId?, settings? }
+   * Create a new table.
+   * If a valid JWT is provided, the existing user is reused (no new guest created).
+   * Otherwise a guest user is created from the displayName in the body.
+   * Body: { displayName?, presetId?, settings? }
    * Returns: { user, token, sessionId, lobby }
    */
   app.post('/lobbies', async (req, reply) => {
     const body = z
       .object({
-        displayName: displayNameSchema,
+        displayName: displayNameSchema.optional(),
         presetId: z.string().optional(),
         settings: z.any().optional(),
         avatar: z.any().optional(),
       })
       .parse(req.body);
 
-    const user = await guestLogin(body.displayName, body.avatar);
-    const token = await reply.jwtSign({ sub: user.id });
+    const authUser = await tryGetAuthUser(req);
+    let user: AuthUser;
 
+    if (authUser) {
+      user = authUser;
+    } else {
+      if (!body.displayName) {
+        return reply.status(400).send({ error: 'Display name required' });
+      }
+      user = await guestLogin(body.displayName, body.avatar);
+    }
+
+    const token = await reply.jwtSign({ sub: user.id });
     const lobbyReq: CreateLobbyRequest = { presetId: body.presetId, settings: body.settings };
     try {
       const lobby = await createLobby(user.id, lobbyReq);
@@ -81,27 +103,57 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Join an existing table. Identity is created here — no JWT required.
-   * Validates name uniqueness before creating the player.
-   * Body: { displayName }
+   * Join an existing table.
+   * If a valid JWT is provided, the existing user is reused and name checks are skipped.
+   * Otherwise a guest user is created after name uniqueness validation.
+   * Body: { displayName?, avatar? }
    * Returns: { user, token, sessionId }
    */
   app.post('/lobbies/:id/enter', async (req, reply) => {
     const { id: lobbyId } = req.params as { id: string };
-    const body = z.object({ displayName: displayNameSchema, avatar: z.any().optional() }).parse(req.body);
+    const body = z.object({ displayName: displayNameSchema.optional(), avatar: z.any().optional() }).parse(req.body);
 
     const lobby = await getLobbyById(lobbyId);
     if (!lobby) return reply.status(404).send({ error: 'Lobby not found' });
 
+    const authUser = await tryGetAuthUser(req);
+
+    if (authUser) {
+      // Authenticated path — skip name uniqueness check, use existing identity
+      return withLobbyEntryLock(lobbyId, async () => {
+        const freshLobby = await getLobbyById(lobbyId);
+        if (!freshLobby) return reply.status(404).send({ error: 'Lobby not found' });
+
+        const alreadySeated = freshLobby.seats.some((s) => s.userId === authUser.id);
+        const hasOpenSeat = alreadySeated || freshLobby.seats.some((s) => !s.userId);
+        if (!hasOpenSeat) {
+          return reply.status(409).send({ error: 'Table is full', code: 'TABLE_FULL' });
+        }
+
+        const seatResult = await autoSeatPlayer(lobbyId, authUser.id, authUser.displayName);
+        if (!seatResult || 'error' in seatResult) {
+          const r = seatResult as { error: string; code?: string } | null;
+          return reply.status(409).send({ error: r?.error ?? 'Could not join table', code: r?.code ?? 'SEAT_FAILED' });
+        }
+
+        const token = await reply.jwtSign({ sub: authUser.id });
+        const sessionId = await createSession(authUser.id, lobbyId);
+        return { user: authUser, token, sessionId };
+      });
+    }
+
+    // Guest path — existing behavior
     return withLobbyEntryLock(lobbyId, async () => {
-      // Re-fetch inside the lock for a consistent snapshot
       const freshLobby = await getLobbyById(lobbyId);
       if (!freshLobby) return reply.status(404).send({ error: 'Lobby not found' });
 
-      // Reject if table is full
       const hasOpenSeat = freshLobby.seats.some((s) => !s.userId);
       if (!hasOpenSeat) {
         return reply.status(409).send({ error: 'Table is full', code: 'TABLE_FULL' });
+      }
+
+      if (!body.displayName) {
+        return reply.status(400).send({ error: 'Display name required' });
       }
 
       // Name uniqueness check — case-insensitive, trimmed
@@ -116,7 +168,6 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // All checks passed — create user, seat, and session
       const user = await guestLogin(body.displayName, body.avatar);
       const seatResult = await autoSeatPlayer(lobbyId, user.id, body.displayName);
       if (!seatResult || 'error' in seatResult) {

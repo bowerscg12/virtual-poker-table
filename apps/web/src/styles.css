@@ -99,6 +99,114 @@ a {
   margin: 1rem 0 0.5rem;
 }
 
+/* ── Login page ─────────────────────────────────────────────────────────── */
+
+.login-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.login-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.login-tab {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(245, 245, 240, 0.6);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.login-tab:hover {
+  color: var(--text);
+}
+
+.login-tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+.login-form {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.88rem;
+  color: rgba(245, 245, 240, 0.75);
+  margin-bottom: 0.25rem;
+}
+
+.login-form label input {
+  margin: 0;
+}
+
+.login-form .btn.primary {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  font-size: 1rem;
+}
+
+/* ── Home identity row ───────────────────────────────────────────────────── */
+
+.home-identity-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+}
+
+.home-user-name {
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.home-user-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+
+/* ── Name-display (read-only name in NameSelectionPage) ─────────────────── */
+
+.name-display {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.6rem;
+  margin: 0.5rem 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.name-display-label {
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+.name-display-value {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
 .home .actions {
   margin: 1rem 0;
 }
@@ -1177,6 +1285,88 @@ select {
   color: #ff8c42;
   background: rgba(255, 140, 66, 0.15);
   border-color: rgba(255, 140, 66, 0.35);
+}
+
+/* ── Superlative badges ───────────────────────────────────── */
+
+.seat-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.seat-badge {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.seat-badge:hover,
+.seat-badge.tip-active {
+  transform: scale(1.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+  z-index: 20;
+}
+
+/* Per-badge colours */
+.seat-badge--big_stack       { background: rgba(212, 175, 55, 0.85); }
+.seat-badge--short_stack     { background: rgba(180, 55, 55, 0.85); }
+.seat-badge--hot_streak      { background: rgba(220, 95, 0, 0.85); }
+.seat-badge--calling_station { background: rgba(45, 115, 195, 0.85); }
+.seat-badge--charlie         { background: rgba(90, 90, 90, 0.85); }
+.seat-badge--whale           { background: rgba(25, 75, 155, 0.85); }
+.seat-badge--maniac          { background: rgba(175, 35, 55, 0.85); }
+.seat-badge--loose_cannon    { background: rgba(115, 50, 175, 0.85); }
+
+/* Tooltip */
+.seat-badge-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(12, 12, 12, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e8e8e8;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  padding: 4px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 200;
+}
+
+.seat-badge:hover .seat-badge-tip,
+.seat-badge.tip-active .seat-badge-tip {
+  display: block;
+}
+
+/* Tooltip arrow */
+.seat-badge-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.18);
 }
 
 .seat-timer {

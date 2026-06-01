@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import type { LobbySummary, PublicTableState, ChatMessage, PlayerActionType } from '@vct/shared-types';
+import type { BadgeType, LobbySummary, PublicTableState, ChatMessage, PlayerActionType } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
@@ -7,6 +7,28 @@ import { AvatarSvg } from './AvatarSvg';
 import { useActionTimer } from '../hooks/useActionTimer';
 import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
+
+const BADGE_ICON: Record<BadgeType, string> = {
+  big_stack:       '👑',
+  short_stack:     '💸',
+  hot_streak:      '🔥',
+  calling_station: '📞',
+  charlie:         '✂',
+  whale:           '🐋',
+  maniac:          '💣',
+  loose_cannon:    '🎯',
+};
+
+const BADGE_LABEL: Record<BadgeType, string> = {
+  big_stack:       'Big Stack — chip leader at the table',
+  short_stack:     'Short Stack — fewest chips at the table',
+  hot_streak:      'Hot Streak — 3+ wins in a row',
+  calling_station: 'Calling Station — calls the most per hand',
+  charlie:         'Charlie — folds preflop the most',
+  whale:           'Whale — biggest chip loss this session',
+  maniac:          'Maniac — raises the most this session',
+  loose_cannon:    'Loose Cannon — plays the most hands (VPIP)',
+};
 
 function formatActionBadge(action: PlayerActionType, amount?: number): string {
   switch (action) {
@@ -74,6 +96,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
   const intermissionRemaining = useActionTimer(table?.paused ? undefined : table?.intermissionDeadline);
   const timerSec = lobby?.settings.actionTimerSec ?? 0;
   const isUrgent = remaining !== null && remaining <= 10;
+
+  // ── Badge tooltip state (seatIndex:badge key, or null) ───
+  const [activeBadgeTip, setActiveBadgeTip] = useState<string | null>(null);
 
   // ── Chat bubble state ─────────────────────────────────────
   const [activeBubbles, setActiveBubbles] = useState<Map<string, ActiveBubble>>(new Map());
@@ -186,7 +211,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
   }
 
   return (
-    <div className="felt" ref={feltRef} role="region" aria-label="Poker table">
+    <div className="felt" ref={feltRef} role="region" aria-label="Poker table" onPointerDown={() => setActiveBadgeTip(null)}>
       {table?.paused && (
         <div className="pause-overlay">
           <span>Game Paused</span>
@@ -311,6 +336,29 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                   <span className={`action-badge action-badge--${gs.lastAction.action}`}>
                     {formatActionBadge(gs.lastAction.action, gs.lastAction.amount)}
                   </span>
+                )}
+                {occupied && gs?.badges && gs.badges.length > 0 && (
+                  <div className="seat-badges">
+                    {gs.badges.map((badge) => {
+                      const tipKey = `${seat.seatIndex}:${badge}`;
+                      const tipActive = activeBadgeTip === tipKey;
+                      return (
+                        <span
+                          key={badge}
+                          className={`seat-badge seat-badge--${badge}${tipActive ? ' tip-active' : ''}`}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            setActiveBadgeTip(tipActive ? null : tipKey);
+                          }}
+                          role="img"
+                          aria-label={BADGE_LABEL[badge]}
+                        >
+                          {BADGE_ICON[badge]}
+                          <span className="seat-badge-tip">{BADGE_LABEL[badge]}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
                 )}
                 {isActor && remaining !== null && timerSec > 0 && (
                   <span className={`seat-timer${isUrgent ? ' urgent' : ''}`}>

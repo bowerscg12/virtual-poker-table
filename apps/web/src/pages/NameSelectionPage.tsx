@@ -44,16 +44,20 @@ export default function NameSelectionPage() {
   const { lobbyId } = useParams<{ lobbyId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { setAuthDirect } = useAuth();
+  const { user, setAuthDirect } = useAuth();
 
   const state = (location.state ?? null) as LocationState;
   const isCreate = state?.mode === 'create';
 
-  const [name, setName] = useState('');
+  // Pre-fill name from the authenticated user's display name
+  const [name, setName] = useState(() => user?.displayName ?? '');
   const [avatar, setAvatar] = useState<AvatarConfig>(loadSavedAvatar);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [lobbyName, setLobbyName] = useState<string | null>(null);
+
+  // Name is fixed for registered (non-guest) accounts
+  const nameIsFixed = user != null && !user.isGuest;
 
   // Redirect to home if we're in create mode but have no settings state
   useEffect(() => {
@@ -117,31 +121,40 @@ export default function NameSelectionPage() {
   }
 
   const subtitle = isCreate
-    ? 'Pick the display name others will see at your table.'
+    ? 'Customize your avatar for this table.'
     : lobbyName
     ? `Joining ${lobbyName}`
-    : 'Choose your name for this table.';
+    : 'Customize your avatar for this table.';
 
   return (
     <div className="page">
       <form className="panel" onSubmit={handleSubmit}>
-        <h2>Create your player</h2>
+        <h2>Customize your player</h2>
         <p className="field-hint">{subtitle}</p>
 
-        <input
-          type="text"
-          placeholder="Your display name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value.slice(0, 10));
-            if (error) setError(null);
-          }}
-          maxLength={10}
-          autoComplete="nickname"
-          autoFocus
-          disabled={loading}
-        />
-        <p className="field-hint">Max 10 characters.</p>
+        {nameIsFixed ? (
+          <div className="name-display">
+            <span className="name-display-label">Playing as</span>
+            <span className="name-display-value">{name}</span>
+          </div>
+        ) : (
+          <>
+            <input
+              type="text"
+              placeholder="Your display name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value.slice(0, 10));
+                if (error) setError(null);
+              }}
+              maxLength={10}
+              autoComplete="nickname"
+              autoFocus
+              disabled={loading}
+            />
+            <p className="field-hint">Max 10 characters.</p>
+          </>
+        )}
 
         {error && (
           <p className="form-error" role="alert">
