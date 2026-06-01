@@ -1,9 +1,0 @@
-.git
-**/node_modules
-apps/web/src
-apps/web/public
-apps/web/dist
-apps/web/.vite
-**/.DS_Store
-.env*
-*.local
