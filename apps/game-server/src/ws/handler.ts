@@ -220,7 +220,7 @@ function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: Game
   const timerSec = config.actionTimerSec;
   if (!timerSec || timerSec <= 0) return;
   if (state.actionSeatIndex === null) return;
-  if (state.street === 'complete' || state.street === 'waiting') return;
+  if (state.street === 'complete' || state.street === 'waiting' || state.street === 'reveal') return;
 
   const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
   if (!seat || seat.folded || seat.allIn) return;
@@ -277,7 +277,8 @@ async function onIntermissionExpired(lobbyId: string, config: VariantConfig): Pr
 
   // Guard: bail if a hand is already in progress (e.g. duplicate callback race)
   const existing = await getActiveGame(lobbyId);
-  if (existing && existing.street !== 'complete' && existing.street !== 'waiting') return;
+  const activeStreets = ['preflop', 'flop', 'turn', 'river', 'showdown', 'reveal'] as const;
+  if (existing && (activeStreets as readonly string[]).includes(existing.street)) return;
 
   const result = await startHand(lobbyId, config);
   if ('error' in result) {
@@ -341,22 +342,23 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
     }
   }
 
-  // Auto-fold if it is this player's turn so the hand can continue
+  // Auto-act if it is this player's turn so the hand can continue
   const game = await getActiveGame(lobbyId);
   if (game) {
     const seat = game.seats.find((s) => s.userId === userId);
     if (seat && game.actionSeatIndex === seat.seatIndex && !seat.folded && !seat.allIn) {
       const lobby = await getLobbyById(lobbyId);
       if (lobby) {
+        const autoAction = getAutoAction(game, lobby.settings, seat.seatIndex);
         const result = await processGameAction(
           lobbyId,
           lobby.settings,
           userId,
           crypto.randomUUID(),
-          'fold'
+          autoAction
         );
         if (!('error' in result)) {
-          recordAction(lobbyId, userId, 'fold', game.street);
+          recordAction(lobbyId, userId, autoAction, game.street);
 
           if (result.state.street === 'complete') {
             await handleHandComplete(lobbyId, result.state, lobby.settings);

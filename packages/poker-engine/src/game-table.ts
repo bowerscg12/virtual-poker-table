@@ -29,6 +29,8 @@ export interface GameTableState {
   processedActionIds: Set<string>;
   bombPotActive: boolean;
   pendingActionSeatIndices: number[];
+  /** Revealed cards per seat (keyed by seatIndex) — only used for twelve_card_flip */
+  revealedCards?: Record<number, Card[]>;
 }
 
 export function createInitialTable(

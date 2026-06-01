@@ -3,8 +3,12 @@ import type { Card, HandHistoryEntry, PlayerActionType, PublicTableState, Varian
 import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
+  applyFlipCard,
   createInitialTable,
+  createTwelveCardFlipState,
   getLegalActionsForSeat,
+  getTwelveCardFlipLegalActions,
+  getTwelveCardFlipRevealInfo,
   type GameTableState,
 } from '@vct/poker-engine';
 import { getDb } from '../db/client.js';
@@ -13,7 +17,7 @@ import { keys, redisGet, redisSet } from '../store/redis.js';
 import { getMemoryLobby, isMemoryMode } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
 
-interface SerializedGame extends Omit<GameTableState, 'processedActionIds' | 'seats'> {
+interface SerializedGame extends Omit<GameTableState, 'processedActionIds' | 'seats' | 'revealedCards'> {
   processedActionIds: string[];
   seats: Array<{
     seatIndex: number;
@@ -27,6 +31,7 @@ interface SerializedGame extends Omit<GameTableState, 'processedActionIds' | 'se
     holeCards: Card[];
     shownCards?: Card[];
   }>;
+  revealedCards?: Record<string, Card[]>;
 }
 
 const activeGames = new Map<string, GameTableState>();
@@ -63,30 +68,39 @@ export function clearIntermissionDeadline(lobbyId: string): void {
   intermissionDeadlines.delete(lobbyId);
 }
 
-/** Returns 'check' if legal for the seat, otherwise 'fold'. Used by the action timer auto-action. */
+/** Returns the auto action for a timer expiry. For twelve_card_flip, auto-flips. */
 export function getAutoAction(
   state: GameTableState,
   config: VariantConfig,
   seatIndex: number
 ): PlayerActionType {
+  if (config.game === 'twelve_card_flip') return 'flip_card';
   const legal = getLegalActionsForSeat(state, config, seatIndex);
   return legal.some((a) => a.type === 'check') ? 'check' : 'fold';
 }
 
 function serialize(state: GameTableState): SerializedGame {
+  const revealedCards: Record<string, Card[]> | undefined = state.revealedCards
+    ? Object.fromEntries(Object.entries(state.revealedCards).map(([k, v]) => [k, v]))
+    : undefined;
   return {
     ...state,
     processedActionIds: [...state.processedActionIds],
     seats: state.seats.map((s) => ({ ...s, holeCards: s.holeCards })),
+    revealedCards,
   };
 }
 
 function deserialize(data: SerializedGame): GameTableState {
+  const revealedCards: Record<number, Card[]> | undefined = data.revealedCards
+    ? Object.fromEntries(Object.entries(data.revealedCards).map(([k, v]) => [Number(k), v as Card[]]))
+    : undefined;
   return {
     ...data,
     processedActionIds: new Set(data.processedActionIds),
     seats: data.seats.map((s) => ({ ...s })),
     pendingActionSeatIndices: data.pendingActionSeatIndices ?? [],
+    revealedCards,
   };
 }
 
@@ -139,6 +153,10 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
   const players = await seatedPlayers(lobbyId);
   if (players.length < 2) return { error: 'Need at least 2 players' };
 
+  if (config.game === 'twelve_card_flip' && players.length !== 2) {
+    return { error: '12 Card Flip requires exactly 2 players' };
+  }
+
   const prevDealer = dealerRotations.get(lobbyId) ?? -1;
   const indices = players.map((p) => p.seatIndex).sort((a, b) => a - b);
   const nextDealerIdx = indices.find((i) => i > prevDealer) ?? indices[0];
@@ -147,7 +165,11 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
   const handNumber = (activeGames.get(lobbyId)?.handNumber ?? 0) + 1;
   const rng = () => randomBytes(4).readUInt32BE(0) / 0xffffffff;
 
-  const state = createInitialTable(players, config, handNumber, nextDealerIdx, rng);
+  const state =
+    config.game === 'twelve_card_flip'
+      ? createTwelveCardFlipState(players, config, handNumber, rng)
+      : createInitialTable(players, config, handNumber, nextDealerIdx, rng);
+
   await persistGame(lobbyId, state);
   syncStacksToLobby(lobbyId, state);
   return state;
@@ -203,7 +225,15 @@ export async function processGameAction(
   const seat = state.seats.find((s) => s.userId === userId);
   if (!seat) return { error: 'Not seated' };
 
-  const result = applyAction(state, config, seat.seatIndex, action, amount, actionId);
+  let result: { ok: true; state: GameTableState } | { ok: false; error: string };
+
+  if (config.game === 'twelve_card_flip') {
+    if (action !== 'flip_card') return { error: 'Only flip_card is allowed in 12 Card Flip' };
+    result = applyFlipCard(state, seat.seatIndex, actionId);
+  } else {
+    result = applyAction(state, config, seat.seatIndex, action, amount, actionId);
+  }
+
   if (!result.ok) return { error: result.error };
 
   state = result.state;
@@ -265,6 +295,9 @@ export function toPublicState(
 ): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
+  const isTwelveCardFlip = config.game === 'twelve_card_flip';
+  const showCards = state.street === 'showdown' || state.street === 'complete';
+
   const publicState: PublicTableState = {
     lobbyId: '',
     handNumber: state.handNumber,
@@ -282,7 +315,7 @@ export function toPublicState(
       isDealer: s.seatIndex === state.dealerSeatIndex,
       isSmallBlind: false,
       isBigBlind: false,
-      shownCards: state.street === 'showdown' || state.street === 'complete' ? s.shownCards : undefined,
+      shownCards: showCards ? s.shownCards : undefined,
     })),
     pots: state.pots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
     dealerSeatIndex: state.dealerSeatIndex,
@@ -292,16 +325,23 @@ export function toPublicState(
     actionDeadline: actionDeadline ?? undefined,
     intermissionDeadline: intermissionDeadline ?? undefined,
     paused: paused ?? false,
+    flipReveal: isTwelveCardFlip && state.street !== 'waiting'
+      ? getTwelveCardFlipRevealInfo(state)
+      : undefined,
   };
 
   if (isSpectator || !viewerSeat) {
     return { public: publicState };
   }
 
-  const legalActions =
-    state.actionSeatIndex === viewerSeat.seatIndex
-      ? getLegalActionsForSeat(state, config, viewerSeat.seatIndex)
-      : [];
+  let legalActions: import('@vct/shared-types').LegalAction[] = [];
+  if (state.actionSeatIndex === viewerSeat.seatIndex) {
+    if (isTwelveCardFlip) {
+      legalActions = getTwelveCardFlipLegalActions(state, viewerSeat.seatIndex);
+    } else {
+      legalActions = getLegalActionsForSeat(state, config, viewerSeat.seatIndex);
+    }
+  }
 
   return {
     public: publicState,

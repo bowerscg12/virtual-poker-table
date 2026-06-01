@@ -1,4 +1,4 @@
-export type GameVariant = 'holdem' | 'omaha' | 'plo8' | 'stud';
+export type GameVariant = 'holdem' | 'omaha' | 'plo8' | 'stud' | 'twelve_card_flip';
 export type BettingLimit = 'no_limit' | 'pot_limit' | 'fixed';
 export type MaxPlayers = 2 | 6 | 9;
 
@@ -43,6 +43,8 @@ export interface VariantConfig {
   actionTimerSec?: number;
   /** Extra community cards dealt in one street (house preset) */
   extraFlopCards?: number;
+  /** Bomb pot ante per player for twelve_card_flip (defaults to buyIn) */
+  twelveCardFlipAnte?: number;
 }
 
 /** Stack chips granted when a player sits (host-configured). */

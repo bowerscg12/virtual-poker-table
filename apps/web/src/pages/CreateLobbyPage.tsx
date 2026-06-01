@@ -51,6 +51,7 @@ export default function CreateLobbyPage() {
 
   const selectedPreset = presets.find((preset) => preset.id === presetId) ?? presets[0];
   const isHoldem = selectedPreset?.config.game === 'holdem';
+  const isTwelveCardFlip = selectedPreset?.config.game === 'twelve_card_flip';
   const hasPreset = !!selectedPreset;
 
   const parsedBuyIn = parsePositiveInt(buyIn);
@@ -60,7 +61,7 @@ export default function CreateLobbyPage() {
 
   const isValidBuyIn =
     parsedBuyIn !== null && parsedBuyIn >= 10 && parsedBuyIn <= 10000 && parsedBuyIn % 5 === 0;
-  const isValidBlinds = parsedSmallBlind !== null && parsedBigBlind !== null;
+  const isValidBlinds = isTwelveCardFlip || (parsedSmallBlind !== null && parsedBigBlind !== null);
   const isValidStraddle =
     !isHoldem ||
     !straddleEnabled ||
@@ -99,12 +100,31 @@ export default function CreateLobbyPage() {
 
   function handleNext(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedPreset || !isFormValid || parsedBuyIn === null || parsedSmallBlind === null || parsedBigBlind === null) {
+    if (!selectedPreset || !isFormValid || parsedBuyIn === null) {
       setError('Please enter valid buy-in and blind values before continuing.');
       return;
     }
 
     const base: VariantConfig = selectedPreset.config;
+
+    if (isTwelveCardFlip) {
+      const settings: VariantConfig = {
+        ...base,
+        buyIn: parsedBuyIn,
+        minBuyIn: parsedBuyIn,
+        maxBuyIn: parsedBuyIn,
+        twelveCardFlipAnte: parsedBuyIn,
+        actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
+      };
+      navigate('/name', { state: { mode: 'create', presetId, settings } });
+      return;
+    }
+
+    if (parsedSmallBlind === null || parsedBigBlind === null) {
+      setError('Please enter valid blind values before continuing.');
+      return;
+    }
+
     const settings: VariantConfig = {
       ...base,
       buyIn: parsedBuyIn,
@@ -156,6 +176,13 @@ export default function CreateLobbyPage() {
           />
         </label>
 
+        {isTwelveCardFlip && (
+          <p className="twelve-card-flip-note">
+            Heads-up bomb-pot: both players ante the buy-in amount before cards are dealt. No blinds, no folding.
+          </p>
+        )}
+
+        {!isTwelveCardFlip && (
         <fieldset className="settings-group">
           <legend>Blinds</legend>
           <label>
@@ -193,6 +220,7 @@ export default function CreateLobbyPage() {
             />
           </label>
         </fieldset>
+        )}
 
         {isHoldem && (
           <fieldset className="settings-group">

@@ -12,6 +12,7 @@ export interface ActionCounts {
   call: number;
   raise: number;
   all_in: number;
+  flip_card: number;
 }
 
 export interface CashOutSummary {

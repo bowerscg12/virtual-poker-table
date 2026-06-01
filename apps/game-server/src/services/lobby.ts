@@ -143,19 +143,22 @@ function validateSettings(settings: VariantConfig): void {
   if (!isValidBuyIn(buyIn)) {
     throw new Error('Buy-in must be between 10 and 10000 in increments of 5');
   }
-  if (!isPositiveInteger(settings.blinds.small) || !isPositiveInteger(settings.blinds.big)) {
-    throw new Error('Blind amounts must be positive integers');
-  }
-  if (settings.blinds.ante !== undefined && !isPositiveInteger(settings.blinds.ante)) {
-    throw new Error('Ante must be a positive integer');
-  }
-  if (settings.game === 'holdem' && settings.straddle) {
-    const straddleAmount = settings.straddleAmount ?? settings.blinds.big;
-    if (!isPositiveInteger(straddleAmount)) {
-      throw new Error('Straddle amount must be a positive integer');
+  // twelve_card_flip uses a bomb pot ante instead of blinds; skip blind validation
+  if (settings.game !== 'twelve_card_flip') {
+    if (!isPositiveInteger(settings.blinds.small) || !isPositiveInteger(settings.blinds.big)) {
+      throw new Error('Blind amounts must be positive integers');
     }
-    if (straddleAmount < settings.blinds.big) {
-      throw new Error('Straddle amount must be at least the big blind');
+    if (settings.blinds.ante !== undefined && !isPositiveInteger(settings.blinds.ante)) {
+      throw new Error('Ante must be a positive integer');
+    }
+    if (settings.game === 'holdem' && settings.straddle) {
+      const straddleAmount = settings.straddleAmount ?? settings.blinds.big;
+      if (!isPositiveInteger(straddleAmount)) {
+        throw new Error('Straddle amount must be a positive integer');
+      }
+      if (straddleAmount < settings.blinds.big) {
+        throw new Error('Straddle amount must be at least the big blind');
+      }
     }
   }
 }

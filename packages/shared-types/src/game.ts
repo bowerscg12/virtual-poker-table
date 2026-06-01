@@ -1,8 +1,8 @@
 import type { Card } from './cards.js';
 
-export type Street = 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'complete';
+export type Street = 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'complete' | 'reveal';
 
-export type PlayerActionType = 'fold' | 'check' | 'call' | 'raise' | 'all_in';
+export type PlayerActionType = 'fold' | 'check' | 'call' | 'raise' | 'all_in' | 'flip_card';
 
 export interface PotInfo {
   amount: number;
@@ -43,6 +43,15 @@ export interface PublicTableState {
   /** ISO deadline for next auto-hand start (set during between-hand intermission) */
   intermissionDeadline?: string;
   paused: boolean;
+  /** Present only for twelve_card_flip hands during reveal phase */
+  flipReveal?: {
+    /** Revealed cards per seat, parallel to the seats array */
+    revealedCards: Card[][];
+    /** Best hand description per seat (null if no cards revealed yet) */
+    bestHands: (string | null)[];
+    /** Seat index of the current leader, or null if tied / no cards revealed */
+    leadingSeatIndex: number | null;
+  };
 }
 
 export interface PrivateTableState {

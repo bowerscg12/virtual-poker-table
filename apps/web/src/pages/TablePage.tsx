@@ -8,6 +8,7 @@ import { getLobbyById } from '../api/client';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { useTableAnimations } from '../hooks/useTableAnimations';
 import { PokerTable } from '../components/PokerTable';
+import { TwelveCardFlip } from '../components/TwelveCardFlip';
 import { ActionBar } from '../components/ActionBar';
 import { CardView } from '../components/CardView';
 import { ChatPanel } from '../components/ChatPanel';
@@ -151,14 +152,30 @@ export default function TablePage() {
       {error && <div className="banner error">{error}</div>}
 
       <main className="table-main">
-        <PokerTable
-          lobby={headerLobby}
-          table={table}
-          myUserId={user?.id}
-          anim={anim}
-        />
+        {headerLobby?.settings.game === 'twelve_card_flip' ? (
+          <TwelveCardFlip
+            lobby={headerLobby}
+            table={table}
+            myUserId={user?.id}
+            privateHoleCards={privateState?.holeCards ?? []}
+            legalActions={privateState?.legalActions ?? []}
+            onAction={(action) => {
+              send({ type: 'game_action', actionId: crypto.randomUUID(), action });
+            }}
+            anim={anim}
+            isHost={!!isHost}
+            onDealAgain={() => send({ type: 'host_start' })}
+          />
+        ) : (
+          <PokerTable
+            lobby={headerLobby}
+            table={table}
+            myUserId={user?.id}
+            anim={anim}
+          />
+        )}
 
-        {!mySeat && headerLobby && token && connected && (
+        {!mySeat && headerLobby && token && connected && headerLobby.settings.game !== 'twelve_card_flip' && (
           <div className="sit-panel panel">
             {tableFull ? (
               <p>Table is full. Wait for a seat to open.</p>
@@ -184,8 +201,9 @@ export default function TablePage() {
       )}
 
       {/* Compact player tray — portalled to document.body so no ancestor transform/filter
-          can break position:fixed. Cards always anchor to the bottom via column-reverse. */}
-      {mySeat && createPortal(
+          can break position:fixed. Cards always anchor to the bottom via column-reverse.
+          Hidden for twelve_card_flip which has its own in-component card display. */}
+      {mySeat && headerLobby?.settings.game !== 'twelve_card_flip' && createPortal(
         <div className="player-tray">
           {/* 1st in DOM = renders at bottom */}
           <div className="player-tray__cards-row">

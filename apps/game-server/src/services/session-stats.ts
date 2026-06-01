@@ -13,7 +13,7 @@ interface StatsAccumulator {
   biggestLoss: number;
   bestHand: EvaluatedHand | null;
   startingHandCounts: Map<string, number>;
-  actionCounts: { fold: number; check: number; call: number; raise: number; all_in: number };
+  actionCounts: { fold: number; check: number; call: number; raise: number; all_in: number; flip_card: number };
   totalPotsWon: number;
   potsWonCount: number;
   pfrHandsRaised: number;
@@ -72,7 +72,7 @@ export function initSession(
     biggestLoss: 0,
     bestHand: null,
     startingHandCounts: new Map(),
-    actionCounts: { fold: 0, check: 0, call: 0, raise: 0, all_in: 0 },
+    actionCounts: { fold: 0, check: 0, call: 0, raise: 0, all_in: 0, flip_card: 0 },
     totalPotsWon: 0,
     potsWonCount: 0,
     pfrHandsRaised: 0,
@@ -247,7 +247,7 @@ export function finalizeCashOut(
     bestHandRank: acc?.bestHand?.rank ?? null,
     bestHandCards: acc?.bestHand?.bestFive ?? null,
     mostCommonStartingHand,
-    actionCounts: acc?.actionCounts ?? { fold: 0, check: 0, call: 0, raise: 0, all_in: 0 },
+    actionCounts: acc?.actionCounts ?? { fold: 0, check: 0, call: 0, raise: 0, all_in: 0, flip_card: 0 },
     sessionDurationMs,
     averagePotWon: acc && acc.potsWonCount > 0 ? acc.totalPotsWon / acc.potsWonCount : 0,
     pfrHandsRaised,

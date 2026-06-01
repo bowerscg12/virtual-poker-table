@@ -174,6 +174,49 @@ export function bestHand(cards: Card[]): EvaluatedHand {
   return best!;
 }
 
+/**
+ * Evaluate the best possible hand from any number of cards (including < 5).
+ * Returns null for 0 cards, otherwise returns the best classification possible
+ * using available card count (no flush/straight when < 5 cards).
+ */
+export function evaluateBestAvailable(cards: Card[]): EvaluatedHand | null {
+  if (cards.length === 0) return null;
+  if (cards.length >= 5) return bestHand(cards);
+
+  const parsed = cards.map((c) => ({ card: c, ...parseCard(c), value: rankValue(parseCard(c).rank) }));
+  const values = parsed.map((p) => p.value).sort((a, b) => b - a);
+
+  const counts = new Map<number, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const groups = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+
+  const rn = (v: number) => {
+    const r = (['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'] as Rank[])[v - 2];
+    return r === 'T' ? '10' : r;
+  };
+
+  if (groups[0][1] === 4) {
+    return { rank: 'four_kind', values: [groups[0][0]], description: `Four of a Kind, ${rn(groups[0][0])}s`, bestFive: cards };
+  }
+  if (groups[0][1] === 3 && groups[1]?.[1] === 2) {
+    return { rank: 'full_house', values: [groups[0][0], groups[1][0]], description: `Full House, ${rn(groups[0][0])}s full of ${rn(groups[1][0])}s`, bestFive: cards };
+  }
+  if (groups[0][1] === 3) {
+    const kickers = groups.filter((g) => g[1] === 1).map((g) => g[0]);
+    return { rank: 'three_kind', values: [groups[0][0], ...kickers], description: `Three of a Kind, ${rn(groups[0][0])}s`, bestFive: cards };
+  }
+  if (groups[0][1] === 2 && groups[1]?.[1] === 2) {
+    const [hi, lo] = [groups[0][0], groups[1][0]].sort((a, b) => b - a);
+    const kicker = groups.find((g) => g[1] === 1)?.[0] ?? 0;
+    return { rank: 'two_pair', values: [hi, lo, kicker], description: `Two Pair, ${rn(hi)}s and ${rn(lo)}s`, bestFive: cards };
+  }
+  if (groups[0][1] === 2) {
+    const kickers = groups.filter((g) => g[1] === 1).map((g) => g[0]);
+    return { rank: 'pair', values: [groups[0][0], ...kickers], description: `Pair of ${rn(groups[0][0])}s`, bestFive: cards };
+  }
+  return { rank: 'high_card', values, description: `High Card, ${rn(values[0])}`, bestFive: cards };
+}
+
 /** Hold'em: best 5 of 7 */
 export function evaluateHoldem(hole: Card[], board: Card[]): EvaluatedHand {
   return bestHand([...hole, ...board]);

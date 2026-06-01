@@ -5,3 +5,4 @@ export * from './holdem.js';
 export * from './omaha.js';
 export * from './variant-module.js';
 export * from './game-table.js';
+export * from './twelve-card-flip.js';
