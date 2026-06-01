@@ -19,6 +19,7 @@ import {
 } from '../services/lobby.js';
 import {
   clearActionDeadline,
+  clearGame,
   clearIntermissionDeadline,
   getActiveGame,
   getActionDeadline,
@@ -36,6 +37,7 @@ import {
 } from '../services/game-manager.js';
 import { addChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
 import { getMemoryLobby } from '../services/lobby.js';
+import { redisDel, keys } from '../store/redis.js';
 import {
   createSession,
   deleteSession,
@@ -125,6 +127,45 @@ const showCardsGenerations = new Map<string, number>();
 
 /** How long the winner has to decide before cards are auto-mucked */
 const SHOW_CARDS_TIMEOUT_MS = 5_000;
+
+/** lobbyId → timer that fires after 1 hour of no connected clients */
+const emptyLobbyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const EMPTY_LOBBY_CLOSE_MS = 60 * 60 * 1000;
+
+function cancelEmptyLobbyTimer(lobbyId: string): void {
+  const t = emptyLobbyTimers.get(lobbyId);
+  if (t) {
+    clearTimeout(t);
+    emptyLobbyTimers.delete(lobbyId);
+  }
+}
+
+function maybeScheduleEmptyLobbyClose(lobbyId: string): void {
+  const sockets = lobbyClients.get(lobbyId);
+  if (sockets && sockets.size > 0) return;
+  if (emptyLobbyTimers.has(lobbyId)) return;
+  emptyLobbyTimers.set(lobbyId, setTimeout(() => {
+    onEmptyLobbyExpired(lobbyId).catch(() => {});
+  }, EMPTY_LOBBY_CLOSE_MS));
+}
+
+async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
+  emptyLobbyTimers.delete(lobbyId);
+  const sockets = lobbyClients.get(lobbyId);
+  if (sockets && sockets.size > 0) return;
+
+  cancelActionTimer(lobbyId);
+  cancelIntermissionTimer(lobbyId);
+  cancelShowCardsTimer(lobbyId);
+
+  await updateLobbyStatus(lobbyId, 'closed');
+  clearGame(lobbyId);
+  await redisDel(keys.tableState(lobbyId));
+  lobbyClients.delete(lobbyId);
+
+  console.log(`[lobby] Auto-closed empty lobby ${lobbyId} after 1 hour of inactivity`);
+}
 
 /** userId set to prevent duplicate cash-out processing */
 const cashOutInProgress = new Set<string>();
@@ -404,6 +445,7 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
 
     // Detach from lobby before broadcasting so the player doesn't receive the lobby_state
     lobbyClients.get(lobbyId)?.delete(ws);
+    maybeScheduleEmptyLobbyClose(lobbyId);
     if (connectedUserSockets.get(userId) === ws) connectedUserSockets.delete(userId);
     st.lobbyId = null;
     st.sessionId = null;
@@ -652,7 +694,10 @@ export function registerClient(ws: WebSocket): void {
     const st = clients.get(ws);
     if (!st) return;
 
-    if (st.lobbyId) lobbyClients.get(st.lobbyId)?.delete(ws);
+    if (st.lobbyId) {
+      lobbyClients.get(st.lobbyId)?.delete(ws);
+      maybeScheduleEmptyLobbyClose(st.lobbyId);
+    }
 
     if (st.userId && connectedUserSockets.get(st.userId) === ws) {
       connectedUserSockets.delete(st.userId);
@@ -735,6 +780,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (session.lobbyId) {
         if (!lobbyClients.has(session.lobbyId)) lobbyClients.set(session.lobbyId, new Set());
         lobbyClients.get(session.lobbyId)!.add(ws);
+        cancelEmptyLobbyTimer(session.lobbyId);
       }
 
       // Re-init session stats in case the server restarted and wiped in-memory stats.
@@ -816,6 +862,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       st.isSpectator = false;
       if (!lobbyClients.has(msg.lobbyId)) lobbyClients.set(msg.lobbyId, new Set());
       lobbyClients.get(msg.lobbyId)!.add(ws);
+      cancelEmptyLobbyTimer(msg.lobbyId);
 
       if (st.sessionId) {
         await updateSessionLobby(st.sessionId, msg.lobbyId);

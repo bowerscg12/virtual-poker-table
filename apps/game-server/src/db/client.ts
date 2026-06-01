@@ -8,7 +8,11 @@ let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 export function getPool(): pg.Pool {
   if (!pool) {
-    pool = new pg.Pool({ connectionString: config.databaseUrl });
+    const isRemote = !config.databaseUrl.includes('localhost') && !config.databaseUrl.includes('127.0.0.1');
+    pool = new pg.Pool({
+      connectionString: config.databaseUrl.replace(/[?&]sslmode=[^&]+/, ''),
+      ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+    });
   }
   return pool;
 }
