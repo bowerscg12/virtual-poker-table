@@ -25,6 +25,7 @@ async function main() {
   });
 
   await app.register(websocket);
+  app.get('/health', async () => ({ status: 'ok' }));
   await registerApiRoutes(app);
 
   setTokenVerifier(async (token) => app.jwt.verify<{ sub: string }>(token));
