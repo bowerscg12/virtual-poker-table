@@ -25,6 +25,8 @@ export interface SeatGameState {
   holeCards?: Card[];
   /** Shown at showdown */
   shownCards?: Card[];
+  /** Last action this player took — persists until their next action */
+  lastAction?: { action: PlayerActionType; amount?: number };
 }
 
 export interface PublicTableState {

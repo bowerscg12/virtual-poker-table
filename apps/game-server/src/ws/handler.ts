@@ -182,9 +182,8 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
       return { type: 'lobby_state', lobby };
     }
     const { public: pub, private: priv } = toPublicState(
-      game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline
+      lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline
     );
-    pub.lobbyId = lobbyId;
     return { type: 'table_state', public: pub, private: priv };
   });
 }

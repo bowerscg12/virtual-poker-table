@@ -1132,6 +1132,53 @@ select {
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
 }
 
+/* ── Last-action badge — persists until next action ───────────────────────── */
+
+.action-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 0.1rem 0.32rem;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid transparent;
+}
+
+.action-badge--fold {
+  color: #888;
+  background: rgba(120, 120, 120, 0.15);
+  border-color: rgba(120, 120, 120, 0.25);
+}
+
+.action-badge--check {
+  color: #aaa;
+  background: rgba(160, 160, 160, 0.15);
+  border-color: rgba(160, 160, 160, 0.25);
+}
+
+.action-badge--call {
+  color: #7bc47b;
+  background: rgba(100, 180, 100, 0.15);
+  border-color: rgba(100, 180, 100, 0.3);
+}
+
+.action-badge--raise {
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.15);
+  border-color: rgba(212, 175, 55, 0.35);
+}
+
+.action-badge--all_in {
+  color: #ff8c42;
+  background: rgba(255, 140, 66, 0.15);
+  border-color: rgba(255, 140, 66, 0.35);
+}
+
 .seat-timer {
   display: block;
   margin-top: 2px;

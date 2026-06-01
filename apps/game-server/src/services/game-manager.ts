@@ -38,6 +38,15 @@ const activeGames = new Map<string, GameTableState>();
 const handHistories = new Map<string, HandHistoryEntry[]>();
 let dealerRotations = new Map<string, number>();
 
+/** Per-seat last action, keyed lobbyId → seatIndex. Cleared on street advance and new hand. */
+const seatLastActions = new Map<string, Map<number, { action: PlayerActionType; amount?: number }>>();
+
+function recordSeatLastAction(lobbyId: string, seatIndex: number, action: PlayerActionType, amount?: number): void {
+  let m = seatLastActions.get(lobbyId);
+  if (!m) { m = new Map(); seatLastActions.set(lobbyId, m); }
+  m.set(seatIndex, amount !== undefined ? { action, amount } : { action });
+}
+
 /** ISO deadline strings keyed by lobbyId. Managed by handler.ts; read here for toPublicState. */
 const actionDeadlines = new Map<string, string>();
 
@@ -170,6 +179,7 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
       ? createTwelveCardFlipState(players, config, handNumber, rng)
       : createInitialTable(players, config, handNumber, nextDealerIdx, rng);
 
+  seatLastActions.delete(lobbyId);
   await persistGame(lobbyId, state);
   syncStacksToLobby(lobbyId, state);
   return state;
@@ -225,6 +235,10 @@ export async function processGameAction(
   const seat = state.seats.find((s) => s.userId === userId);
   if (!seat) return { error: 'Not seated' };
 
+  // Capture all-in total before state mutation (engine uses betThisStreet + stack as target)
+  const allInTotal = action === 'all_in' ? seat.betThisStreet + seat.stack : undefined;
+  const actingSeatIndex = seat.seatIndex;
+
   let result: { ok: true; state: GameTableState } | { ok: false; error: string };
 
   if (config.game === 'twelve_card_flip') {
@@ -235,6 +249,15 @@ export async function processGameAction(
   }
 
   if (!result.ok) return { error: result.error };
+
+  // Clear all badges when the street advances; otherwise record this action's badge.
+  // state.street is still the pre-action street here (reassignment happens below).
+  if (result.state.street !== state.street) {
+    seatLastActions.delete(lobbyId);
+  } else if (action !== 'flip_card') {
+    const badgeAmount = action === 'all_in' ? allInTotal : amount;
+    recordSeatLastAction(lobbyId, actingSeatIndex, action, badgeAmount);
+  }
 
   state = result.state;
   if (state.street === 'complete') {
@@ -285,6 +308,7 @@ export function getHandHistories(lobbyId: string): HandHistoryEntry[] {
 }
 
 export function toPublicState(
+  lobbyId: string,
   state: GameTableState,
   viewerUserId: string | null,
   isSpectator: boolean,
@@ -297,9 +321,10 @@ export function toPublicState(
 
   const isTwelveCardFlip = config.game === 'twelve_card_flip';
   const showCards = state.street === 'showdown' || state.street === 'complete';
+  const lastActions = seatLastActions.get(lobbyId);
 
   const publicState: PublicTableState = {
-    lobbyId: '',
+    lobbyId,
     handNumber: state.handNumber,
     street: state.street,
     board: state.board,
@@ -316,6 +341,7 @@ export function toPublicState(
       isSmallBlind: false,
       isBigBlind: false,
       shownCards: showCards ? s.shownCards : undefined,
+      lastAction: lastActions?.get(s.seatIndex),
     })),
     pots: state.pots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
     dealerSeatIndex: state.dealerSeatIndex,
@@ -395,4 +421,5 @@ export function updateLastHandHistoryFoldWin(
 
 export function clearGame(lobbyId: string): void {
   activeGames.delete(lobbyId);
+  seatLastActions.delete(lobbyId);
 }

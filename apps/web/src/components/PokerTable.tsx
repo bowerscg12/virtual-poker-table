@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import type { LobbySummary, PublicTableState, ChatMessage } from '@vct/shared-types';
+import type { LobbySummary, PublicTableState, ChatMessage, PlayerActionType } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
@@ -7,6 +7,17 @@ import { AvatarSvg } from './AvatarSvg';
 import { useActionTimer } from '../hooks/useActionTimer';
 import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
+
+function formatActionBadge(action: PlayerActionType, amount?: number): string {
+  switch (action) {
+    case 'fold':   return 'Fold';
+    case 'check':  return 'Check';
+    case 'call':   return amount !== undefined ? `Call ${formatChips(amount)}` : 'Call';
+    case 'raise':  return amount !== undefined ? `Raise ${formatChips(amount)}` : 'Raise';
+    case 'all_in': return amount !== undefined ? `All-In ${formatChips(amount)}` : 'All-In';
+    default:       return action;
+  }
+}
 
 const BUBBLE_DURATION_MS = 5000;
 const BUBBLE_MAX_LENGTH = 120;
@@ -296,6 +307,11 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     Bet: {formatChips(gs.betThisStreet)}
                   </span>
                 ) : null}
+                {occupied && gs?.lastAction && (
+                  <span className={`action-badge action-badge--${gs.lastAction.action}`}>
+                    {formatActionBadge(gs.lastAction.action, gs.lastAction.amount)}
+                  </span>
+                )}
                 {isActor && remaining !== null && timerSec > 0 && (
                   <span className={`seat-timer${isUrgent ? ' urgent' : ''}`}>
                     {remaining}s
