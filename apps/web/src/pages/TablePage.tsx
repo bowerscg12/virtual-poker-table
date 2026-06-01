@@ -241,6 +241,17 @@ export default function TablePage() {
                   {cashOutQueued ? 'Queued' : 'Cash Out'}
                 </button>
               )}
+              {gameStarted && (
+                <button
+                  type="button"
+                  className={`btn small sit-out-toggle${mySeat.sitOutNextHand ? ' sit-out-toggle--active' : ''}`}
+                  onClick={() => send({ type: 'sit_out_next_hand', enabled: !mySeat.sitOutNextHand })}
+                >
+                  {mySeat.sitOutNextHand
+                    ? mySeat.sitOutBlindOwed ? 'Cancel Sit Out' : 'Resume Play'
+                    : 'Sit Out'}
+                </button>
+              )}
             </div>
           </div>
 

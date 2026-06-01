@@ -62,6 +62,8 @@ function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): Lobb
         stack: s.stack,
         sittingOut: s.sittingOut,
         isConnected: s.userId ? connected.has(s.userId) : false,
+        sitOutNextHand: s.sitOutNextHand,
+        sitOutBlindOwed: s.sitOutBlindOwed,
       };
     }),
     createdAt: lobby.createdAt,
@@ -101,6 +103,8 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
       stack: s.stack,
       sittingOut: s.sittingOut,
       isConnected: s.userId ? connected.has(s.userId) : false,
+      sitOutNextHand: s.sitOutNextHand,
+      sitOutBlindOwed: s.sitOutBlindOwed,
     });
   }
   return {
@@ -373,6 +377,8 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
     if (seat) {
       seat.userId = null;
       seat.stack = 0;
+      seat.sitOutNextHand = false;
+      seat.sitOutBlindOwed = false;
     }
     return toSummary(lobby);
   }
@@ -380,7 +386,7 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
   const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
   const seat = seats.find((s) => s.seatIndex === seatIndex);
   if (seat) {
-    await db.update(tableSeats).set({ userId: null, stack: 0 }).where(eq(tableSeats.id, seat.id));
+    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false }).where(eq(tableSeats.id, seat.id));
   }
   return getLobbyById(lobbyId);
 }
@@ -485,6 +491,8 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
       seat.userId = null;
       seat.stack = 0;
       seat.sittingOut = false;
+      seat.sitOutNextHand = false;
+      seat.sitOutBlindOwed = false;
     }
     return toSummary(mem);
   }
@@ -494,9 +502,49 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
   if (seat) {
     await db
       .update(tableSeats)
-      .set({ userId: null, stack: 0, sittingOut: false })
+      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false })
       .where(eq(tableSeats.id, seat.id));
   }
+  return getLobbyById(lobbyId);
+}
+
+export async function clearSitOutBlindOwed(lobbyId: string, userId: string): Promise<void> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return;
+    const seat = mem.seats.find((s) => s.userId === userId);
+    if (seat) seat.sitOutBlindOwed = false;
+    return;
+  }
+  const db = getDb();
+  await db
+    .update(tableSeats)
+    .set({ sitOutBlindOwed: false })
+    .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
+}
+
+export async function setSitOutNextHand(
+  lobbyId: string,
+  userId: string,
+  enabled: boolean
+): Promise<LobbySummary | null> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return null;
+    const seat = mem.seats.find((s) => s.userId === userId);
+    if (seat) {
+      seat.sitOutNextHand = enabled;
+      // When enabling: set blindOwed so they post one final blind cycle first.
+      // When disabling: clear both flags — player returns to normal rotation.
+      seat.sitOutBlindOwed = enabled ? true : false;
+    }
+    return toSummary(mem);
+  }
+  const db = getDb();
+  await db
+    .update(tableSeats)
+    .set({ sitOutNextHand: enabled, sitOutBlindOwed: enabled ? true : false })
+    .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
   return getLobbyById(lobbyId);
 }
 

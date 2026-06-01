@@ -26,6 +26,8 @@ export const tableSeats = pgTable('table_seats', {
   userId: uuid('user_id').references(() => users.id),
   stack: integer('stack').notNull().default(0),
   sittingOut: boolean('sitting_out').default(false).notNull(),
+  sitOutNextHand: boolean('sit_out_next_hand').default(false).notNull(),
+  sitOutBlindOwed: boolean('sit_out_blind_owed').default(false).notNull(),
 });
 
 export const handHistories = pgTable('hand_histories', {

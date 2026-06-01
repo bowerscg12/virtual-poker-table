@@ -978,6 +978,34 @@ select {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+/* ── Sit Out Next Hand toggle ─────────────────────────────────────────────── */
+.sit-out-toggle {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  opacity: 0.75;
+}
+
+.sit-out-toggle--active {
+  border-color: var(--gold);
+  color: var(--gold);
+  opacity: 1;
+}
+
+/* ── Sit-out seat badge ────────────────────────────────────────────────────── */
+.sit-out-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #888;
+  background: rgba(120, 120, 120, 0.15);
+  border: 1px solid rgba(120, 120, 120, 0.25);
+}
+
 /* ── Name-taken inline form ──────────────────────────────── */
 
 .name-change-form {

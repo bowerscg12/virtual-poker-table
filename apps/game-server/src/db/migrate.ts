@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS player_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_player_sessions_user ON player_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_player_sessions_expires ON player_sessions(expires_at);
+
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_next_hand BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_blind_owed BOOLEAN NOT NULL DEFAULT false;
 `;
 
 async function main() {

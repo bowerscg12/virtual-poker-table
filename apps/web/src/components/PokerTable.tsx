@@ -332,6 +332,11 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     Bet: {formatChips(gs.betThisStreet)}
                   </span>
                 ) : null}
+                {occupied && seat.sitOutNextHand && (
+                  <span className="sit-out-badge">
+                    {seat.sitOutBlindOwed ? 'Blind owed' : 'Sitting Out'}
+                  </span>
+                )}
                 {occupied && gs?.lastAction && (
                   <span className={`action-badge action-badge--${gs.lastAction.action}`}>
                     {formatActionBadge(gs.lastAction.action, gs.lastAction.amount)}

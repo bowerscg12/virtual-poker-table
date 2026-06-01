@@ -13,6 +13,7 @@ import {
   removeSeat,
   setActionTimerSetting,
   setFlipAnte,
+  setSitOutNextHand,
   setTableBuyIn,
   setSittingOut,
   sitAtSeat,
@@ -1312,6 +1313,17 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (pendingCashOuts.has(st.userId)) {
         pendingCashOuts.delete(st.userId);
         send(ws, { type: 'cash_out_cancelled' });
+      }
+      return;
+    }
+
+    case 'sit_out_next_hand': {
+      if (!st.userId || !st.lobbyId) return;
+      const result = await setSitOutNextHand(st.lobbyId, st.userId, msg.enabled);
+      if (result) {
+        const connected = getConnectedSet(st.lobbyId);
+        const withConnected = await getLobbyById(st.lobbyId, connected);
+        if (withConnected) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
       }
       return;
     }

@@ -20,6 +20,8 @@ export interface MemorySeat {
   userId: string | null;
   stack: number;
   sittingOut: boolean;
+  sitOutNextHand: boolean;
+  sitOutBlindOwed: boolean;
 }
 
 export interface MemoryLobby {
@@ -77,6 +79,8 @@ export function memoryCreateLobby(hostUserId: string, settings: VariantConfig): 
       userId: null,
       stack: 0,
       sittingOut: false,
+      sitOutNextHand: false,
+      sitOutBlindOwed: false,
     })),
     createdAt: new Date().toISOString(),
   };

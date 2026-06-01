@@ -25,6 +25,7 @@ export type ClientMessage =
   | { type: 'cash_out_cancel' }
   | { type: 'rebuy' }
   | { type: 'show_cards'; show: boolean }
+  | { type: 'sit_out_next_hand'; enabled: boolean }
   | { type: 'ping' };
 
 /** Server -> Client */

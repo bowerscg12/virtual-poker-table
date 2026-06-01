@@ -9,12 +9,13 @@ import {
   getLegalActionsForSeat,
   getTwelveCardFlipLegalActions,
   getTwelveCardFlipRevealInfo,
+  nextActiveSeat,
   type GameTableState,
 } from '@vct/poker-engine';
 import { getDb } from '../db/client.js';
 import { tableSeats, users } from '../db/schema.js';
 import { keys, redisGet, redisSet } from '../store/redis.js';
-import { getMemoryLobby, isMemoryMode } from './lobby.js';
+import { clearSitOutBlindOwed, getMemoryLobby, isMemoryMode } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
 import { getSessionBadgeData } from './session-stats.js';
 
@@ -130,7 +131,16 @@ async function loadGame(lobbyId: string): Promise<GameTableState | null> {
   return deserialize(JSON.parse(raw) as SerializedGame);
 }
 
-async function seatedPlayers(lobbyId: string) {
+interface SeatedPlayer {
+  seatIndex: number;
+  userId: string;
+  displayName: string;
+  stack: number;
+  sitOutNextHand: boolean;
+  sitOutBlindOwed: boolean;
+}
+
+async function seatedPlayers(lobbyId: string): Promise<SeatedPlayer[]> {
   if (isMemoryMode()) {
     const lobby = getMemoryLobby(lobbyId);
     if (!lobby) return [];
@@ -141,6 +151,8 @@ async function seatedPlayers(lobbyId: string) {
         userId: s.userId!,
         displayName: memoryStore.users.get(s.userId!)?.displayName ?? 'Player',
         stack: s.stack,
+        sitOutNextHand: s.sitOutNextHand,
+        sitOutBlindOwed: s.sitOutBlindOwed,
       }));
   }
 
@@ -159,21 +171,46 @@ async function seatedPlayers(lobbyId: string) {
       userId: seat.userId!,
       displayName: displayNames.get(seat.userId!) ?? 'Player',
       stack: seat.stack,
+      sitOutNextHand: seat.sitOutNextHand,
+      sitOutBlindOwed: seat.sitOutBlindOwed,
     }));
 }
 
 export async function startHand(lobbyId: string, config: VariantConfig): Promise<GameTableState | { error: string }> {
-  const players = await seatedPlayers(lobbyId);
-  if (players.length < 2) return { error: 'Need at least 2 players' };
+  const allSeated = await seatedPlayers(lobbyId);
 
-  if (config.game === 'twelve_card_flip' && players.length !== 2) {
+  // Separate fully-active, blind-owed, and fully-sitting-out players
+  const fullyActive = allSeated.filter((p) => !p.sitOutNextHand);
+  const blindOwed   = allSeated.filter((p) => p.sitOutNextHand && p.sitOutBlindOwed);
+  // fullyOut = sitOutNextHand && !sitOutBlindOwed — excluded from all hands
+
+  // Candidate pool for this hand: active players + those who still owe a blind
+  const candidates = [...fullyActive, ...blindOwed];
+  if (candidates.length < 2) return { error: 'Need at least 2 players' };
+
+  if (config.game === 'twelve_card_flip' && candidates.length !== 2) {
     return { error: '12 Card Flip requires exactly 2 players' };
   }
 
+  // Advance dealer through candidate seat indices
   const prevDealer = dealerRotations.get(lobbyId) ?? -1;
-  const indices = players.map((p) => p.seatIndex).sort((a, b) => a - b);
-  const nextDealerIdx = indices.find((i) => i > prevDealer) ?? indices[0];
+  const candidateIndices = candidates.map((p) => p.seatIndex).sort((a, b) => a - b);
+  const nextDealerIdx = candidateIndices.find((i) => i > prevDealer) ?? candidateIndices[0];
   dealerRotations.set(lobbyId, nextDealerIdx);
+
+  // Compute SB/BB positions from the candidate pool to determine which blind-owed seats must play
+  const headsUp = candidates.length === 2;
+  const sbSeat = headsUp
+    ? nextDealerIdx
+    : nextActiveSeat(candidateIndices, nextDealerIdx + 1, () => true)!;
+  const bbSeat = nextActiveSeat(candidateIndices, sbSeat + 1, () => true)!;
+  const blindSeats = new Set([sbSeat, bbSeat]);
+
+  // Include blind-owed players only if they're in SB or BB position this hand
+  const includedBlindOwed = blindOwed.filter((p) => blindSeats.has(p.seatIndex));
+
+  const players = [...fullyActive, ...includedBlindOwed].sort((a, b) => a.seatIndex - b.seatIndex);
+  if (players.length < 2) return { error: 'Need at least 2 players' };
 
   const handNumber = (activeGames.get(lobbyId)?.handNumber ?? 0) + 1;
   const rng = () => randomBytes(4).readUInt32BE(0) / 0xffffffff;
@@ -182,6 +219,11 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
     config.game === 'twelve_card_flip'
       ? createTwelveCardFlipState(players, config, handNumber, rng)
       : createInitialTable(players, config, handNumber, nextDealerIdx, rng);
+
+  // Clear blind-owed flag for any sit-out player who just posted their final blind cycle
+  for (const p of includedBlindOwed) {
+    clearSitOutBlindOwed(lobbyId, p.userId).catch(() => {});
+  }
 
   seatLastActions.delete(lobbyId);
   await persistGame(lobbyId, state);

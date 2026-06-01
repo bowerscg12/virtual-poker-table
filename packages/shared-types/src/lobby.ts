@@ -17,6 +17,10 @@ export interface TableSeat {
   stack: number;
   sittingOut: boolean;
   isConnected: boolean;
+  /** Player has requested to sit out starting next hand */
+  sitOutNextHand: boolean;
+  /** True on the first sit-out hand — player still owes their next blind cycle */
+  sitOutBlindOwed: boolean;
 }
 
 export interface LobbySummary {
