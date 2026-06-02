@@ -44,6 +44,7 @@ import {
   createSession,
   deleteSession,
   deleteSessionsByUserId,
+  deleteSessionsByUserAndLobby,
   getSession,
   markSessionConnected,
   markSessionDisconnected,
@@ -859,15 +860,19 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         }
         await broadcastTableState(session.lobbyId);
 
+        const reconnGame = await getActiveGame(session.lobbyId);
+        const reconnLobby = await getLobbyById(session.lobbyId);
+
+        // If the server restarted and lost the action timer, reschedule it so the game doesn't stall.
+        if (!actionTimers.has(session.lobbyId) && reconnGame && reconnLobby) {
+          scheduleActionTimer(session.lobbyId, reconnLobby.settings, reconnGame);
+        }
+
         // If the player reconnects with 0 chips, show them the rebuy prompt
         if (!pendingCashOuts.has(session.userId)) {
-          const reconnGame = await getActiveGame(session.lobbyId);
           const reconnGameSeat = reconnGame?.seats.find((s) => s.userId === session.userId);
-          if (reconnGameSeat && reconnGameSeat.stack === 0) {
-            const reconnLobby2 = await getLobbyById(session.lobbyId);
-            if (reconnLobby2) {
-              send(ws, { type: 'rebuy_available', amount: getTableBuyIn(reconnLobby2.settings) });
-            }
+          if (reconnGameSeat && reconnGameSeat.stack === 0 && reconnLobby) {
+            send(ws, { type: 'rebuy_available', amount: getTableBuyIn(reconnLobby.settings) });
           }
         }
 
@@ -907,7 +912,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           seatReleaseTimers.delete(st.userId);
         }
         await removeSeat(priorSeat.lobbyId, st.userId);
-        await deleteSessionsByUserId(st.userId);
+        // Only delete sessions for the old lobby — the current WS session must survive.
+        await deleteSessionsByUserAndLobby(st.userId, priorSeat.lobbyId);
         const priorConnected = getConnectedSet(priorSeat.lobbyId);
         const priorLobbyState = await getLobbyById(priorSeat.lobbyId, priorConnected);
         if (priorLobbyState) {

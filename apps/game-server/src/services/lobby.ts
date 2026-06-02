@@ -38,8 +38,22 @@ export async function initLobbyStore(): Promise<void> {
     const pool = (await import('../db/client.js')).getPool();
     await pool.query('SELECT 1');
     useMemory = false;
+    // Apply any schema additions that may have been missed on older deployments.
+    await applySchemaUpdates(pool);
   } catch {
     useMemory = true;
+  }
+}
+
+async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
+  try {
+    await pool.query(`
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_next_hand BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_blind_owed BOOLEAN NOT NULL DEFAULT false;
+    `);
+  } catch (err) {
+    // Log but don't crash — the server can still start; the failure will surface on first insert.
+    console.error('[schema] Failed to apply schema updates:', err);
   }
 }
 
@@ -186,17 +200,22 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
   const db = getDb();
   const { customAlphabet } = await import('nanoid');
   const code = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 5)();
-  const [lobby] = await db
-    .insert(lobbies)
-    .values({ hostUserId, inviteCode: code, settings, status: 'open' })
-    .returning();
 
-  const seatRows = Array.from({ length: settings.maxPlayers }, (_, i) => ({
-    lobbyId: lobby.id,
-    seatIndex: i,
-    stack: 0,
-  }));
-  await db.insert(tableSeats).values(seatRows);
+  // Create lobby and its empty seats atomically so a failure never leaves an orphaned lobby row.
+  const lobby = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(lobbies)
+      .values({ hostUserId, inviteCode: code, settings, status: 'open' })
+      .returning();
+    const seatRows = Array.from({ length: settings.maxPlayers }, (_, i) => ({
+      lobbyId: row.id,
+      seatIndex: i,
+      stack: 0,
+    }));
+    await tx.insert(tableSeats).values(seatRows);
+    return row;
+  });
+
   const seated = await autoSeatPlayer(lobby.id, hostUserId);
   if (!seated || 'error' in seated) return (await pgToSummary(lobby.id))!;
   return seated;

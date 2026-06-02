@@ -108,7 +108,10 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       const sessionId = await createSession(user.id, lobby.id);
       return { user, token, sessionId, lobby };
     } catch (error) {
-      return reply.status(400).send({ error: error instanceof Error ? error.message : 'Invalid lobby settings' });
+      const msg = error instanceof Error ? error.message : 'Invalid lobby settings';
+      // Log the full error so database-level details (column missing, constraint, etc.) are visible in server logs.
+      app.log.error({ err: error }, `createLobby failed: ${msg}`);
+      return reply.status(400).send({ error: msg });
     }
   });
 

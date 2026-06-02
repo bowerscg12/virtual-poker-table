@@ -67,6 +67,8 @@ export default function HomePage() {
     setDeclining(true);
     try {
       await releaseActiveSeat();
+      // Clear the stale session so the next WS connection uses auth, not a dead reconnect.
+      localStorage.removeItem('vct_session_id');
       clearActiveSeat();
     } finally {
       setDeclining(false);

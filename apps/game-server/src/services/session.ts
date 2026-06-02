@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { eq, lt } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { playerSessions } from '../db/schema.js';
 import { memoryStore, type MemorySession } from '../store/memory-fallback.js';
@@ -125,6 +125,20 @@ export async function deleteSessionsByUserId(userId: string): Promise<void> {
   }
   const db = getDb();
   await db.delete(playerSessions).where(eq(playerSessions.userId, userId));
+}
+
+/** Delete only the sessions for a specific user+lobby pair, leaving any other sessions (e.g. the current WS session) intact. */
+export async function deleteSessionsByUserAndLobby(userId: string, lobbyId: string): Promise<void> {
+  if (isMemoryMode()) {
+    for (const [id, s] of memoryStore.sessions) {
+      if (s.userId === userId && s.lobbyId === lobbyId) memoryStore.sessions.delete(id);
+    }
+    return;
+  }
+  const db = getDb();
+  await db.delete(playerSessions).where(
+    and(eq(playerSessions.userId, userId), eq(playerSessions.lobbyId, lobbyId))
+  );
 }
 
 export async function cleanExpiredSessions(): Promise<void> {
