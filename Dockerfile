@@ -11,7 +11,7 @@ COPY apps/game-server/package.json ./apps/game-server/
 
 RUN npm ci
 
-COPY tsconfig.json tsconfig.base.json* ./
+COPY tsconfig.json* tsconfig.base.json* ./
 
 # Build packages in dependency order
 COPY packages/shared-types/ ./packages/shared-types/
