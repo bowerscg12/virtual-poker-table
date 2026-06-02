@@ -23,20 +23,6 @@ export const RULES_PRESETS: RulesPreset[] = [
     },
   },
   {
-    id: 'nlhe-6max',
-    name: 'NL Hold\'em 6-Max',
-    description: 'Aggressive 6-max table',
-    config: {
-      game: 'holdem',
-      limit: 'no_limit',
-      maxPlayers: 6,
-      blinds: { small: 10, big: 20 },
-      buyIn: 1000,
-      minBuyIn: 1000,
-      maxBuyIn: 4000,
-    },
-  },
-  {
     id: 'plo-standard',
     name: 'Pot-Limit Omaha',
     description: '4 hole cards, must use exactly 2',
