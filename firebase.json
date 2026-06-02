@@ -1,16 +1,12 @@
 {
   "hosting": {
-    "public": "apps/web/dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "rewrites": [
-      {
-        "source": "/api/**",
-        "run": { "serviceId": "vct-game-server", "region": "us-central1" }
-      },
-      {
-        "source": "/ws",
-        "run": { "serviceId": "vct-game-server", "region": "us-central1" }
-      },
       {
         "source": "**",
         "destination": "/index.html"
