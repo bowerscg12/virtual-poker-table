@@ -13,6 +13,7 @@ export interface MemoryUser {
   avatarUrl?: string;
   avatar?: AvatarConfig;
   isGuest: boolean;
+  createdAt: string;
 }
 
 export interface MemorySeat {
@@ -26,7 +27,7 @@ export interface MemorySeat {
 
 export interface MemoryLobby {
   id: string;
-  hostUserId: string;
+  hostUserId: string | null;
   inviteCode: string;
   status: LobbyStatus;
   settings: VariantConfig;
@@ -60,8 +61,8 @@ export const memoryStore = {
   sessions: new Map<string, MemorySession>(),
 };
 
-export function memoryCreateUser(data: Omit<MemoryUser, 'id'>): MemoryUser {
-  const user = { id: randomUUID(), ...data };
+export function memoryCreateUser(data: Omit<MemoryUser, 'id' | 'createdAt'>): MemoryUser {
+  const user: MemoryUser = { id: randomUUID(), createdAt: new Date().toISOString(), ...data };
   memoryStore.users.set(user.id, user);
   return user;
 }

@@ -54,6 +54,35 @@ CREATE INDEX IF NOT EXISTS idx_player_sessions_expires ON player_sessions(expire
 
 ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_next_hand BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_blind_owed BOOLEAN NOT NULL DEFAULT false;
+
+-- Guest-lifecycle: make host_user_id nullable with ON DELETE SET NULL so deleted guest
+-- hosts don't block cleanup. Idempotent — safe to re-run.
+ALTER TABLE lobbies ALTER COLUMN host_user_id DROP NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'lobbies_host_user_id_fkey'
+  ) THEN
+    ALTER TABLE lobbies DROP CONSTRAINT lobbies_host_user_id_fkey;
+  END IF;
+END $$;
+ALTER TABLE lobbies ADD CONSTRAINT lobbies_host_user_id_fkey
+  FOREIGN KEY (host_user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+-- Guest-lifecycle: ensure table_seats.user_id also NULLs on user delete.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'table_seats_user_id_fkey'
+  ) THEN
+    ALTER TABLE table_seats DROP CONSTRAINT table_seats_user_id_fkey;
+  END IF;
+END $$;
+ALTER TABLE table_seats ADD CONSTRAINT table_seats_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+-- Partial index makes guest-cleanup queries fast regardless of how many non-guest rows exist.
+CREATE INDEX IF NOT EXISTS idx_users_guest_created ON users(created_at) WHERE is_guest = true;
 `;
 
 async function main() {

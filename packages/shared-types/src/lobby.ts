@@ -26,7 +26,8 @@ export interface TableSeat {
 export interface LobbySummary {
   id: string;
   inviteCode: string;
-  hostUserId: string;
+  /** null when the original host guest account has been cleaned up */
+  hostUserId: string | null;
   hostDisplayName: string;
   status: LobbyStatus;
   settings: VariantConfig;

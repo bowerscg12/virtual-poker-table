@@ -52,13 +52,38 @@ async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_blind_owed BOOLEAN NOT NULL DEFAULT false;
     `);
   } catch (err) {
-    // Log but don't crash — the server can still start; the failure will surface on first insert.
-    console.error('[schema] Failed to apply schema updates:', err);
+    console.error('[schema] Failed to apply column updates:', err);
+  }
+
+  // Guest-lifecycle: make lobbies.host_user_id nullable with ON DELETE SET NULL.
+  try {
+    await pool.query(`
+      ALTER TABLE lobbies ALTER COLUMN host_user_id DROP NOT NULL;
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'lobbies_host_user_id_fkey') THEN
+          ALTER TABLE lobbies DROP CONSTRAINT lobbies_host_user_id_fkey;
+        END IF;
+      END $$;
+      ALTER TABLE lobbies ADD CONSTRAINT lobbies_host_user_id_fkey
+        FOREIGN KEY (host_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'table_seats_user_id_fkey') THEN
+          ALTER TABLE table_seats DROP CONSTRAINT table_seats_user_id_fkey;
+        END IF;
+      END $$;
+      ALTER TABLE table_seats ADD CONSTRAINT table_seats_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+      CREATE INDEX IF NOT EXISTS idx_users_guest_created ON users(created_at) WHERE is_guest = true;
+    `);
+  } catch (err) {
+    console.error('[schema] Failed to apply guest-lifecycle FK updates:', err);
   }
 }
 
 function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): LobbySummary {
-  const hostDisplayName = memoryStore.users.get(lobby.hostUserId)?.displayName ?? 'Host';
+  const hostDisplayName = (lobby.hostUserId ? memoryStore.users.get(lobby.hostUserId)?.displayName : undefined) ?? 'Host';
   return {
     id: lobby.id,
     inviteCode: lobby.inviteCode,
@@ -98,7 +123,9 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
   const db = getDb();
   const [lobby] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId)).limit(1);
   if (!lobby) return null;
-  const [host] = await db.select().from(users).where(eq(users.id, lobby.hostUserId)).limit(1);
+  const [host] = lobby.hostUserId
+    ? await db.select().from(users).where(eq(users.id, lobby.hostUserId)).limit(1)
+    : [];
   const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
   const seatSummaries: TableSeat[] = [];
   for (const s of seats) {
@@ -577,7 +604,7 @@ export async function getActiveSeatForUser(userId: string): Promise<ActiveSeatIn
       if (lobby.status === 'closed') continue;
       const seat = lobby.seats.find((s) => s.userId === userId);
       if (seat) {
-        const host = memoryStore.users.get(lobby.hostUserId);
+        const host = lobby.hostUserId ? memoryStore.users.get(lobby.hostUserId) : undefined;
         return {
           lobbyId,
           inviteCode: lobby.inviteCode,
@@ -608,11 +635,9 @@ export async function getActiveSeatForUser(userId: string): Promise<ActiveSeatIn
   if (rows.length === 0) return null;
   const row = rows[0];
 
-  const [host] = await db
-    .select({ displayName: users.displayName })
-    .from(users)
-    .where(eq(users.id, row.hostUserId))
-    .limit(1);
+  const [host] = row.hostUserId
+    ? await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, row.hostUserId)).limit(1)
+    : [];
 
   return {
     lobbyId: row.lobbyId,

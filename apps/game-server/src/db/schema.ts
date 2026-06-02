@@ -12,7 +12,7 @@ export const users = pgTable('users', {
 
 export const lobbies = pgTable('lobbies', {
   id: uuid('id').primaryKey().defaultRandom(),
-  hostUserId: uuid('host_user_id').notNull().references(() => users.id),
+  hostUserId: uuid('host_user_id').references(() => users.id, { onDelete: 'set null' }),
   inviteCode: varchar('invite_code', { length: 12 }).notNull().unique(),
   status: varchar('status', { length: 16 }).notNull().default('open'),
   settings: jsonb('settings').notNull(),
@@ -23,7 +23,7 @@ export const tableSeats = pgTable('table_seats', {
   id: uuid('id').primaryKey().defaultRandom(),
   lobbyId: uuid('lobby_id').notNull().references(() => lobbies.id, { onDelete: 'cascade' }),
   seatIndex: integer('seat_index').notNull(),
-  userId: uuid('user_id').references(() => users.id),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
   stack: integer('stack').notNull().default(0),
   sittingOut: boolean('sitting_out').default(false).notNull(),
   sitOutNextHand: boolean('sit_out_next_hand').default(false).notNull(),

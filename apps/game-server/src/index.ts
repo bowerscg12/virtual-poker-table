@@ -5,6 +5,8 @@ import sensible from '@fastify/sensible';
 import websocket from '@fastify/websocket';
 import { config } from './config.js';
 import { initLobbyStore } from './services/lobby.js';
+import { cleanupExpiredGuests } from './services/guest-cleanup.js';
+import { cleanExpiredSessions } from './services/session.js';
 import { registerApiRoutes } from './routes/api.js';
 import { registerClient, setTokenVerifier } from './ws/handler.js';
 
@@ -35,6 +37,17 @@ async function main() {
 
   await app.listen({ port: config.port, host: '0.0.0.0' });
   console.log(`Game server listening on http://localhost:${config.port}`);
+
+  // Hourly maintenance: expire orphaned sessions and delete abandoned guest accounts.
+  const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+  setInterval(async () => {
+    try {
+      await cleanExpiredSessions();
+      await cleanupExpiredGuests();
+    } catch (err) {
+      console.error('[cleanup] Periodic cleanup failed:', err);
+    }
+  }, CLEANUP_INTERVAL_MS);
 }
 
 main().catch((err) => {
