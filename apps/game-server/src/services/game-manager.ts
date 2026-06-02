@@ -498,6 +498,17 @@ export function toPublicState(
     };
   }
 
+  const activeIndices = state.seats.map((s) => s.seatIndex).sort((a, b) => a - b);
+  const headsUp = activeIndices.length === 2;
+  const sbSeatIndex = activeIndices.length >= 2
+    ? (headsUp
+        ? state.dealerSeatIndex
+        : (nextActiveSeat(activeIndices, state.dealerSeatIndex + 1, () => true) ?? -1))
+    : -1;
+  const bbSeatIndex = activeIndices.length >= 2
+    ? (nextActiveSeat(activeIndices, sbSeatIndex + 1, () => true) ?? -1)
+    : -1;
+
   const publicState: PublicTableState = {
     lobbyId,
     handNumber: state.handNumber,
@@ -513,8 +524,8 @@ export function toPublicState(
       folded: s.folded,
       allIn: s.allIn,
       isDealer: s.seatIndex === state.dealerSeatIndex,
-      isSmallBlind: false,
-      isBigBlind: false,
+      isSmallBlind: s.seatIndex === sbSeatIndex,
+      isBigBlind: s.seatIndex === bbSeatIndex,
       shownCards: showCards ? s.shownCards : undefined,
       lastAction: lastActions?.get(s.seatIndex),
       badges: badges.get(s.seatIndex),

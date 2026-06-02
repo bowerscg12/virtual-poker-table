@@ -321,6 +321,13 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     <AvatarSvg config={seat.avatar} size={38} />
                   </div>
                 )}
+                {gs && (gs.isDealer || gs.isSmallBlind || gs.isBigBlind) && (
+                  <div className="position-markers" aria-label="Position markers">
+                    {gs.isDealer && <span className="position-marker position-marker--d" title="Dealer Button">D</span>}
+                    {gs.isSmallBlind && <span className="position-marker position-marker--sb" title="Small Blind">SB</span>}
+                    {gs.isBigBlind && <span className="position-marker position-marker--bb" title="Big Blind">BB</span>}
+                  </div>
+                )}
                 <strong>{seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}</strong>
                 {occupied && stack > 0 && <ChipStack amount={stack} />}
                 {!occupied && <span className="seat-empty-label">Open</span>}
