@@ -142,6 +142,19 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
 
   // ── Chip flight state ─────────────────────────────────────
   const feltRef = useRef<HTMLDivElement>(null);
+
+  // ── All-in shake — fire once per new all-in event ────────
+  const shakeTriggerRef = useRef(anim.allInShakeTrigger);
+  useEffect(() => {
+    const felt = feltRef.current;
+    if (!felt || anim.allInShakeTrigger === shakeTriggerRef.current) return;
+    shakeTriggerRef.current = anim.allInShakeTrigger;
+    felt.classList.remove('shake');
+    void felt.offsetWidth; // force reflow so animation restarts on rapid all-ins
+    felt.classList.add('shake');
+    const tid = setTimeout(() => felt.classList.remove('shake'), 500);
+    return () => clearTimeout(tid);
+  }, [anim.allInShakeTrigger]);
   const potAreaRef = useRef<HTMLDivElement>(null);
   const [flyingChips, setFlyingChips] = useState<ChipFlight[]>([]);
   const prevWinnerBannerRef = useRef<WinnerBannerData | null>(null);
@@ -286,6 +299,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
           const isActor = table?.actionSeatIndex === seat.seatIndex;
           const isWinner = anim.winningSeats.has(seat.seatIndex);
           const isBetting = anim.recentBetSeat === seat.seatIndex;
+          const isAllIn = gs?.allIn === true;
           const x = 50 + 42 * Math.cos(angleStep * i - Math.PI / 2);
           const y = 50 + 38 * Math.sin(angleStep * i - Math.PI / 2);
 
@@ -296,6 +310,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
             gs?.folded ? 'folded' : '',
             isMe ? 'me' : '',
             isWinner ? 'winner' : '',
+            isAllIn ? 'all-in' : '',
           ]
             .filter(Boolean)
             .join(' ');

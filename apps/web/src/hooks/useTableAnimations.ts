@@ -17,6 +17,8 @@ export interface TableAnimState {
   winningSeats: ReadonlySet<number>;
   /** Winner overlay data — null when hidden */
   winnerBanner: WinnerBannerData | null;
+  /** Increments each time a new all-in action occurs; drives one-shot table shake */
+  allInShakeTrigger: number;
 }
 
 type WinnerEntry = { seatIndex: number; amount: number; handDescription: string };
@@ -28,6 +30,7 @@ function emptyAnim(): TableAnimState {
     recentBetSeat: null,
     winningSeats: new Set(),
     winnerBanner: null,
+    allInShakeTrigger: 0,
   };
 }
 
@@ -102,9 +105,14 @@ export function useTableAnimations(
       }, 900);
     }
 
-    // ── Bet / raise / call: chip-pulse on the bet badge ────
-    if (table.lastAction && JSON.stringify(table.lastAction) !== JSON.stringify(prev.lastAction)) {
-      const { action, seatIndex } = table.lastAction;
+    // ── Bet / raise / call / all_in: chip-pulse; all_in also triggers shake ──
+    const lastActionChanged =
+      !!table.lastAction &&
+      JSON.stringify(table.lastAction) !== JSON.stringify(prev.lastAction);
+    const isNewAllIn = lastActionChanged && table.lastAction!.action === 'all_in';
+
+    if (lastActionChanged) {
+      const { action, seatIndex } = table.lastAction!;
       if (action === 'raise' || action === 'call' || action === 'all_in') {
         updates.recentBetSeat = seatIndex;
         schedule(() => {
@@ -131,8 +139,12 @@ export function useTableAnimations(
       }, 4500);
     }
 
-    if (Object.keys(updates).length > 0) {
-      setAnim(a => ({ ...a, ...updates }));
+    if (Object.keys(updates).length > 0 || isNewAllIn) {
+      setAnim(a => ({
+        ...a,
+        ...updates,
+        ...(isNewAllIn ? { allInShakeTrigger: a.allInShakeTrigger + 1 } : {}),
+      }));
     }
   // handComplete identity change is the trigger; getSeatName is derived from table
   }, [table, handComplete]);

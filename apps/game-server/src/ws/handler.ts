@@ -146,6 +146,16 @@ const emptyLobbyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const waitingForPlayers = new Map<string, boolean>();
 
 const EMPTY_LOBBY_CLOSE_MS = 60 * 60 * 1000;
+const ALL_PLAYERS_GONE_CLOSE_MS = 10 * 60 * 1000;
+
+async function maybeScheduleAllPlayersGoneClose(lobbyId: string): Promise<void> {
+  if (emptyLobbyTimers.has(lobbyId)) return;
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.seats.some(s => s.userId)) return;
+  emptyLobbyTimers.set(lobbyId, setTimeout(() => {
+    onEmptyLobbyExpired(lobbyId).catch(() => {});
+  }, ALL_PLAYERS_GONE_CLOSE_MS));
+}
 
 function cancelEmptyLobbyTimer(lobbyId: string): void {
   const t = emptyLobbyTimers.get(lobbyId);
@@ -490,6 +500,8 @@ async function onSeatReleaseExpired(sessionId: string, userId: string, lobbyId: 
   if (updatedLobby) {
     broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
   }
+
+  await maybeScheduleAllPlayersGoneClose(lobbyId);
 }
 
 /**
@@ -545,6 +557,8 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
     if (withConnected) {
       broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
     }
+
+    await maybeScheduleAllPlayersGoneClose(lobbyId);
   } finally {
     cashOutInProgress.delete(userId);
     pendingCashOuts.delete(userId);

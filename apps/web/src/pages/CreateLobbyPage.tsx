@@ -301,7 +301,7 @@ export default function CreateLobbyPage() {
         </p>
         <div className="name-selection-actions">
           <button type="submit" className="btn primary" disabled={!isFormValid}>
-            Next: Choose your name
+            Next: Choose Avatar
           </button>
           <button type="button" className="btn" onClick={() => navigate('/')}>
             Back

@@ -1802,6 +1802,22 @@ select {
   50%       { box-shadow: 0 0 28px rgba(212, 175, 55, 1), 0 0 56px rgba(255, 215, 0, 0.5); }
 }
 
+@keyframes allin-glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px 2px rgba(200, 40, 40, 0.6), 0 0 0 1px rgba(200, 40, 40, 0.35); }
+  50%       { box-shadow: 0 0 20px 5px rgba(220, 50, 50, 0.9), 0 0 0 1px rgba(220, 50, 50, 0.65); }
+}
+
+@keyframes table-shake {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  15%  { transform: translate(-4px, 2px) rotate(-0.5deg); }
+  30%  { transform: translate(4px, -2px) rotate(0.5deg); }
+  45%  { transform: translate(-3px, 3px) rotate(-0.35deg); }
+  60%  { transform: translate(3px, -1px) rotate(0.35deg); }
+  75%  { transform: translate(-2px, 2px) rotate(-0.15deg); }
+  90%  { transform: translate(1px, -1px) rotate(0.1deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
 @keyframes winner-banner-in {
   from {
     transform: translate(-50%, -50%) scale(0.82);
@@ -1851,9 +1867,31 @@ select {
   animation: chip-bet-pulse 0.55s ease-out;
 }
 
+/* All-in persistent red glow — placed before .winner so winner overrides at hand end */
+.seat.all-in.occupied .seat-info {
+  border-color: rgba(200, 40, 40, 0.85);
+  animation: allin-glow-pulse 1.8s ease-in-out infinite;
+}
+
 /* Winner seat glow (applies to .seat-info inside a .seat.winner) */
 .seat.winner .seat-info {
   animation: winner-glow 0.75s ease-in-out 3;
+}
+
+/* Table shake on all-in shove */
+.felt.shake {
+  animation: table-shake 0.45s ease-out;
+}
+
+/* Reduced-motion: keep persistent red border as static glow, suppress shake */
+@media (prefers-reduced-motion: reduce) {
+  .seat.all-in.occupied .seat-info {
+    animation: none;
+    box-shadow: 0 0 12px 3px rgba(200, 40, 40, 0.75);
+  }
+  .felt.shake {
+    animation: none;
+  }
 }
 
 /* Pot shrinks/fades when winners are announced */
