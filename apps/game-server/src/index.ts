@@ -1,6 +1,7 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import websocket from '@fastify/websocket';
 import { config } from './config.js';
@@ -13,7 +14,19 @@ import { registerClient, setTokenVerifier } from './ws/handler.js';
 async function main() {
   await initLobbyStore();
 
-  const app = Fastify({ logger: true });
+  const app = Fastify({ logger: true, trustProxy: true });
+
+  await app.register(rateLimit, {
+    global: true,
+    max: 100,
+    timeWindow: '1 minute',
+    keyGenerator: (req) => req.ip,
+    errorResponseBuilder: (_req, context) => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: `Rate limit exceeded. Retry in ${Math.ceil(context.ttl / 1000)}s.`,
+    }),
+  });
 
   await app.register(cors, { origin: config.webOrigin, credentials: true });
   await app.register(sensible);
@@ -31,7 +44,7 @@ async function main() {
 
   setTokenVerifier(async (token) => app.jwt.verify<{ sub: string }>(token));
 
-  app.get('/ws', { websocket: true }, (socket) => {
+  app.get('/ws', { websocket: true, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, (socket) => {
     registerClient(socket);
   });
 

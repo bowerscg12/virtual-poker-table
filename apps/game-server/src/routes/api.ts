@@ -18,7 +18,7 @@ import { createSession, deleteSessionsByUserId } from '../services/session.js';
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   const displayNameSchema = z.string().trim().min(1).max(10);
 
-  app.post('/auth/register', async (req, reply) => {
+  app.post('/auth/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = z
       .object({
         displayName: displayNameSchema,
@@ -31,7 +31,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     return toAuthResponse(user, token);
   });
 
-  app.post('/auth/login', async (req, reply) => {
+  app.post('/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = z.object({ email: z.string().email(), password: z.string() }).parse(req.body);
     const user = await loginUser(body.email, body.password);
     if (!user) return reply.status(401).send({ error: 'Invalid credentials' });
@@ -39,7 +39,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     return toAuthResponse(user, token);
   });
 
-  app.post('/auth/guest', async (req, reply) => {
+  app.post('/auth/guest', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = z.object({ displayName: displayNameSchema }).parse(req.body);
     const user = await guestLogin(body.displayName);
     const token = await reply.jwtSign({ sub: user.id });
@@ -79,7 +79,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
    * Body: { displayName?, presetId?, settings? }
    * Returns: { user, token, sessionId, lobby }
    */
-  app.post('/lobbies', async (req, reply) => {
+  app.post('/lobbies', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = z
       .object({
         displayName: displayNameSchema.optional(),
@@ -122,7 +122,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
    * Body: { displayName?, avatar? }
    * Returns: { user, token, sessionId }
    */
-  app.post('/lobbies/:id/enter', async (req, reply) => {
+  app.post('/lobbies/:id/enter', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { id: lobbyId } = req.params as { id: string };
     const body = z.object({ displayName: displayNameSchema.optional(), avatar: z.any().optional() }).parse(req.body);
 
@@ -232,5 +232,5 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/presets', async () => ({ presets: RULES_PRESETS }));
 
-  app.get('/health', async () => ({ ok: true }));
+  app.get('/health', { config: { rateLimit: false } }, async () => ({ ok: true }));
 }
