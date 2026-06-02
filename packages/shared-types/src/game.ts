@@ -58,6 +58,8 @@ export interface PublicTableState {
   /** ISO deadline for next auto-hand start (set during between-hand intermission) */
   intermissionDeadline?: string;
   paused: boolean;
+  /** Present when the last hand ended at showdown; cleared when next hand begins */
+  showdownResult?: ShowdownResult;
   /** Present only for twelve_card_flip hands during reveal phase */
   flipReveal?: {
     /** Revealed cards per seat, parallel to the seats array */
@@ -79,6 +81,21 @@ export interface LegalAction {
   minAmount?: number;
   maxAmount?: number;
   amount?: number;
+}
+
+export interface ShowdownHandEntry {
+  seatIndex: number;
+  displayName: string;
+  handDescription: string;
+  bestFive: Card[];
+  isWinner: boolean;
+  /** Total chips won across all pots; 0 for non-winners */
+  potWon: number;
+}
+
+export interface ShowdownResult {
+  hands: ShowdownHandEntry[];
+  isSplit: boolean;
 }
 
 export interface HandHistoryEntry {

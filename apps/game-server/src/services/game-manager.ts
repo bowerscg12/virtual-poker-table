@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import type { BadgeType, Card, HandHistoryEntry, PlayerActionType, PublicTableState, VariantConfig } from '@vct/shared-types';
+import type { BadgeType, Card, HandHistoryEntry, PlayerActionType, PublicTableState, ShowdownResult, VariantConfig } from '@vct/shared-types';
 import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
@@ -477,6 +477,27 @@ export function toPublicState(
   const lastActions = seatLastActions.get(lobbyId);
   const badges = computeBadges(lobbyId, state);
 
+  let showdownResult: ShowdownResult | undefined;
+  if (state.street === 'complete' && state.showdownHands && state.showdownHands.length > 0) {
+    const winnerSeatIndices = new Set(state.lastWinningSeatIndices);
+    const potWonBySeat = new Map<number, number>();
+    for (const payout of state.winnerPayouts) {
+      potWonBySeat.set(payout.seatIndex, (potWonBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
+    }
+    const uniqueWinners = new Set(state.winnerPayouts.map((w) => w.seatIndex));
+    showdownResult = {
+      hands: state.showdownHands.map((h) => ({
+        seatIndex: h.seatIndex,
+        displayName: state.seats.find((s) => s.seatIndex === h.seatIndex)?.displayName ?? `Seat ${h.seatIndex + 1}`,
+        handDescription: h.handDescription,
+        bestFive: h.bestFive,
+        isWinner: winnerSeatIndices.has(h.seatIndex),
+        potWon: potWonBySeat.get(h.seatIndex) ?? 0,
+      })),
+      isSplit: uniqueWinners.size > 1,
+    };
+  }
+
   const publicState: PublicTableState = {
     lobbyId,
     handNumber: state.handNumber,
@@ -506,6 +527,7 @@ export function toPublicState(
     actionDeadline: actionDeadline ?? undefined,
     intermissionDeadline: intermissionDeadline ?? undefined,
     paused: paused ?? false,
+    showdownResult,
     flipReveal: isTwelveCardFlip && state.street !== 'waiting'
       ? getTwelveCardFlipRevealInfo(state)
       : undefined,

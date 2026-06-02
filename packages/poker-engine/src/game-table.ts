@@ -29,6 +29,8 @@ export interface GameTableState {
   processedActionIds: Set<string>;
   bombPotActive: boolean;
   pendingActionSeatIndices: number[];
+  /** Evaluated hand per non-folded seat at showdown — only set when street becomes 'complete' via showdown */
+  showdownHands?: { seatIndex: number; handDescription: string; bestFive: Card[] }[];
   /** Revealed cards per seat (keyed by seatIndex) — only used for twelve_card_flip */
   revealedCards?: Record<number, Card[]>;
 }
@@ -358,6 +360,14 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
     if (!seat.folded) seat.shownCards = [...seat.holeCards];
   }
 
+  // Pre-evaluate all non-folded players once so we can reuse across pots and store for display.
+  const evaluatedHands = new Map<number, EvaluatedHand>();
+  for (const seat of state.seats) {
+    if (!seat.folded) {
+      evaluatedHands.set(seat.seatIndex, module.evaluateHand(seat.holeCards, state.board));
+    }
+  }
+
   const winners: { seatIndex: number; amount: number; hand: EvaluatedHand }[] = [];
 
   for (const pot of pots) {
@@ -370,7 +380,7 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
     const bestSeats: number[] = [];
 
     for (const s of eligible) {
-      const hand = module.evaluateHand(s.holeCards, state.board);
+      const hand = evaluatedHands.get(s.seatIndex)!;
       if (!best || compareHands(hand, best) > 0) {
         best = hand;
         bestSeats.length = 0;
@@ -388,6 +398,12 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
     }
   }
 
+  const showdownHands = [...evaluatedHands.entries()].map(([seatIndex, hand]) => ({
+    seatIndex,
+    handDescription: hand.description,
+    bestFive: hand.bestFive,
+  }));
+
   return {
     ok: true,
     state: {
@@ -401,6 +417,7 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
         amount: w.amount,
         handDescription: w.hand.description,
       })),
+      showdownHands,
       pendingActionSeatIndices: [],
     },
   };

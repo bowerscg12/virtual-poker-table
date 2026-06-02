@@ -1139,6 +1139,121 @@ select {
   white-space: nowrap;
 }
 
+/* ── Showdown results modal ──────────────────────────────── */
+
+.showdown-overlay { z-index: 55; align-items: center; }
+
+.showdown-modal {
+  max-width: 540px;
+  width: 100%;
+  animation: modal-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.9) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0); }
+}
+
+.showdown-modal__title {
+  text-align: center;
+  font-size: 1.5rem;
+  margin: 0 0 1rem;
+}
+
+.showdown-modal__winners {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.showdown-modal__winner-row {
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.showdown-modal__winner-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.showdown-modal__trophy { font-size: 1.1rem; }
+
+.showdown-modal__player-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--gold);
+  flex: 1;
+}
+
+.showdown-modal__player-name--loser {
+  color: #ccc;
+  font-size: 0.95rem;
+}
+
+.showdown-modal__pot-won {
+  font-weight: 700;
+  color: var(--gold);
+  font-size: 1rem;
+}
+
+.showdown-modal__hand-desc {
+  font-size: 0.9rem;
+  opacity: 0.85;
+  margin: 0 0 0.6rem;
+}
+
+.showdown-modal__hand-desc--small {
+  font-size: 0.8rem;
+  margin: 0;
+  opacity: 0.7;
+}
+
+.showdown-modal__cards {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.showdown-modal__cards--small { gap: 0.25rem; margin-top: 0.4rem; }
+
+.showdown-modal__card { width: 40px; height: 56px; font-size: 0.75rem; }
+.showdown-modal__card--small { width: 32px; height: 44px; font-size: 0.65rem; }
+
+.showdown-modal__losers {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 0.75rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.showdown-modal__losers-label {
+  font-size: 0.75rem;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.25rem;
+}
+
+.showdown-modal__loser-row {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+
+.showdown-modal__loser-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.1rem;
+}
+
 /* ── Show cards modal ────────────────────────────────────── */
 
 .show-cards-overlay { z-index: 60; }

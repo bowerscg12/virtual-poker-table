@@ -18,6 +18,7 @@ import { CashOutModal } from '../components/CashOutModal';
 import { RebuyModal } from '../components/RebuyModal';
 import { ShowCardsModal } from '../components/ShowCardsModal';
 import { SessionResultsModal } from '../components/SessionResultsModal';
+import { ShowdownResultsModal } from '../components/ShowdownResultsModal';
 
 export default function TablePage() {
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -28,6 +29,7 @@ export default function TablePage() {
   const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
   const [cashOutOpen, setCashOutOpen] = useState(false);
   const [rebuyClicked, setRebuyClicked] = useState(false);
+  const [dismissedShowdownHandNum, setDismissedShowdownHandNum] = useState<number | null>(null);
 
   const {
     connected,
@@ -327,6 +329,13 @@ export default function TablePage() {
             send({ type: 'rebuy' });
           }}
           onLeave={() => send({ type: 'cash_out' })}
+        />
+      )}
+
+      {table?.showdownResult && table.handNumber !== dismissedShowdownHandNum && !cashOutSummary && (
+        <ShowdownResultsModal
+          result={table.showdownResult}
+          onClose={() => setDismissedShowdownHandNum(table.handNumber)}
         />
       )}
 
