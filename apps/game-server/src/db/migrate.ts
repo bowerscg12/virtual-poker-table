@@ -86,6 +86,10 @@ CREATE INDEX IF NOT EXISTS idx_users_guest_created ON users(created_at) WHERE is
 `;
 
 async function main() {
+  if (!process.env.DATABASE_URL) {
+    console.log('DATABASE_URL not set — skipping migrations (server will use in-memory fallback)');
+    return;
+  }
   const pool = getPool();
   await pool.query(SQL);
   console.log('Migration complete');
