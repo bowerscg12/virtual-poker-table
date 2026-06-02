@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
 jobs:
   # ── Test ───────────────────────────────────────────────────────────────────
   test:
@@ -93,7 +97,8 @@ jobs:
       # ── GCP auth ────────────────────────────────────────────────────────────
       - uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: projects/867608402336/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+          service_account: 867608402336-compute@developer.gserviceaccount.com
 
       - uses: google-github-actions/setup-gcloud@v2
 
