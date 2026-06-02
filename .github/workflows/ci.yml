@@ -132,6 +132,8 @@ jobs:
       # ── Build and deploy web frontend to Firebase Hosting ────────────────
       - name: Build web frontend
         run: npm run build -w @vct/web
+        env:
+          VITE_SERVER_URL: ${{ secrets.CLOUD_RUN_URL }}
 
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting --project ${{ secrets.GCP_PROJECT_ID }}

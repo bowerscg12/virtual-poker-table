@@ -175,5 +175,7 @@ export function getWsUrl(): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.host;
   if (import.meta.env.DEV) return `${proto}//${host}/ws`;
+  const serverUrl = import.meta.env.VITE_SERVER_URL;
+  if (serverUrl) return `${serverUrl.replace(/^http/, 'ws')}/ws`;
   return `${proto}//${host}/ws`;
 }
