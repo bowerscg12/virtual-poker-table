@@ -1,6 +1,6 @@
 import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
 
-const API = '/api';
+const API = import.meta.env.VITE_SERVER_URL ? `${import.meta.env.VITE_SERVER_URL}/api` : '/api';
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra };
