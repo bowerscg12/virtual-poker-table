@@ -19,6 +19,8 @@ export interface TableAnimState {
   winnerBanner: WinnerBannerData | null;
   /** Increments each time a new all-in action occurs; drives one-shot table shake */
   allInShakeTrigger: number;
+  /** Increments when the all-in runout starts; drives opponent hole-card flip animation */
+  runoutHoleRevealTrigger: number;
 }
 
 type WinnerEntry = { seatIndex: number; amount: number; handDescription: string };
@@ -31,6 +33,7 @@ function emptyAnim(): TableAnimState {
     winningSeats: new Set(),
     winnerBanner: null,
     allInShakeTrigger: 0,
+    runoutHoleRevealTrigger: 0,
   };
 }
 
@@ -105,6 +108,9 @@ export function useTableAnimations(
       }, 900);
     }
 
+    // ── All-in runout start: flip opponents' hole cards over ─────────────
+    const isNewRunoutStart = !!table.runout?.active && !prev.runout?.active;
+
     // ── Bet / raise / call / all_in: chip-pulse; all_in also triggers shake ──
     const lastActionChanged =
       !!table.lastAction &&
@@ -139,11 +145,12 @@ export function useTableAnimations(
       }, 4500);
     }
 
-    if (Object.keys(updates).length > 0 || isNewAllIn) {
+    if (Object.keys(updates).length > 0 || isNewAllIn || isNewRunoutStart) {
       setAnim(a => ({
         ...a,
         ...updates,
         ...(isNewAllIn ? { allInShakeTrigger: a.allInShakeTrigger + 1 } : {}),
+        ...(isNewRunoutStart ? { runoutHoleRevealTrigger: a.runoutHoleRevealTrigger + 1 } : {}),
       }));
     }
   // handComplete identity change is the trigger; getSeatName is derived from table

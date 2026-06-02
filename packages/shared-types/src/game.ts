@@ -71,6 +71,8 @@ export interface PublicTableState {
     /** Seat index of the current leader, or null if tied / no cards revealed */
     leadingSeatIndex: number | null;
   };
+  /** Present while community cards are being progressively revealed in an all-in runout */
+  runout?: { active: boolean };
 }
 
 export interface PrivateTableState {

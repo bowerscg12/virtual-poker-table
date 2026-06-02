@@ -155,6 +155,25 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     const tid = setTimeout(() => felt.classList.remove('shake'), 500);
     return () => clearTimeout(tid);
   }, [anim.allInShakeTrigger]);
+
+  // ── All-in runout: flip opponents' hole cards face-up ────
+  const runoutRevealTriggerRef = useRef(anim.runoutHoleRevealTrigger);
+  useEffect(() => {
+    if (anim.runoutHoleRevealTrigger === runoutRevealTriggerRef.current) return;
+    runoutRevealTriggerRef.current = anim.runoutHoleRevealTrigger;
+    const felt = feltRef.current;
+    if (!felt) return;
+    const opponentSeats = felt.querySelectorAll<HTMLElement>('.seat.occupied:not(.me)');
+    opponentSeats.forEach(el => {
+      el.classList.remove('runout-reveal');
+      void el.offsetWidth;
+      el.classList.add('runout-reveal');
+    });
+    const tid = setTimeout(() => {
+      opponentSeats.forEach(el => el.classList.remove('runout-reveal'));
+    }, 1000);
+    return () => clearTimeout(tid);
+  }, [anim.runoutHoleRevealTrigger]);
   const potAreaRef = useRef<HTMLDivElement>(null);
   const [flyingChips, setFlyingChips] = useState<ChipFlight[]>([]);
   const prevWinnerBannerRef = useRef<WinnerBannerData | null>(null);
@@ -223,11 +242,18 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     return `deal-delay-${idx}`;
   }
 
+  const isRunoutActive = table?.runout?.active === true;
+
   return (
-    <div className="felt" ref={feltRef} role="region" aria-label="Poker table" onPointerDown={() => setActiveBadgeTip(null)}>
+    <div className={`felt${isRunoutActive ? ' runout-active' : ''}`} ref={feltRef} role="region" aria-label="Poker table" onPointerDown={() => setActiveBadgeTip(null)}>
       {table?.paused && (
         <div className="pause-overlay">
           <span>Game Paused</span>
+        </div>
+      )}
+      {isRunoutActive && (
+        <div className="runout-overlay" aria-live="polite">
+          <span>All-In Showdown</span>
         </div>
       )}
 

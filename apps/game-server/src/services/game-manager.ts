@@ -469,6 +469,8 @@ export function toPublicState(
   actionDeadline?: string | null,
   paused?: boolean,
   intermissionDeadline?: string | null,
+  runoutVisibleBoardCount?: number,
+  runoutActive?: boolean,
 ): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
@@ -509,11 +511,18 @@ export function toPublicState(
     ? (nextActiveSeat(activeIndices, sbSeatIndex + 1, () => true) ?? -1)
     : -1;
 
+  // During a runout, truncate the board to the currently-revealed count and hide the winner.
+  const visibleBoard =
+    runoutVisibleBoardCount !== undefined
+      ? state.board.slice(0, runoutVisibleBoardCount)
+      : state.board;
+  const effectiveShowdownResult = runoutActive ? undefined : showdownResult;
+
   const publicState: PublicTableState = {
     lobbyId,
     handNumber: state.handNumber,
     street: state.street,
-    board: state.board,
+    board: visibleBoard,
     seats: state.seats.map((s) => ({
       seatIndex: s.seatIndex,
       userId: s.userId,
@@ -538,7 +547,8 @@ export function toPublicState(
     actionDeadline: actionDeadline ?? undefined,
     intermissionDeadline: intermissionDeadline ?? undefined,
     paused: paused ?? false,
-    showdownResult,
+    showdownResult: effectiveShowdownResult,
+    runout: runoutActive ? { active: true } : undefined,
     flipReveal: isTwelveCardFlip && state.street !== 'waiting'
       ? getTwelveCardFlipRevealInfo(state)
       : undefined,

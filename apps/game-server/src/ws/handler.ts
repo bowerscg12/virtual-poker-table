@@ -182,6 +182,7 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelActionTimer(lobbyId);
   cancelIntermissionTimer(lobbyId);
   cancelShowCardsTimer(lobbyId);
+  cancelRunout(lobbyId);
   waitingForPlayers.delete(lobbyId);
 
   await updateLobbyStatus(lobbyId, 'closed');
@@ -222,6 +223,100 @@ async function tryStartWaitingHand(lobbyId: string): Promise<void> {
   recordHandStart(lobbyId, result);
   scheduleActionTimer(lobbyId, lobby.settings, result);
   await broadcastTableState(lobbyId);
+}
+
+// ── All-in runout orchestration ───────────────────────────
+interface RunoutState {
+  finalEngineState: GameTableState;
+  config: VariantConfig;
+  startBoardCount: number;
+  visibleBoardCount: number;
+  gen: number;
+}
+
+/** lobbyId → active runout sequence (board cards being progressively revealed) */
+const activeRunouts = new Map<string, RunoutState>();
+
+/**
+ * Monotonic generation counter for runout callbacks.
+ * Incremented by cancelRunout so stale setTimeout callbacks bail immediately.
+ */
+const runoutGenerations = new Map<string, number>();
+
+function cancelRunout(lobbyId: string): void {
+  activeRunouts.delete(lobbyId);
+  runoutGenerations.set(lobbyId, (runoutGenerations.get(lobbyId) ?? 0) + 1);
+}
+
+/** True when a game action triggered an all-in board runout (cards were auto-dealt to showdown). */
+function isAllInRunoutTrigger(newState: GameTableState, preBoardCount: number): boolean {
+  return (
+    newState.street === 'complete' &&
+    (newState.board?.length ?? 0) > preBoardCount &&
+    (newState.showdownHands?.length ?? 0) > 0
+  );
+}
+
+/**
+ * Orchestrate the dramatic all-in runout sequence:
+ *   1. Broadcast immediately with hole cards revealed + board at startBoardCount.
+ *   2. Progressively reveal each remaining street (flop/turn/river) with pauses.
+ *   3. After the final pause, call handleHandComplete (winner shown, intermission starts).
+ */
+async function startAllInRunout(
+  lobbyId: string,
+  finalState: GameTableState,
+  config: VariantConfig,
+  startBoardCount: number,
+): Promise<void> {
+  cancelRunout(lobbyId); // increments generation; clears any prior runout
+  const gen = runoutGenerations.get(lobbyId) ?? 0;
+
+  activeRunouts.set(lobbyId, {
+    finalEngineState: finalState,
+    config,
+    startBoardCount,
+    visibleBoardCount: startBoardCount,
+    gen,
+  });
+
+  // Step 0: broadcast initial state — holes visible, board at startBoardCount
+  await broadcastTableState(lobbyId);
+
+  // Build the list of board counts to reveal to, street-by-street
+  const totalCards = finalState.board.length;
+  const stepCounts: number[] = [];
+  if (startBoardCount < 3 && totalCards >= 3) stepCounts.push(3);
+  if (startBoardCount < 4 && totalCards >= 4) stepCounts.push(4);
+  if (startBoardCount < totalCards) stepCounts.push(totalCards);
+  const reveals = [...new Set(stepCounts)]
+    .filter((n) => n > startBoardCount)
+    .sort((a, b) => a - b);
+
+  // Timing: 2500 ms initial pause, then 2000 ms between streets, 2500 ms before winner
+  let cumDelay = 2500;
+
+  for (let i = 0; i < reveals.length; i++) {
+    const targetCount = reveals[i];
+    const isLast = i === reveals.length - 1;
+    const revealAt = cumDelay;
+    cumDelay += isLast ? 2500 : 2000;
+
+    setTimeout(async () => {
+      if ((runoutGenerations.get(lobbyId) ?? 0) !== gen) return;
+      const r = activeRunouts.get(lobbyId);
+      if (!r) return;
+      r.visibleBoardCount = targetCount;
+      await broadcastTableState(lobbyId);
+    }, revealAt);
+  }
+
+  // Final callback: clear runout and trigger hand-complete (winner display + intermission)
+  setTimeout(async () => {
+    if ((runoutGenerations.get(lobbyId) ?? 0) !== gen) return;
+    cancelRunout(lobbyId);
+    await handleHandComplete(lobbyId, finalState, config);
+  }, cumDelay);
 }
 
 /** userId set to prevent duplicate cash-out processing */
@@ -266,7 +361,6 @@ function broadcastLobby(
 }
 
 async function broadcastTableState(lobbyId: string): Promise<void> {
-  const game = await getActiveGame(lobbyId);
   const connected = getConnectedSet(lobbyId);
   const lobby = await getLobbyById(lobbyId, connected);
   if (!lobby) return;
@@ -276,12 +370,19 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   const paused = lobby.status === 'paused';
   const isWaitingForPlayers = waitingForPlayers.get(lobbyId) ?? false;
 
+  // When a runout is active use the final engine state and a truncated board count
+  const runout = activeRunouts.get(lobbyId);
+  const game = runout ? runout.finalEngineState : await getActiveGame(lobbyId);
+  const visibleBoardCount = runout ? runout.visibleBoardCount : undefined;
+  const runoutActive = runout !== undefined;
+
   broadcastLobby(lobbyId, (userId, isSpectator) => {
     if (!game) {
       return { type: 'lobby_state', lobby };
     }
     const { public: pub, private: priv } = toPublicState(
-      lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline
+      lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline,
+      visibleBoardCount, runoutActive,
     );
     return {
       type: 'table_state',
@@ -413,6 +514,7 @@ async function onActionTimerExpired(
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return;
 
+  const preBoardCount = state.board.length;
   const action = getAutoAction(state, config, seatIndex);
   const preActionStreet = state.street;
   const result = await processGameAction(lobbyId, config, userId, crypto.randomUUID(), action);
@@ -421,7 +523,11 @@ async function onActionTimerExpired(
   recordAction(lobbyId, userId, action, preActionStreet);
 
   if (result.state.street === 'complete') {
-    await handleHandComplete(lobbyId, result.state, config);
+    if (isAllInRunoutTrigger(result.state, preBoardCount)) {
+      await startAllInRunout(lobbyId, result.state, config, preBoardCount);
+    } else {
+      await handleHandComplete(lobbyId, result.state, config);
+    }
   } else {
     scheduleActionTimer(lobbyId, config, result.state);
     await broadcastTableState(lobbyId);
@@ -456,6 +562,7 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
     if (seat && game.actionSeatIndex === seat.seatIndex && !seat.folded && !seat.allIn) {
       const lobby = await getLobbyById(lobbyId);
       if (lobby) {
+        const preBoardCount = game.board.length;
         const autoAction = getAutoAction(game, lobby.settings, seat.seatIndex);
         const result = await processGameAction(
           lobbyId,
@@ -468,7 +575,11 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
           recordAction(lobbyId, userId, autoAction, game.street);
 
           if (result.state.street === 'complete') {
-            await handleHandComplete(lobbyId, result.state, lobby.settings);
+            if (isAllInRunoutTrigger(result.state, preBoardCount)) {
+              await startAllInRunout(lobbyId, result.state, lobby.settings, preBoardCount);
+            } else {
+              await handleHandComplete(lobbyId, result.state, lobby.settings);
+            }
           } else {
             scheduleActionTimer(lobbyId, lobby.settings, result.state);
             await broadcastTableState(lobbyId);
@@ -929,6 +1040,18 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           scheduleActionTimer(session.lobbyId, reconnLobby.settings, reconnGame);
         }
 
+        // Recovery: if the game completed while the server was down (e.g., mid-runout restart),
+        // the intermission timer was lost — start a short one so the next hand begins.
+        if (
+          reconnGame?.street === 'complete' &&
+          !intermissionTimers.has(session.lobbyId) &&
+          !activeRunouts.has(session.lobbyId) &&
+          reconnLobby?.status === 'playing'
+        ) {
+          scheduleIntermission(session.lobbyId, reconnLobby.settings, 5000);
+          await broadcastTableState(session.lobbyId);
+        }
+
         // If the player reconnects with 0 chips, show them the rebuy prompt
         if (!pendingCashOuts.has(session.userId)) {
           const reconnGameSeat = reconnGame?.seats.find((s) => s.userId === session.userId);
@@ -1191,6 +1314,18 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
             }
           }
         }
+
+        // Recovery: if the game finished while paused (e.g., runout completed), start intermission.
+        if (
+          !intermissionTimers.has(st.lobbyId) &&
+          !activeRunouts.has(st.lobbyId) &&
+          resumedLobby.status === 'playing'
+        ) {
+          const resumeCheckGame = await getActiveGame(st.lobbyId);
+          if (resumeCheckGame?.street === 'complete') {
+            scheduleIntermission(st.lobbyId, resumedLobby.settings, 5000);
+          }
+        }
       }
 
       // If the table was blocked waiting for players, try to start now that we're resumed.
@@ -1239,6 +1374,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       // Snapshot the street BEFORE the action so PFR tracking knows which street this was.
       const preActionState = await getActiveGame(st.lobbyId);
       const preActionStreet = preActionState?.street;
+      const preBoardCount = preActionState?.board.length ?? 0;
       const result = await processGameAction(
         st.lobbyId,
         lobby.settings,
@@ -1257,7 +1393,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       recordAction(st.lobbyId, st.userId, msg.action, preActionStreet);
 
       if (result.state.street === 'complete') {
-        await handleHandComplete(st.lobbyId, result.state, lobby.settings);
+        if (isAllInRunoutTrigger(result.state, preBoardCount)) {
+          await startAllInRunout(st.lobbyId, result.state, lobby.settings, preBoardCount);
+        } else {
+          await handleHandComplete(st.lobbyId, result.state, lobby.settings);
+        }
       } else {
         scheduleActionTimer(st.lobbyId, lobby.settings, result.state);
         await broadcastTableState(st.lobbyId);
