@@ -58,6 +58,8 @@ export interface PublicTableState {
   /** ISO deadline for next auto-hand start (set during between-hand intermission) */
   intermissionDeadline?: string;
   paused: boolean;
+  /** True when the game is live (status = 'playing') but blocked waiting for enough active players */
+  waitingForPlayers?: boolean;
   /** Present when the last hand ended at showdown; cleared when next hand begins */
   showdownResult?: ShowdownResult;
   /** Present only for twelve_card_flip hands during reveal phase */

@@ -139,6 +139,12 @@ const SHOW_CARDS_TIMEOUT_MS = 5_000;
 /** lobbyId → timer that fires after 1 hour of no connected clients */
 const emptyLobbyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+/**
+ * Set when onIntermissionExpired fires but startHand fails due to insufficient active players.
+ * Cleared atomically at the start of tryStartWaitingHand to prevent concurrent triggers.
+ */
+const waitingForPlayers = new Map<string, boolean>();
+
 const EMPTY_LOBBY_CLOSE_MS = 60 * 60 * 1000;
 
 function cancelEmptyLobbyTimer(lobbyId: string): void {
@@ -166,6 +172,7 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelActionTimer(lobbyId);
   cancelIntermissionTimer(lobbyId);
   cancelShowCardsTimer(lobbyId);
+  waitingForPlayers.delete(lobbyId);
 
   await updateLobbyStatus(lobbyId, 'closed');
   clearGame(lobbyId);
@@ -173,6 +180,38 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   lobbyClients.delete(lobbyId);
 
   console.log(`[lobby] Auto-closed empty lobby ${lobbyId} after 1 hour of inactivity`);
+}
+
+/**
+ * Attempt to start the next hand for a lobby that is waiting for enough active players.
+ * Clears the flag before any await to prevent concurrent triggers; restores it if startHand
+ * still fails. No-op when the lobby is not in the waiting state.
+ */
+async function tryStartWaitingHand(lobbyId: string): Promise<void> {
+  if (!waitingForPlayers.get(lobbyId)) return;
+
+  // Clear synchronously before any await to prevent a second concurrent call from also firing.
+  waitingForPlayers.delete(lobbyId);
+
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.status !== 'playing') return;
+
+  // Guard: bail if a hand is already in progress (duplicate event race)
+  const existing = await getActiveGame(lobbyId);
+  const activeStreets = ['preflop', 'flop', 'turn', 'river', 'showdown', 'reveal'] as const;
+  if (existing && (activeStreets as readonly string[]).includes(existing.street)) return;
+
+  const result = await startHand(lobbyId, lobby.settings);
+  if ('error' in result) {
+    // Still not enough players — restore the flag and broadcast so clients see the message.
+    waitingForPlayers.set(lobbyId, true);
+    await broadcastTableState(lobbyId);
+    return;
+  }
+
+  recordHandStart(lobbyId, result);
+  scheduleActionTimer(lobbyId, lobby.settings, result);
+  await broadcastTableState(lobbyId);
 }
 
 /** userId set to prevent duplicate cash-out processing */
@@ -225,6 +264,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   const deadline = getActionDeadline(lobbyId);
   const intermDeadline = getIntermissionDeadline(lobbyId);
   const paused = lobby.status === 'paused';
+  const isWaitingForPlayers = waitingForPlayers.get(lobbyId) ?? false;
 
   broadcastLobby(lobbyId, (userId, isSpectator) => {
     if (!game) {
@@ -233,7 +273,11 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
     const { public: pub, private: priv } = toPublicState(
       lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline
     );
-    return { type: 'table_state', public: pub, private: priv };
+    return {
+      type: 'table_state',
+      public: { ...pub, waitingForPlayers: isWaitingForPlayers || undefined },
+      private: priv,
+    };
   });
 }
 
@@ -332,6 +376,8 @@ async function onIntermissionExpired(lobbyId: string, config: VariantConfig): Pr
   const result = await startHand(lobbyId, config);
   if ('error' in result) {
     console.warn(`[intermission] Cannot start next hand for ${lobbyId}: ${result.error}`);
+    waitingForPlayers.set(lobbyId, true);
+    await broadcastTableState(lobbyId);
     return;
   }
 
@@ -596,6 +642,7 @@ async function processPendingRebuys(lobbyId: string): Promise<void> {
     pendingRebuys.delete(userId);
     await rebuyPlayer(lobbyId, userId, pending.amount);
     await updateSeatStackAfterRebuy(lobbyId, userId, pending.amount);
+    await setSitOutNextHand(lobbyId, userId, false);
     recordRebuy(lobbyId, userId, pending.amount);
     const ws = connectedUserSockets.get(userId);
     if (ws) send(ws, { type: 'rebuy_confirmed', newStack: pending.amount });
@@ -965,6 +1012,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'chat', message: m });
       }
       await broadcastTableState(msg.lobbyId);
+      // A new seated player may satisfy the active-player threshold.
+      await tryStartWaitingHand(msg.lobbyId);
       return;
     }
 
@@ -1130,6 +1179,9 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         }
       }
 
+      // If the table was blocked waiting for players, try to start now that we're resumed.
+      await tryStartWaitingHand(st.lobbyId);
+
       const updated = await getLobbyById(st.lobbyId);
       if (updated) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: updated }));
       await broadcastTableState(st.lobbyId);
@@ -1267,10 +1319,12 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
       await rebuyPlayer(lobbyId, userId, buyIn);
       await updateSeatStackAfterRebuy(lobbyId, userId, buyIn);
+      await setSitOutNextHand(lobbyId, userId, false);
       recordRebuy(lobbyId, userId, buyIn);
 
       send(ws, { type: 'rebuy_confirmed', newStack: buyIn });
       await broadcastTableState(lobbyId);
+      await tryStartWaitingHand(lobbyId);
       return;
     }
 
@@ -1330,6 +1384,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         const connected = getConnectedSet(st.lobbyId);
         const withConnected = await getLobbyById(st.lobbyId, connected);
         if (withConnected) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
+      }
+      // Player returned to active — check if we can now start the blocked hand.
+      if (!msg.enabled) {
+        await tryStartWaitingHand(st.lobbyId);
       }
       return;
     }

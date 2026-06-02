@@ -155,6 +155,11 @@ export default function TablePage() {
         <div className="banner warning">Connection lost — reconnecting to your session...</div>
       )}
       {error && <div className="banner error">{error}</div>}
+      {table?.waitingForPlayers && !cashOutSummary && (
+        <div className="banner info">
+          Waiting for more active players — need at least 2 to start the next hand
+        </div>
+      )}
 
       <main className="table-main">
         {headerLobby?.settings.game === 'twelve_card_flip' ? (
