@@ -303,7 +303,7 @@ export default function CreateLobbyPage() {
           <button type="submit" className="btn primary" disabled={!isFormValid}>
             Next: Choose your name
           </button>
-          <button type="button" className="btn" onClick={() => navigate(-1)}>
+          <button type="button" className="btn" onClick={() => navigate('/')}>
             Back
           </button>
         </div>

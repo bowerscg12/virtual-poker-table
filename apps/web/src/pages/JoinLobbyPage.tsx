@@ -52,7 +52,7 @@ export default function JoinLobbyPage() {
           <button type="submit" className="btn primary" disabled={loading || !inviteCode.trim()}>
             {loading ? 'Looking up table...' : 'Next'}
           </button>
-          <button type="button" className="btn" onClick={() => navigate(-1)} disabled={loading}>
+          <button type="button" className="btn" onClick={() => navigate('/')} disabled={loading}>
             Back
           </button>
         </div>
