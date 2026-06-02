@@ -34,13 +34,19 @@ COPY apps/game-server/package.json ./apps/game-server/
 
 RUN npm ci --omit=dev
 
-# Copy compiled output from builder (workspace symlinks already resolve correctly)
+# Copy compiled output from builder (workspace symlinks resolve via package.json exports)
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/packages/poker-engine/dist ./packages/poker-engine/dist
 COPY --from=builder /app/apps/game-server/dist ./apps/game-server/dist
 
+# Run as non-root
+USER node
+
 WORKDIR /app/apps/game-server
+
 ENV NODE_ENV=production
+
+# Cloud Run injects PORT via --port flag; config.ts reads process.env.PORT
 EXPOSE 3001
 
 CMD ["node", "dist/index.js"]
