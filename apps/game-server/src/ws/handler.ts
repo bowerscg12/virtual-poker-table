@@ -13,6 +13,8 @@ import {
   removeSeat,
   setActionTimerSetting,
   setFlipAnte,
+  setNextHandBombPot,
+  clearNextHandBombPot,
   setSitOutNextHand,
   setTableBuyIn,
   setSittingOut,
@@ -32,6 +34,7 @@ import {
   setActionDeadline,
   setIntermissionDeadline,
   setSeatShownCards,
+  startBombPotHand,
   startHand,
   toPublicState,
   updateLastHandHistoryFoldWin,
@@ -183,6 +186,7 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelIntermissionTimer(lobbyId);
   cancelShowCardsTimer(lobbyId);
   cancelRunout(lobbyId);
+  cancelBombPotOptIn(lobbyId);
   waitingForPlayers.delete(lobbyId);
 
   await updateLobbyStatus(lobbyId, 'closed');
@@ -212,6 +216,9 @@ async function tryStartWaitingHand(lobbyId: string): Promise<void> {
   const activeStreets = ['preflop', 'flop', 'turn', 'river', 'showdown', 'reveal'] as const;
   if (existing && (activeStreets as readonly string[]).includes(existing.street)) return;
 
+  // If the host queued a Bomb Pot for the next hand, run the opt-in flow instead.
+  if (await maybeStartBombPot(lobbyId, lobby.settings)) return;
+
   const result = await startHand(lobbyId, lobby.settings);
   if ('error' in result) {
     // Still not enough players — restore the flag and broadcast so clients see the message.
@@ -232,6 +239,8 @@ interface RunoutState {
   startBoardCount: number;
   visibleBoardCount: number;
   gen: number;
+  /** Whether all participants' hole cards should be revealed at this point in the runout. */
+  revealHoleCards: boolean;
 }
 
 /** lobbyId → active runout sequence (board cards being progressively revealed) */
@@ -278,6 +287,7 @@ async function startAllInRunout(
     startBoardCount,
     visibleBoardCount: startBoardCount,
     gen,
+    revealHoleCards: true, // all-in runout reveals hole cards throughout
   });
 
   // Step 0: broadcast initial state — holes visible, board at startBoardCount
@@ -317,6 +327,187 @@ async function startAllInRunout(
     cancelRunout(lobbyId);
     await handleHandComplete(lobbyId, finalState, config);
   }, cumDelay);
+}
+
+/**
+ * Orchestrate a Bomb Pot runout:
+ *   1. Broadcast with board empty and hole cards hidden (own cards only) for a 5s viewing delay.
+ *   2. Reveal the flop AND flip every participant's hole cards face-up.
+ *   3. Reveal turn, then river (both boards in lockstep for a double board).
+ *   4. After the final pause, complete the hand (showdown + intermission).
+ */
+async function startBombPotRunout(
+  lobbyId: string,
+  finalState: GameTableState,
+  config: VariantConfig,
+): Promise<void> {
+  cancelRunout(lobbyId);
+  const gen = runoutGenerations.get(lobbyId) ?? 0;
+
+  activeRunouts.set(lobbyId, {
+    finalEngineState: finalState,
+    config,
+    startBoardCount: 0,
+    visibleBoardCount: 0,
+    gen,
+    revealHoleCards: false, // own cards only during the 5s viewing delay
+  });
+
+  // Step 0: hole cards hidden, board empty
+  await broadcastTableState(lobbyId);
+
+  const total = finalState.board.length;       // flop(+extra) + turn + river
+  const flopCount = Math.max(3, total - 2);
+  const reveals = [flopCount, flopCount + 1, total].filter((n) => n <= total);
+
+  let cumDelay = 5000; // 5s viewing delay before the flop
+  for (let i = 0; i < reveals.length; i++) {
+    const targetCount = reveals[i];
+    const isLast = i === reveals.length - 1;
+    const revealAt = cumDelay;
+    cumDelay += isLast ? 2500 : 2000;
+
+    setTimeout(async () => {
+      if ((runoutGenerations.get(lobbyId) ?? 0) !== gen) return;
+      const r = activeRunouts.get(lobbyId);
+      if (!r) return;
+      r.visibleBoardCount = targetCount;
+      r.revealHoleCards = true; // flop onward: all cards face up
+      await broadcastTableState(lobbyId);
+    }, revealAt);
+  }
+
+  setTimeout(async () => {
+    if ((runoutGenerations.get(lobbyId) ?? 0) !== gen) return;
+    cancelRunout(lobbyId);
+    await handleHandComplete(lobbyId, finalState, config);
+  }, cumDelay);
+}
+
+// ── Bomb Pot opt-in orchestration ─────────────────────────
+const BOMB_POT_OPT_IN_MS = 10_000;
+
+interface BombPotPendingState {
+  amount: number;
+  doubleBoard: boolean;
+  deadline: string;
+  gen: number;
+  joined: Set<string>;
+  config: VariantConfig;
+}
+
+/** lobbyId → active 10-second Bomb Pot opt-in window */
+const bombPotPending = new Map<string, BombPotPendingState>();
+const bombPotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const bombPotGenerations = new Map<string, number>();
+
+function cancelBombPotOptIn(lobbyId: string): void {
+  const t = bombPotTimers.get(lobbyId);
+  if (t) { clearTimeout(t); bombPotTimers.delete(lobbyId); }
+  bombPotPending.delete(lobbyId);
+  bombPotGenerations.set(lobbyId, (bombPotGenerations.get(lobbyId) ?? 0) + 1);
+}
+
+/** Seated players eligible to be offered a Bomb Pot: have chips and are not sitting out next hand. */
+async function eligibleBombPotPlayers(lobbyId: string): Promise<string[]> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return [];
+  return lobby.seats
+    .filter((s) => s.userId && s.stack > 0 && !s.sitOutNextHand)
+    .map((s) => s.userId!);
+}
+
+/**
+ * Begin the Bomb Pot opt-in phase: prompt every eligible connected player and start the
+ * 10-second countdown. Returns true so callers know not to start a normal hand.
+ */
+async function startBombPotOptIn(lobbyId: string, config: VariantConfig): Promise<boolean> {
+  const bp = config.nextHandBombPot;
+  if (!bp) return false;
+
+  cancelBombPotOptIn(lobbyId);
+  const gen = bombPotGenerations.get(lobbyId) ?? 0;
+  const deadline = new Date(Date.now() + BOMB_POT_OPT_IN_MS).toISOString();
+  bombPotPending.set(lobbyId, {
+    amount: bp.amount,
+    doubleBoard: bp.doubleBoard,
+    deadline,
+    gen,
+    joined: new Set(),
+    config,
+  });
+
+  const eligible = await eligibleBombPotPlayers(lobbyId);
+  for (const userId of eligible) {
+    const ws = connectedUserSockets.get(userId);
+    if (ws) send(ws, { type: 'bomb_pot_prompt', deadline, amount: bp.amount, doubleBoard: bp.doubleBoard });
+  }
+
+  bombPotTimers.set(lobbyId, setTimeout(() => {
+    if ((bombPotGenerations.get(lobbyId) ?? 0) !== gen) return;
+    resolveBombPotOptIn(lobbyId).catch(() => {});
+  }, BOMB_POT_OPT_IN_MS));
+
+  return true;
+}
+
+/** Start a normal hand after a Bomb Pot is cancelled, so play continues. */
+async function startNormalHandFallback(lobbyId: string, settings: VariantConfig): Promise<void> {
+  const result = await startHand(lobbyId, settings);
+  if ('error' in result) {
+    waitingForPlayers.set(lobbyId, true);
+    await broadcastTableState(lobbyId);
+    return;
+  }
+  recordHandStart(lobbyId, result);
+  scheduleActionTimer(lobbyId, settings, result);
+  await broadcastTableState(lobbyId);
+}
+
+/**
+ * Resolve the opt-in window: clear the host's one-shot Bomb Pot setting, then either start
+ * the Bomb Pot hand (>= 2 joined and still seated) or cancel and fall back to a normal hand.
+ */
+async function resolveBombPotOptIn(lobbyId: string): Promise<void> {
+  const pending = bombPotPending.get(lobbyId);
+  cancelBombPotOptIn(lobbyId); // clears timer + pending + bumps generation
+  if (!pending) return;
+
+  await clearNextHandBombPot(lobbyId); // one-shot reset regardless of outcome
+
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.status !== 'playing') {
+    await broadcastTableState(lobbyId);
+    return;
+  }
+
+  // Push the cleared setting to all clients so the host checkbox unchecks immediately.
+  broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby }));
+
+  const seatedWithChips = new Set(lobby.seats.filter((s) => s.userId && s.stack > 0).map((s) => s.userId!));
+  const participants = [...pending.joined].filter((id) => seatedWithChips.has(id));
+
+  if (participants.length < 2) {
+    broadcastLobby(lobbyId, () => ({ type: 'bomb_pot_cancelled', reason: 'Bomb Pot cancelled: not enough participants' }));
+    await startNormalHandFallback(lobbyId, lobby.settings);
+    return;
+  }
+
+  const result = await startBombPotHand(lobbyId, lobby.settings, pending.amount, pending.doubleBoard, participants);
+  if ('error' in result) {
+    broadcastLobby(lobbyId, () => ({ type: 'bomb_pot_cancelled', reason: 'Bomb Pot cancelled: not enough participants' }));
+    await startNormalHandFallback(lobbyId, lobby.settings);
+    return;
+  }
+
+  recordHandStart(lobbyId, result);
+  await startBombPotRunout(lobbyId, result, lobby.settings);
+}
+
+/** If a Bomb Pot is pending for the next hand, begin opt-in and return true. */
+async function maybeStartBombPot(lobbyId: string, settings: VariantConfig): Promise<boolean> {
+  if (!settings.nextHandBombPot) return false;
+  return startBombPotOptIn(lobbyId, settings);
 }
 
 /** userId set to prevent duplicate cash-out processing */
@@ -375,6 +566,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   const game = runout ? runout.finalEngineState : await getActiveGame(lobbyId);
   const visibleBoardCount = runout ? runout.visibleBoardCount : undefined;
   const runoutActive = runout !== undefined;
+  const revealHoleCards = runout ? runout.revealHoleCards : undefined;
 
   broadcastLobby(lobbyId, (userId, isSpectator) => {
     if (!game) {
@@ -382,7 +574,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
     }
     const { public: pub, private: priv } = toPublicState(
       lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline,
-      visibleBoardCount, runoutActive,
+      visibleBoardCount, runoutActive, revealHoleCards,
     );
     return {
       type: 'table_state',
@@ -472,7 +664,7 @@ function scheduleIntermission(lobbyId: string, config: VariantConfig, delayMs = 
 }
 
 /** Auto-starts the next hand once the between-hand countdown reaches zero. */
-async function onIntermissionExpired(lobbyId: string, config: VariantConfig): Promise<void> {
+async function onIntermissionExpired(lobbyId: string, _config: VariantConfig): Promise<void> {
   intermissionTimers.delete(lobbyId);
   clearIntermissionDeadline(lobbyId);
 
@@ -484,7 +676,10 @@ async function onIntermissionExpired(lobbyId: string, config: VariantConfig): Pr
   const activeStreets = ['preflop', 'flop', 'turn', 'river', 'showdown', 'reveal'] as const;
   if (existing && (activeStreets as readonly string[]).includes(existing.street)) return;
 
-  const result = await startHand(lobbyId, config);
+  // If the host queued a Bomb Pot for the next hand, run the opt-in flow instead.
+  if (await maybeStartBombPot(lobbyId, lobby.settings)) return;
+
+  const result = await startHand(lobbyId, lobby.settings);
   if ('error' in result) {
     console.warn(`[intermission] Cannot start next hand for ${lobbyId}: ${result.error}`);
     waitingForPlayers.set(lobbyId, true);
@@ -493,7 +688,7 @@ async function onIntermissionExpired(lobbyId: string, config: VariantConfig): Pr
   }
 
   recordHandStart(lobbyId, result);
-  scheduleActionTimer(lobbyId, config, result);
+  scheduleActionTimer(lobbyId, lobby.settings, result);
   await broadcastTableState(lobbyId);
 }
 
@@ -1065,6 +1260,17 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         if (reconnPending && reconnPending.winnerId === session.userId) {
           send(ws, { type: 'show_cards_prompt', deadline: reconnPending.deadline });
         }
+
+        // Re-send the Bomb Pot opt-in prompt if a window is active when the player reconnects
+        const reconnBombPot = bombPotPending.get(session.lobbyId);
+        if (reconnBombPot) {
+          send(ws, {
+            type: 'bomb_pot_prompt',
+            deadline: reconnBombPot.deadline,
+            amount: reconnBombPot.amount,
+            doubleBoard: reconnBombPot.doubleBoard,
+          });
+        }
       }
       return;
     }
@@ -1217,6 +1423,15 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       // Only allow manual start before the first hand; auto-progression handles all subsequent hands.
       if (lobby.status !== 'open') {
         send(ws, { type: 'error', message: 'Game already in progress' });
+        return;
+      }
+      // If a Bomb Pot is queued, mark the game playing and run the opt-in flow instead.
+      if (lobby.settings.nextHandBombPot) {
+        await updateLobbyStatus(st.lobbyId, 'playing');
+        await startBombPotOptIn(st.lobbyId, lobby.settings);
+        const bpLobby = await getLobbyById(st.lobbyId);
+        if (bpLobby) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: bpLobby }));
+        await broadcastTableState(st.lobbyId);
         return;
       }
       const result = await startHand(st.lobbyId, lobby.settings);
@@ -1437,6 +1652,27 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         return;
       }
       broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
+      return;
+    }
+
+    case 'host_set_bomb_pot': {
+      if (!st.userId || !st.lobbyId) return;
+      const value = msg.enabled ? { amount: msg.amount ?? 0, doubleBoard: !!msg.doubleBoard } : null;
+      const result = await setNextHandBombPot(st.lobbyId, st.userId, value);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
+      return;
+    }
+
+    case 'bomb_pot_join': {
+      if (!st.userId || !st.lobbyId) return;
+      const pending = bombPotPending.get(st.lobbyId);
+      if (!pending) return;
+      if (msg.join) pending.joined.add(st.userId);
+      else pending.joined.delete(st.userId);
       return;
     }
 

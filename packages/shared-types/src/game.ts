@@ -47,6 +47,10 @@ export interface PublicTableState {
   handNumber: number;
   street: Street;
   board: Card[];
+  /** Second community board — present only during a Double Board Bomb Pot hand. */
+  secondBoard?: Card[];
+  /** Present during an active Bomb Pot hand; drives the in-hand banner. */
+  bombPot?: { amount: number; doubleBoard: boolean };
   seats: Omit<SeatGameState, 'holeCards'>[];
   pots: PotInfo[];
   dealerSeatIndex: number;
@@ -100,6 +104,12 @@ export interface ShowdownHandEntry {
 export interface ShowdownResult {
   hands: ShowdownHandEntry[];
   isSplit: boolean;
+  /** Board A community cards — present only for a Double Board Bomb Pot showdown. */
+  board?: Card[];
+  /** Board B cards — present only for a Double Board Bomb Pot showdown. */
+  secondBoard?: Card[];
+  /** Per-seat results evaluated on Board B — present only for a Double Board Bomb Pot showdown. */
+  secondHands?: ShowdownHandEntry[];
 }
 
 export interface HandHistoryEntry {

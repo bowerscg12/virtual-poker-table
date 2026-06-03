@@ -17,6 +17,7 @@ import { HandHistoryPanel } from '../components/HandHistoryPanel';
 import { CashOutModal } from '../components/CashOutModal';
 import { RebuyModal } from '../components/RebuyModal';
 import { ShowCardsModal } from '../components/ShowCardsModal';
+import { BombPotPrompt } from '../components/BombPotPrompt';
 import { SessionResultsModal } from '../components/SessionResultsModal';
 import { ShowdownResultsModal } from '../components/ShowdownResultsModal';
 
@@ -45,9 +46,18 @@ export default function TablePage() {
     rebuyAvailable,
     rebuyQueued,
     showCardsPrompt,
+    bombPotPrompt,
+    bombPotNotice,
+    clearBombPotNotice,
     clearCashOutSummary,
     send,
   } = useGameSocket(token, lobbyId ?? null);
+
+  // Local Bomb Pot opt-in choice, reset whenever a new prompt arrives.
+  const [bombPotChoice, setBombPotChoice] = useState<boolean | null>(null);
+  useEffect(() => {
+    setBombPotChoice(null);
+  }, [bombPotPrompt?.deadline]);
 
   const anim = useTableAnimations(table, handComplete ?? null);
 
@@ -160,6 +170,22 @@ export default function TablePage() {
           Waiting for more active players — need at least 2 to start the next hand
         </div>
       )}
+      {table?.bombPot && (
+        <div className="banner bomb-pot-banner">
+          💣 {table.bombPot.doubleBoard ? 'Double Board Bomb Pot' : 'Bomb Pot'} ({formatChips(table.bombPot.amount)})
+        </div>
+      )}
+      {!table?.bombPot && headerLobby?.settings.nextHandBombPot && (
+        <div className="banner bomb-pot-banner">
+          Next Hand: {headerLobby.settings.nextHandBombPot.doubleBoard ? 'Double Board Bomb Pot' : 'Bomb Pot'} (
+          {formatChips(headerLobby.settings.nextHandBombPot.amount)})
+        </div>
+      )}
+      {bombPotNotice && (
+        <div className="banner warning" role="alert" onClick={clearBombPotNotice}>
+          {bombPotNotice}
+        </div>
+      )}
 
       <main className="table-main">
         {headerLobby?.settings.game === 'twelve_card_flip' ? (
@@ -209,6 +235,7 @@ export default function TablePage() {
             onSetBuyIn={(amount) => send({ type: 'host_set_buy_in', buyIn: amount })}
             onSetActionTimer={(seconds) => send({ type: 'host_set_action_timer', seconds })}
             onSetFlipAnte={(ante) => send({ type: 'host_set_flip_ante', ante })}
+            onSetBombPot={(value) => send({ type: 'host_set_bomb_pot', ...value })}
           />
         </section>
       )}
@@ -323,6 +350,23 @@ export default function TablePage() {
           deadline={showCardsPrompt.deadline}
           onShow={() => send({ type: 'show_cards', show: true })}
           onMuck={() => send({ type: 'show_cards', show: false })}
+        />
+      )}
+
+      {bombPotPrompt && mySeat && !cashOutSummary && (
+        <BombPotPrompt
+          deadline={bombPotPrompt.deadline}
+          amount={bombPotPrompt.amount}
+          doubleBoard={bombPotPrompt.doubleBoard}
+          choice={bombPotChoice}
+          onJoin={() => {
+            setBombPotChoice(true);
+            send({ type: 'bomb_pot_join', join: true });
+          }}
+          onSitOut={() => {
+            setBombPotChoice(false);
+            send({ type: 'bomb_pot_join', join: false });
+          }}
         />
       )}
 

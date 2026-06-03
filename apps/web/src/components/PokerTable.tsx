@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import type { BadgeType, LobbySummary, PublicTableState, ChatMessage, PlayerActionType } from '@vct/shared-types';
+import type { BadgeType, Card, LobbySummary, PublicTableState, ChatMessage, PlayerActionType } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
@@ -285,30 +285,48 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
         ) : (
           <div className="pot">Waiting for hand</div>
         )}
-        <div className="board">
-          {table?.board.map((c, i) => {
-            const isNewCard =
-              anim.boardDealFromIndex !== null && i >= anim.boardDealFromIndex;
-            const relativeIdx = isNewCard ? i - (anim.boardDealFromIndex ?? 0) : 0;
-            return (
-              <div
-                key={i}
-                className={[
-                  'card-anim-wrapper',
-                  isNewCard ? 'board-dealing' : '',
-                  isNewCard ? `board-delay-${relativeIdx}` : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                <CardView card={c} faceUp />
+        {(() => {
+          const isDoubleBoard = !!table?.secondBoard;
+          const renderCards = (cards: Card[]) =>
+            cards.map((c, i) => {
+              const isNewCard =
+                anim.boardDealFromIndex !== null && i >= anim.boardDealFromIndex;
+              const relativeIdx = isNewCard ? i - (anim.boardDealFromIndex ?? 0) : 0;
+              return (
+                <div
+                  key={i}
+                  className={[
+                    'card-anim-wrapper',
+                    isNewCard ? 'board-dealing' : '',
+                    isNewCard ? `board-delay-${relativeIdx}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  <CardView card={c} faceUp />
+                </div>
+              );
+            });
+          return (
+            <>
+              {isDoubleBoard && <span className="board-label">Board A</span>}
+              <div className="board">
+                {table?.board && renderCards(table.board)}
+                {table && table.board.length === 0 && table.street !== 'waiting' && !isDoubleBoard && (
+                  <span className="street">{table.street}</span>
+                )}
               </div>
-            );
-          })}
-          {table && table.board.length === 0 && table.street !== 'waiting' && (
-            <span className="street">{table.street}</span>
-          )}
-        </div>
+              {isDoubleBoard && (
+                <>
+                  <span className="board-label">Board B</span>
+                  <div className="board board--second">
+                    {renderCards(table!.secondBoard!)}
+                  </div>
+                </>
+              )}
+            </>
+          );
+        })()}
         {intermissionRemaining !== null && table?.street === 'complete' && (
           <div className="intermission">
             Next hand in {intermissionRemaining}s

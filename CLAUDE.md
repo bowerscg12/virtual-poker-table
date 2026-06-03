@@ -94,7 +94,9 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 
 ## Game Variants (`packages/shared-types/src/variant.ts`)
 
-`holdem`, `omaha`, `plo8`, `stud`, `twelve_card_flip`. Notable `VariantConfig` fields: `bombPot`, `runItTwice`, `straddle`, `sevenDeuceRule`, `extraFlopCards`, `twelveCardFlipAnte`. Presets in `presets.ts`.
+`holdem`, `omaha`, `plo8`, `stud`, `twelve_card_flip`. Notable `VariantConfig` fields: `nextHandBombPot`, `runItTwice`, `straddle`, `sevenDeuceRule`, `extraFlopCards`, `twelveCardFlipAnte`. Presets in `presets.ts`.
+
+**Bomb Pot (per-hand modifier, holdem/omaha)**: Host sets `settings.nextHandBombPot = { amount, doubleBoard }` via `host_set_bomb_pot`. At the next hand boundary the server runs a 10s opt-in (`bomb_pot_prompt` → `bomb_pot_join`); ≥2 joining builds the hand with `createBombPotTable` (forced ante, no betting, full board(s) pre-dealt + showdown resolved), then `startBombPotRunout` reveals the board(s) (5s view delay → flop + all cards face-up → turn → river → showdown). Double board splits each side pot 50/50 via `runDoubleBoardShowdown` (`winnerPayouts[].board` tags 'A'/'B'). One-shot: cleared at `resolveBombPotOptIn`; <2 join → `bomb_pot_cancelled` + normal hand. Hand-level `GameTableState` fields: `isBombPot`, `bombPotAmount`, `isDoubleBoardBombPot`, `secondBoard`, `secondShowdownHands`.
 
 ---
 

@@ -25,12 +25,23 @@ export interface GameTableState {
   minRaise: number;
   lastAggressorSeat: number | null;
   lastWinningSeatIndices: number[];
-  winnerPayouts: { seatIndex: number; amount: number; handDescription: string }[];
+  /** `board` tags which board a payout came from in a Double Board Bomb Pot ('A'/'B'); absent otherwise. */
+  winnerPayouts: { seatIndex: number; amount: number; handDescription: string; board?: 'A' | 'B' }[];
   processedActionIds: Set<string>;
   bombPotActive: boolean;
+  /** True when this hand is a per-hand Bomb Pot (forced ante, no betting, auto runout). */
+  isBombPot: boolean;
+  /** Forced contribution per participant for a Bomb Pot hand (0 otherwise). */
+  bombPotAmount: number;
+  /** True when this Bomb Pot deals two boards and splits the pot 50/50. */
+  isDoubleBoardBombPot: boolean;
+  /** Board B — only populated for a Double Board Bomb Pot hand. */
+  secondBoard?: Card[];
   pendingActionSeatIndices: number[];
   /** Evaluated hand per non-folded seat at showdown — only set when street becomes 'complete' via showdown */
   showdownHands?: { seatIndex: number; handDescription: string; bestFive: Card[] }[];
+  /** Board B evaluated hands — only set for a Double Board Bomb Pot showdown. */
+  secondShowdownHands?: { seatIndex: number; handDescription: string; bestFive: Card[] }[];
   /** Revealed cards per seat (keyed by seatIndex) — only used for twelve_card_flip */
   revealedCards?: Record<number, Card[]>;
 }
@@ -52,9 +63,6 @@ export function createInitialTable(
     allIn: false,
     holeCards: [],
   }));
-
-  const bombPot =
-    config.bombPot && handNumber > 0 && handNumber % config.bombPot.everyNHands === 0;
 
   let remaining = deck;
   for (const seat of seats) {
@@ -88,13 +96,6 @@ export function createInitialTable(
     }
   }
 
-  if (bombPot && config.bombPot) {
-    const ante = config.blinds.big * config.bombPot.multiplier;
-    for (const seat of seats) {
-      postBlind(seats, seat.seatIndex, Math.min(ante, seat.stack));
-    }
-  }
-
   const currentBet = Math.max(...seats.map((s) => s.betThisStreet));
   const pendingActionSeatIndices = buildActionQueue(seats, actionSeatStart);
   const actionSeat = pendingActionSeatIndices[0] ?? null;
@@ -114,7 +115,10 @@ export function createInitialTable(
     lastWinningSeatIndices: [],
     winnerPayouts: [],
     processedActionIds: new Set(),
-    bombPotActive: !!bombPot,
+    bombPotActive: false,
+    isBombPot: false,
+    bombPotAmount: 0,
+    isDoubleBoardBombPot: false,
     pendingActionSeatIndices,
   };
 }
@@ -351,28 +355,21 @@ function advanceStreet(
   };
 }
 
-function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; state: GameTableState } {
-  const module = getVariantModule(config);
-  const contributions = state.seats.map((s) => ({ seatIndex: s.seatIndex, amount: s.totalBet }));
-  const pots = buildSidePots(contributions);
-
-  for (const seat of state.seats) {
-    if (!seat.folded) seat.shownCards = [...seat.holeCards];
-  }
-
-  // Pre-evaluate all non-folded players once so we can reuse across pots and store for display.
-  const evaluatedHands = new Map<number, EvaluatedHand>();
-  for (const seat of state.seats) {
-    if (!seat.folded) {
-      evaluatedHands.set(seat.seatIndex, module.evaluateHand(seat.holeCards, state.board));
-    }
-  }
-
-  const winners: { seatIndex: number; amount: number; hand: EvaluatedHand }[] = [];
+/**
+ * Award each side pot to the best hand(s) among its eligible, non-folded seats.
+ * Mutates seat stacks and returns one payout entry per (pot, winner). Ties split with
+ * floor + remainder chips going to the first winning seat (existing odd-chip convention).
+ */
+function awardPots(
+  seats: InternalSeat[],
+  pots: SidePot[],
+  evaluatedHands: Map<number, EvaluatedHand>
+): { seatIndex: number; amount: number; handDescription: string }[] {
+  const payouts: { seatIndex: number; amount: number; handDescription: string }[] = [];
 
   for (const pot of pots) {
-    const eligible = state.seats.filter(
-      (s) => pot.eligibleSeatIndices.includes(s.seatIndex) && !s.folded
+    const eligible = seats.filter(
+      (s) => pot.eligibleSeatIndices.includes(s.seatIndex) && !s.folded && evaluatedHands.has(s.seatIndex)
     );
     if (eligible.length === 0) continue;
 
@@ -391,12 +388,35 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
     }
 
     const share = Math.floor(pot.amount / bestSeats.length);
-    for (const idx of bestSeats) {
-      const seat = getSeat(state.seats, idx)!;
-      seat.stack += share;
-      winners.push({ seatIndex: idx, amount: share, hand: best! });
+    const remainder = pot.amount - share * bestSeats.length;
+    bestSeats.forEach((idx, i) => {
+      const amount = share + (i === 0 ? remainder : 0);
+      const seat = getSeat(seats, idx)!;
+      seat.stack += amount;
+      payouts.push({ seatIndex: idx, amount, handDescription: best!.description });
+    });
+  }
+
+  return payouts;
+}
+
+function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; state: GameTableState } {
+  const module = getVariantModule(config);
+  const pots = buildSidePots(state.seats.map((s) => ({ seatIndex: s.seatIndex, amount: s.totalBet })));
+
+  for (const seat of state.seats) {
+    if (!seat.folded) seat.shownCards = [...seat.holeCards];
+  }
+
+  // Pre-evaluate all non-folded players once so we can reuse across pots and store for display.
+  const evaluatedHands = new Map<number, EvaluatedHand>();
+  for (const seat of state.seats) {
+    if (!seat.folded) {
+      evaluatedHands.set(seat.seatIndex, module.evaluateHand(seat.holeCards, state.board));
     }
   }
+
+  const payouts = awardPots(state.seats, pots, evaluatedHands);
 
   const showdownHands = [...evaluatedHands.entries()].map(([seatIndex, hand]) => ({
     seatIndex,
@@ -411,16 +431,152 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
       street: 'complete',
       pots,
       actionSeatIndex: null,
-      lastWinningSeatIndices: Array.from(new Set(winners.map((w) => w.seatIndex))),
-      winnerPayouts: winners.map((w) => ({
-        seatIndex: w.seatIndex,
-        amount: w.amount,
-        handDescription: w.hand.description,
-      })),
+      lastWinningSeatIndices: Array.from(new Set(payouts.map((p) => p.seatIndex))),
+      winnerPayouts: payouts,
       showdownHands,
       pendingActionSeatIndices: [],
     },
   };
+}
+
+/**
+ * Showdown for a Double Board Bomb Pot. Each side pot is halved: one half decided by
+ * Board A, the other by Board B (odd chip → Board A). Reuses awardPots for each board so
+ * ties, multiple winners, side pots, and odd-chip distribution all follow normal rules.
+ */
+function runDoubleBoardShowdown(
+  state: GameTableState,
+  config: VariantConfig
+): { ok: true; state: GameTableState } {
+  const module = getVariantModule(config);
+  const boardB = state.secondBoard ?? [];
+  const pots = buildSidePots(state.seats.map((s) => ({ seatIndex: s.seatIndex, amount: s.totalBet })));
+
+  for (const seat of state.seats) {
+    if (!seat.folded) seat.shownCards = [...seat.holeCards];
+  }
+
+  const handsA = new Map<number, EvaluatedHand>();
+  const handsB = new Map<number, EvaluatedHand>();
+  for (const seat of state.seats) {
+    if (seat.folded) continue;
+    handsA.set(seat.seatIndex, module.evaluateHand(seat.holeCards, state.board));
+    handsB.set(seat.seatIndex, module.evaluateHand(seat.holeCards, boardB));
+  }
+
+  // Split every side pot in half, awarding each half by its board.
+  const potsA: SidePot[] = [];
+  const potsB: SidePot[] = [];
+  for (const pot of pots) {
+    const halfA = Math.ceil(pot.amount / 2); // odd chip favors Board A
+    potsA.push({ amount: halfA, eligibleSeatIndices: pot.eligibleSeatIndices });
+    potsB.push({ amount: pot.amount - halfA, eligibleSeatIndices: pot.eligibleSeatIndices });
+  }
+
+  const winnerPayouts = [
+    ...awardPots(state.seats, potsA, handsA).map((p) => ({ ...p, board: 'A' as const })),
+    ...awardPots(state.seats, potsB, handsB).map((p) => ({ ...p, board: 'B' as const })),
+  ];
+
+  const toEntries = (m: Map<number, EvaluatedHand>) =>
+    [...m.entries()].map(([seatIndex, hand]) => ({
+      seatIndex,
+      handDescription: hand.description,
+      bestFive: hand.bestFive,
+    }));
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      street: 'complete',
+      pots,
+      actionSeatIndex: null,
+      lastWinningSeatIndices: Array.from(new Set(winnerPayouts.map((p) => p.seatIndex))),
+      winnerPayouts,
+      showdownHands: toEntries(handsA),
+      secondShowdownHands: toEntries(handsB),
+      pendingActionSeatIndices: [],
+    },
+  };
+}
+
+/**
+ * Build a completed Bomb Pot hand: deal hole cards, collect the forced contribution from
+ * every participant (all-in if short), deal the full board(s), and resolve the showdown.
+ * No betting round exists — the server reveals the board progressively then completes the hand.
+ */
+export function createBombPotTable(
+  seated: { seatIndex: number; userId: string; displayName: string; stack: number }[],
+  config: VariantConfig,
+  handNumber: number,
+  dealerSeatIndex: number,
+  amount: number,
+  doubleBoard: boolean,
+  rng: () => number = Math.random
+): GameTableState {
+  const module = getVariantModule(config);
+  const deck = shuffleDeck(createDeck(), rng);
+  const seats: InternalSeat[] = seated.map((s) => ({
+    ...s,
+    betThisStreet: 0,
+    totalBet: 0,
+    folded: false,
+    allIn: false,
+    holeCards: [],
+  }));
+
+  let remaining = deck;
+  for (const seat of seats) {
+    const { drawn, remaining: r } = drawCards(remaining, module.holeCardCount);
+    seat.holeCards = drawn;
+    remaining = r;
+  }
+
+  // Forced contribution per participant — all-in if they cannot cover the full amount.
+  for (const seat of seats) {
+    postBlind(seats, seat.seatIndex, Math.min(amount, seat.stack));
+  }
+
+  const flopCount = module.flopCardCount(config);
+  const dealBoard = (): Card[] => {
+    const cards: Card[] = [];
+    let step = drawCards(remaining, 1); remaining = step.remaining; // burn
+    step = drawCards(remaining, flopCount); remaining = step.remaining; cards.push(...step.drawn);
+    step = drawCards(remaining, 1); remaining = step.remaining; // burn
+    step = drawCards(remaining, 1); remaining = step.remaining; cards.push(...step.drawn); // turn
+    step = drawCards(remaining, 1); remaining = step.remaining; // burn
+    step = drawCards(remaining, 1); remaining = step.remaining; cards.push(...step.drawn); // river
+    return cards;
+  };
+
+  const board = dealBoard();
+  const secondBoard = doubleBoard ? dealBoard() : undefined;
+
+  const baseState: GameTableState = {
+    handNumber,
+    street: 'river',
+    deck: remaining,
+    board,
+    secondBoard,
+    seats,
+    pots: [],
+    dealerSeatIndex,
+    actionSeatIndex: null,
+    currentBet: 0,
+    minRaise: 0,
+    lastAggressorSeat: null,
+    lastWinningSeatIndices: [],
+    winnerPayouts: [],
+    processedActionIds: new Set(),
+    bombPotActive: true,
+    isBombPot: true,
+    bombPotAmount: amount,
+    isDoubleBoardBombPot: doubleBoard,
+    pendingActionSeatIndices: [],
+  };
+
+  return (doubleBoard ? runDoubleBoardShowdown(baseState, config) : runShowdown(baseState, config)).state;
 }
 
 function awardToWinner(state: GameTableState, seatIndex: number): GameTableState {

@@ -314,6 +314,54 @@ export async function setFlipAnte(
   return (await getLobbyById(lobbyId))!;
 }
 
+/**
+ * Set (or clear) the host's pending next-hand Bomb Pot. Amount must be a positive integer;
+ * players who cannot cover it go all-in at hand start via normal side-pot handling.
+ */
+export async function setNextHandBombPot(
+  lobbyId: string,
+  hostUserId: string,
+  value: { amount: number; doubleBoard: boolean } | null
+): Promise<LobbySummary | { error: string }> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only host can set Bomb Pot' };
+  if (lobby.settings.game === 'twelve_card_flip') return { error: 'Bomb Pot is not available for this game' };
+  if (value && !isPositiveInteger(value.amount)) {
+    return { error: 'Bomb Pot amount must be a positive integer' };
+  }
+
+  const settings: VariantConfig = {
+    ...lobby.settings,
+    nextHandBombPot: value ? { amount: value.amount, doubleBoard: !!value.doubleBoard } : undefined,
+  };
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
+}
+
+/** Clear the pending next-hand Bomb Pot without a host check (one-shot reset after a hand resolves). */
+export async function clearNextHandBombPot(lobbyId: string): Promise<void> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || !lobby.settings.nextHandBombPot) return;
+  const settings: VariantConfig = { ...lobby.settings, nextHandBombPot: undefined };
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (mem) mem.settings = settings;
+    return;
+  }
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+}
+
 export async function getLobbyByInvite(code: string): Promise<LobbySummary | null> {
   if (useMemory) {
     const id = memoryStore.inviteIndex.get(code.toUpperCase()) ?? memoryStore.inviteIndex.get(code);

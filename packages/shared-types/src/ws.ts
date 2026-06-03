@@ -13,6 +13,8 @@ export type ClientMessage =
   | { type: 'host_set_buy_in'; buyIn: number }
   | { type: 'host_set_action_timer'; seconds: number }
   | { type: 'host_set_flip_ante'; ante: number }
+  | { type: 'host_set_bomb_pot'; enabled: boolean; amount?: number; doubleBoard?: boolean }
+  | { type: 'bomb_pot_join'; join: boolean }
   | { type: 'stand' }
   | { type: 'host_start' }
   | { type: 'host_pause'; paused: boolean }
@@ -47,6 +49,8 @@ export type ServerMessage =
   | { type: 'rebuy_confirmed'; newStack: number }
   | { type: 'show_cards_prompt'; deadline: string }
   | { type: 'show_cards_result'; seatIndex: number; cards?: Card[] }
+  | { type: 'bomb_pot_prompt'; deadline: string; amount: number; doubleBoard: boolean }
+  | { type: 'bomb_pot_cancelled'; reason: string }
   | { type: 'pong' };
 
 export interface ChatMessage {

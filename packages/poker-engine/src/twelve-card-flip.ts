@@ -57,6 +57,9 @@ export function createTwelveCardFlipState(
     winnerPayouts: [],
     processedActionIds: new Set(),
     bombPotActive: true,
+    isBombPot: false,
+    bombPotAmount: 0,
+    isDoubleBoardBombPot: false,
     pendingActionSeatIndices: [],
     revealedCards,
   };

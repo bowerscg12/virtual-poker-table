@@ -35,6 +35,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [rebuyAvailable, setRebuyAvailable] = useState<{ amount: number } | null>(null);
   const [rebuyQueued, setRebuyQueued] = useState(false);
   const [showCardsPrompt, setShowCardsPrompt] = useState<{ deadline: string } | null>(null);
+  const [bombPotPrompt, setBombPotPrompt] = useState<{ deadline: string; amount: number; doubleBoard: boolean } | null>(null);
+  const [bombPotNotice, setBombPotNotice] = useState<string | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -46,6 +48,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   }, []);
 
   const clearCashOutSummary = useCallback(() => setCashOutSummary(null), []);
+  const clearBombPotNotice = useCallback(() => setBombPotNotice(null), []);
 
   useEffect(() => {
     if (!token || !lobbyId) return;
@@ -180,6 +183,10 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
               setHandComplete(null);
               setShowCardsPrompt(null);
             }
+            // The opt-in prompt resolves once the Bomb Pot hand starts (or a normal hand replaces it).
+            if (msg.public.bombPot || msg.public.street === 'preflop') {
+              setBombPotPrompt(null);
+            }
             readyToFlushRef.current = true;
             flushPending(ws);
             break;
@@ -215,6 +222,16 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
 
           case 'show_cards_result':
             setShowCardsPrompt(null);
+            break;
+
+          case 'bomb_pot_prompt':
+            setBombPotNotice(null);
+            setBombPotPrompt({ deadline: msg.deadline, amount: msg.amount, doubleBoard: msg.doubleBoard });
+            break;
+
+          case 'bomb_pot_cancelled':
+            setBombPotPrompt(null);
+            setBombPotNotice(msg.reason);
             break;
 
           case 'rebuy_available':
@@ -286,6 +303,9 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     rebuyAvailable,
     rebuyQueued,
     showCardsPrompt,
+    bombPotPrompt,
+    bombPotNotice,
+    clearBombPotNotice,
     clearCashOutSummary,
     send,
   };

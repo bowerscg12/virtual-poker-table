@@ -21,9 +21,12 @@ export interface BlindsConfig {
   ante?: number;
 }
 
-export interface BombPotConfig {
-  everyNHands: number;
-  multiplier: number;
+/** Host's pending per-hand Bomb Pot selection. Applies to the next hand only, then resets. */
+export interface NextHandBombPot {
+  /** Forced contribution per participating player. */
+  amount: number;
+  /** When true, two boards are dealt and the pot is split 50/50. */
+  doubleBoard: boolean;
 }
 
 export interface VariantConfig {
@@ -31,7 +34,8 @@ export interface VariantConfig {
   limit: BettingLimit;
   maxPlayers: MaxPlayers;
   blinds: BlindsConfig;
-  bombPot?: BombPotConfig;
+  /** Set by the host to run the next hand as a Bomb Pot. Cleared once that hand resolves. */
+  nextHandBombPot?: NextHandBombPot;
   runItTwice?: boolean;
   straddle?: boolean;
   straddleAmount?: number;

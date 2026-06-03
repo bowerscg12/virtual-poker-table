@@ -12,9 +12,10 @@ interface Props {
   onSetBuyIn: (amount: number) => void;
   onSetActionTimer: (seconds: number) => void;
   onSetFlipAnte?: (ante: number) => void;
+  onSetBombPot?: (value: { enabled: boolean; amount?: number; doubleBoard?: boolean }) => void;
 }
 
-export function HostControls({ lobby, handActive, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer, onSetFlipAnte }: Props) {
+export function HostControls({ lobby, handActive, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
   const currentBuyIn = getTableBuyIn(lobby.settings);
   const [buyIn, setBuyIn] = useState(String(currentBuyIn));
@@ -30,6 +31,32 @@ export function HostControls({ lobby, handActive, onStart, onPause, onKick, onSe
 
   const currentTimerSec = lobby.settings.actionTimerSec ?? 0;
   const gameStarted = lobby.status === 'playing' || lobby.status === 'paused';
+
+  // ── Bomb Pot (next-hand modifier) ───────────────────────────
+  const pendingBombPot = lobby.settings.nextHandBombPot;
+  const bombPotEnabled = !!pendingBombPot;
+  const defaultBombPotAmount = Math.max(1, lobby.settings.blinds.big * 10);
+  const [bombPotAmount, setBombPotAmount] = useState(String(pendingBombPot?.amount ?? defaultBombPotAmount));
+  const parsedBombPotAmount = Number.parseInt(bombPotAmount, 10);
+  const isValidBombPotAmount = Number.isInteger(parsedBombPotAmount) && parsedBombPotAmount > 0;
+  const bombPotDoubleBoard = pendingBombPot?.doubleBoard ?? false;
+
+  function toggleBombPot(enabled: boolean) {
+    if (!onSetBombPot) return;
+    if (enabled) {
+      onSetBombPot({ enabled: true, amount: isValidBombPotAmount ? parsedBombPotAmount : defaultBombPotAmount, doubleBoard: bombPotDoubleBoard });
+    } else {
+      onSetBombPot({ enabled: false });
+    }
+  }
+  function applyBombPotAmount() {
+    if (!onSetBombPot || !isValidBombPotAmount) return;
+    onSetBombPot({ enabled: true, amount: parsedBombPotAmount, doubleBoard: bombPotDoubleBoard });
+  }
+  function setDoubleBoard(doubleBoard: boolean) {
+    if (!onSetBombPot) return;
+    onSetBombPot({ enabled: true, amount: isValidBombPotAmount ? parsedBombPotAmount : defaultBombPotAmount, doubleBoard });
+  }
 
   function handleUpdateBuyIn() {
     if (!isValidBuyIn) return;
@@ -111,6 +138,59 @@ export function HostControls({ lobby, handActive, onStart, onPause, onKick, onSe
         </select>
       </label>
       <p className="field-hint">Takes effect on the next action. Changing to "No Timer" cancels any running countdown.</p>
+
+      {!isTcf && onSetBombPot && (
+        <fieldset className="settings-group bomb-pot-controls">
+          <legend>Bomb Pot (next hand)</legend>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={bombPotEnabled}
+              onChange={(e) => toggleBombPot(e.target.checked)}
+            />
+            Bomb Pot
+          </label>
+
+          {bombPotEnabled && (
+            <>
+              <label className="host-buy-in">
+                Bomb Pot amount (per player)
+                <div className="host-buy-in-row">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={bombPotAmount}
+                    onChange={(e) => setBombPotAmount(e.target.value.replace(/[^\d]/g, ''))}
+                  />
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={applyBombPotAmount}
+                    disabled={!isValidBombPotAmount}
+                  >
+                    Update
+                  </button>
+                </div>
+              </label>
+
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bombPotDoubleBoard}
+                  onChange={(e) => setDoubleBoard(e.target.checked)}
+                />
+                Double Board
+              </label>
+            </>
+          )}
+          <p className="field-hint">
+            {bombPotEnabled
+              ? `Next hand: ${bombPotDoubleBoard ? 'Double Board ' : ''}Bomb Pot (${formatChips(pendingBombPot?.amount ?? 0)}). Players opt in before it starts.`
+              : 'Run the next hand as a Bomb Pot — forced ante, no betting, board runs out automatically.'}
+          </p>
+        </fieldset>
+      )}
 
       <div className="host-btns">
         {!gameStarted && (

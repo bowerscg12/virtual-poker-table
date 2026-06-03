@@ -4,6 +4,7 @@ import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
   applyFlipCard,
+  createBombPotTable,
   createInitialTable,
   createTwelveCardFlipState,
   getLegalActionsForSeat,
@@ -224,6 +225,38 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
   for (const p of includedBlindOwed) {
     clearSitOutBlindOwed(lobbyId, p.userId).catch(() => {});
   }
+
+  seatLastActions.delete(lobbyId);
+  await persistGame(lobbyId, state);
+  syncStacksToLobby(lobbyId, state);
+  return state;
+}
+
+/**
+ * Start a Bomb Pot hand with the given opted-in participants. Advances the dealer through
+ * the participant seats, deals/collects/runs the board(s) via createBombPotTable, and persists.
+ */
+export async function startBombPotHand(
+  lobbyId: string,
+  config: VariantConfig,
+  amount: number,
+  doubleBoard: boolean,
+  participantUserIds: string[]
+): Promise<GameTableState | { error: string }> {
+  const allSeated = await seatedPlayers(lobbyId);
+  const idSet = new Set(participantUserIds);
+  const participants = allSeated.filter((p) => idSet.has(p.userId) && p.stack > 0).sort((a, b) => a.seatIndex - b.seatIndex);
+  if (participants.length < 2) return { error: 'Need at least 2 participants' };
+
+  const prevDealer = dealerRotations.get(lobbyId) ?? -1;
+  const seatIndices = participants.map((p) => p.seatIndex);
+  const nextDealerIdx = seatIndices.find((i) => i > prevDealer) ?? seatIndices[0];
+  dealerRotations.set(lobbyId, nextDealerIdx);
+
+  const handNumber = (activeGames.get(lobbyId)?.handNumber ?? 0) + 1;
+  const rng = () => randomBytes(4).readUInt32BE(0) / 0xffffffff;
+
+  const state = createBombPotTable(participants, config, handNumber, nextDealerIdx, amount, doubleBoard, rng);
 
   seatLastActions.delete(lobbyId);
   await persistGame(lobbyId, state);
@@ -471,32 +504,53 @@ export function toPublicState(
   intermissionDeadline?: string | null,
   runoutVisibleBoardCount?: number,
   runoutActive?: boolean,
+  revealAllHoleCards?: boolean,
 ): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
   const isTwelveCardFlip = config.game === 'twelve_card_flip';
   const showCards = state.street === 'showdown' || state.street === 'complete';
+  // During a runout the engine state is already 'complete', so gate hole-card reveal on the
+  // runout flag instead: all-in runouts reveal throughout; bomb-pot runouts hide until the flop.
+  const revealHole = runoutActive ? !!revealAllHoleCards : showCards;
   const lastActions = seatLastActions.get(lobbyId);
   const badges = computeBadges(lobbyId, state);
 
+  const displayNameFor = (seatIndex: number) =>
+    state.seats.find((s) => s.seatIndex === seatIndex)?.displayName ?? `Seat ${seatIndex + 1}`;
+
   let showdownResult: ShowdownResult | undefined;
   if (state.street === 'complete' && state.showdownHands && state.showdownHands.length > 0) {
-    const winnerSeatIndices = new Set(state.lastWinningSeatIndices);
-    const potWonBySeat = new Map<number, number>();
-    for (const payout of state.winnerPayouts) {
-      potWonBySeat.set(payout.seatIndex, (potWonBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
-    }
-    const uniqueWinners = new Set(state.winnerPayouts.map((w) => w.seatIndex));
-    showdownResult = {
-      hands: state.showdownHands.map((h) => ({
+    const isDoubleBoard = state.isDoubleBoardBombPot && !!state.secondShowdownHands;
+
+    // For a double board, winners/pots are tracked per board via the payout's `board` tag.
+    const buildHands = (
+      hands: { seatIndex: number; handDescription: string; bestFive: Card[] }[],
+      board: 'A' | 'B' | null
+    ) => {
+      const payouts = board ? state.winnerPayouts.filter((p) => p.board === board) : state.winnerPayouts;
+      const potWonBySeat = new Map<number, number>();
+      for (const payout of payouts) {
+        potWonBySeat.set(payout.seatIndex, (potWonBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
+      }
+      const winnerSeatIndices = new Set(payouts.map((p) => p.seatIndex));
+      return hands.map((h) => ({
         seatIndex: h.seatIndex,
-        displayName: state.seats.find((s) => s.seatIndex === h.seatIndex)?.displayName ?? `Seat ${h.seatIndex + 1}`,
+        displayName: displayNameFor(h.seatIndex),
         handDescription: h.handDescription,
         bestFive: h.bestFive,
         isWinner: winnerSeatIndices.has(h.seatIndex),
         potWon: potWonBySeat.get(h.seatIndex) ?? 0,
-      })),
+      }));
+    };
+
+    const uniqueWinners = new Set(state.winnerPayouts.map((w) => w.seatIndex));
+    showdownResult = {
+      hands: buildHands(state.showdownHands, isDoubleBoard ? 'A' : null),
       isSplit: uniqueWinners.size > 1,
+      ...(isDoubleBoard
+        ? { board: state.board, secondBoard: state.secondBoard, secondHands: buildHands(state.secondShowdownHands!, 'B') }
+        : {}),
     };
   }
 
@@ -511,11 +565,14 @@ export function toPublicState(
     ? (nextActiveSeat(activeIndices, sbSeatIndex + 1, () => true) ?? -1)
     : -1;
 
-  // During a runout, truncate the board to the currently-revealed count and hide the winner.
+  // During a runout, truncate the board(s) to the currently-revealed count and hide the winner.
   const visibleBoard =
     runoutVisibleBoardCount !== undefined
       ? state.board.slice(0, runoutVisibleBoardCount)
       : state.board;
+  const visibleSecondBoard = state.secondBoard
+    ? (runoutVisibleBoardCount !== undefined ? state.secondBoard.slice(0, runoutVisibleBoardCount) : state.secondBoard)
+    : undefined;
   const effectiveShowdownResult = runoutActive ? undefined : showdownResult;
 
   const publicState: PublicTableState = {
@@ -523,6 +580,8 @@ export function toPublicState(
     handNumber: state.handNumber,
     street: state.street,
     board: visibleBoard,
+    secondBoard: visibleSecondBoard,
+    bombPot: state.isBombPot ? { amount: state.bombPotAmount, doubleBoard: state.isDoubleBoardBombPot } : undefined,
     seats: state.seats.map((s) => ({
       seatIndex: s.seatIndex,
       userId: s.userId,
@@ -535,7 +594,7 @@ export function toPublicState(
       isDealer: s.seatIndex === state.dealerSeatIndex,
       isSmallBlind: s.seatIndex === sbSeatIndex,
       isBigBlind: s.seatIndex === bbSeatIndex,
-      shownCards: showCards ? s.shownCards : undefined,
+      shownCards: revealHole ? s.shownCards : undefined,
       lastAction: lastActions?.get(s.seatIndex),
       badges: badges.get(s.seatIndex),
     })),

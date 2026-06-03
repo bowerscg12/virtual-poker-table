@@ -1146,7 +1146,33 @@ select {
 .showdown-modal {
   max-width: 540px;
   width: 100%;
+  max-height: min(90vh, 680px);
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
   animation: modal-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.showdown-modal__scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 0.25rem;
+}
+
+.showdown-modal__footer {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 0 1.5rem;
+  flex-shrink: 0;
+}
+
+.showdown-modal__countdown {
+  flex: 1;
+  font-size: 0.82rem;
+  opacity: 0.5;
+  font-style: italic;
 }
 
 @keyframes modal-in {
@@ -2648,4 +2674,76 @@ select {
   .flip-player {
     padding: 0.4rem 0.5rem;
   }
+}
+
+/* ── Bomb Pot ─────────────────────────────────────────────── */
+.banner.bomb-pot-banner {
+  background: rgba(220, 70, 40, 0.22);
+  color: #ffcaa8;
+  border-bottom: 1px solid rgba(220, 70, 40, 0.4);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.board-label {
+  display: block;
+  text-align: center;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0.15rem 0;
+}
+
+.board.board--second {
+  margin-top: 0.1rem;
+}
+
+.bomb-pot-controls .checkbox-row {
+  font-weight: 600;
+}
+
+.bomb-pot-modal .modal-title {
+  color: #ff7a4d;
+}
+
+.bomb-pot-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bomb-pot-choice {
+  text-align: center;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.bomb-pot-choice--joined { color: var(--success, #6bd98a); }
+.bomb-pot-choice--out { color: rgba(255, 255, 255, 0.7); }
+
+.showdown-modal__boards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.showdown-modal__board-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 0.5rem;
+}
+
+.showdown-modal__board-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.showdown-modal__community {
+  display: flex;
+  gap: 0.2rem;
+  justify-content: center;
+  margin-bottom: 0.5rem;
 }

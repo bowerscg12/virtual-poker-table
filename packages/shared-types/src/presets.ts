@@ -37,21 +37,6 @@ export const RULES_PRESETS: RulesPreset[] = [
     },
   },
   {
-    id: 'bomb-pot-holdem',
-    name: 'Bomb Pot Hold\'em',
-    description: 'Ante bomb every 15 hands',
-    config: {
-      game: 'holdem',
-      limit: 'no_limit',
-      maxPlayers: 9,
-      blinds: { small: 5, big: 10, ante: 2 },
-      bombPot: { everyNHands: 15, multiplier: 8 },
-      buyIn: 1000,
-      minBuyIn: 1000,
-      maxBuyIn: 5000,
-    },
-  },
-  {
     id: 'twelve-card-flip',
     name: '12 Card Flip',
     description: 'Heads-up bomb-pot: 12 private cards, take turns revealing to beat opponent',
