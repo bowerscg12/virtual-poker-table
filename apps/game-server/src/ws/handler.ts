@@ -22,6 +22,7 @@ import {
   updateLobbyStatus,
 } from '../services/lobby.js';
 import {
+  cancelInterruptedHand,
   clearActionDeadline,
   clearGame,
   clearIntermissionDeadline,
@@ -1348,6 +1349,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           send(ws, { type: 'chat', message: m });
         }
         await broadcastTableState(session.lobbyId);
+
+        // Safety net: if the startup scan missed a hand from a prior server instance (e.g.,
+        // Redis was briefly unavailable at boot), cancel it now before any timer is rescheduled.
+        await cancelInterruptedHand(session.lobbyId);
 
         const reconnGame = await getActiveGame(session.lobbyId);
         const reconnLobby = await getLobbyById(session.lobbyId);

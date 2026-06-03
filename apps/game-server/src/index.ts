@@ -6,6 +6,7 @@ import sensible from '@fastify/sensible';
 import websocket from '@fastify/websocket';
 import { config } from './config.js';
 import { initLobbyStore } from './services/lobby.js';
+import { recoverInterruptedHands } from './services/game-manager.js';
 import { cleanupExpiredGuests } from './services/guest-cleanup.js';
 import { cleanExpiredSessions } from './services/session.js';
 import { registerApiRoutes } from './routes/api.js';
@@ -13,6 +14,7 @@ import { registerClient, setTokenVerifier } from './ws/handler.js';
 
 async function main() {
   await initLobbyStore();
+  await recoverInterruptedHands();
 
   const app = Fastify({ logger: true, trustProxy: true });
 

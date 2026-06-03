@@ -729,3 +729,45 @@ export function isMemoryMode(): boolean {
 export function getMemoryLobby(id: string): MemoryLobby | undefined {
   return memoryStore.lobbies.get(id);
 }
+
+/** Returns IDs of all lobbies currently in 'playing' or 'paused' status. */
+export async function getActiveLobbyIds(): Promise<string[]> {
+  if (useMemory) {
+    return [...memoryStore.lobbies.values()]
+      .filter((l) => l.status === 'playing' || l.status === 'paused')
+      .map((l) => l.id);
+  }
+  const db = getDb();
+  const rows = await db
+    .select({ id: lobbies.id })
+    .from(lobbies)
+    .where(inArray(lobbies.status, ['playing', 'paused']));
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Bulk-update seat stacks by userId for a lobby.
+ * Used at startup to restore pre-hand chip counts after an interrupted hand is cancelled.
+ */
+export async function restorePreHandStacks(
+  lobbyId: string,
+  stacksByUserId: Map<string, number>
+): Promise<void> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return;
+    for (const seat of mem.seats) {
+      if (seat.userId && stacksByUserId.has(seat.userId)) {
+        seat.stack = stacksByUserId.get(seat.userId)!;
+      }
+    }
+    return;
+  }
+  const db = getDb();
+  for (const [userId, stack] of stacksByUserId) {
+    await db
+      .update(tableSeats)
+      .set({ stack })
+      .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
+  }
+}

@@ -15,8 +15,8 @@ import {
 } from '@vct/poker-engine';
 import { getDb } from '../db/client.js';
 import { tableSeats, users } from '../db/schema.js';
-import { keys, redisGet, redisSet } from '../store/redis.js';
-import { clearSitOutBlindOwed, getMemoryLobby, isMemoryMode } from './lobby.js';
+import { keys, redisDel, redisGet, redisSet } from '../store/redis.js';
+import { clearSitOutBlindOwed, getActiveLobbyIds, getMemoryLobby, isMemoryMode, restorePreHandStacks } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
 import { getSessionBadgeData } from './session-stats.js';
 
@@ -680,4 +680,99 @@ export function clearGame(lobbyId: string): void {
   activeGames.delete(lobbyId);
   seatLastActions.delete(lobbyId);
   consecutiveWins.delete(lobbyId);
+}
+
+/** Streets that indicate a hand is actively in progress and has not yet completed. */
+const INTERRUPTED_HAND_STREETS = new Set(['preflop', 'flop', 'turn', 'river', 'showdown', 'reveal']);
+
+/**
+ * Cancel an interrupted hand from a previous server instance and restore pre-hand chip counts.
+ *
+ * Only acts on game states that exist in Redis but are NOT tracked by the current server instance
+ * (i.e., `activeGames` does not contain them — the server restarted before they could complete).
+ *
+ * Stack restoration formula: for each seat, `restoredStack = seat.stack + seat.totalBet`.
+ * `totalBet` accumulates every chip the player committed this hand across all streets, so
+ * adding it back to their remaining stack yields their exact pre-hand chip count.
+ *
+ * Returns true if an interrupted hand was found and cancelled.
+ */
+export async function cancelInterruptedHand(lobbyId: string): Promise<boolean> {
+  // If this server instance already tracks the game, it was started here — don't cancel it.
+  if (activeGames.has(lobbyId)) return false;
+
+  const raw = await redisGet(keys.tableState(lobbyId));
+  if (!raw) return false;
+
+  let state: GameTableState;
+  try {
+    state = deserialize(JSON.parse(raw) as SerializedGame);
+  } catch {
+    console.warn(`[recovery] Could not parse persisted game state for lobby ${lobbyId} — skipping`);
+    return false;
+  }
+
+  if (!INTERRUPTED_HAND_STREETS.has(state.street)) return false;
+
+  console.log(
+    `[recovery] Interrupted hand detected — lobby=${lobbyId} hand=#${state.handNumber} ` +
+    `street=${state.street} players=${state.seats.length} ` +
+    `at=${new Date().toISOString()}`
+  );
+
+  // Each player's pre-hand stack = chips still held + all chips committed to the pot this hand.
+  const stacksByUserId = new Map<string, number>();
+  for (const seat of state.seats) {
+    stacksByUserId.set(seat.userId, seat.stack + seat.totalBet);
+  }
+
+  console.log(`[recovery] Cancelling interrupted hand and restoring pre-hand stacks for lobby ${lobbyId}`);
+
+  await restorePreHandStacks(lobbyId, stacksByUserId);
+
+  activeGames.delete(lobbyId);
+  seatLastActions.delete(lobbyId);
+  await redisDel(keys.tableState(lobbyId));
+
+  console.log(`[recovery] Lobby ${lobbyId} returned to waiting state`);
+  return true;
+}
+
+/**
+ * Startup recovery pass: scan every active lobby for a hand that was in progress when the
+ * previous server instance stopped. Each interrupted hand is cancelled and pre-hand stacks
+ * are restored so the host can simply press "Start Hand" to begin a fresh hand.
+ *
+ * In memory mode this is a no-op — nothing survives a restart, so there is nothing to recover.
+ */
+export async function recoverInterruptedHands(): Promise<void> {
+  if (isMemoryMode()) return;
+
+  let lobbyIds: string[];
+  try {
+    lobbyIds = await getActiveLobbyIds();
+  } catch (err) {
+    console.error('[recovery] Failed to query active lobbies at startup:', err);
+    return;
+  }
+
+  if (lobbyIds.length === 0) return;
+
+  console.log(`[recovery] Startup: scanning ${lobbyIds.length} active lobby/lobbies for interrupted hands`);
+
+  let cancelledCount = 0;
+  for (const lobbyId of lobbyIds) {
+    try {
+      const cancelled = await cancelInterruptedHand(lobbyId);
+      if (cancelled) cancelledCount++;
+    } catch (err) {
+      console.error(`[recovery] Error checking lobby ${lobbyId}:`, err);
+    }
+  }
+
+  if (cancelledCount > 0) {
+    console.log(`[recovery] Startup recovery complete: cancelled ${cancelledCount} interrupted hand(s)`);
+  } else {
+    console.log('[recovery] Startup: no interrupted hands found');
+  }
 }
