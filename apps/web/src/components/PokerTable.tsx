@@ -81,7 +81,7 @@ function computeSeatCenterPx(
 }
 
 export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
-  const maxSeats = lobby?.settings.maxPlayers ?? 9;
+  const maxSeats = lobby?.settings.maxPlayers ?? 8;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
     userId: null,
@@ -377,7 +377,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
               <div className="seat-info">
                 {occupied && seat.avatar && (
                   <div className="seat-avatar">
-                    <AvatarSvg config={seat.avatar} size={38} />
+                    <AvatarSvg config={seat.avatar} size={44} />
                   </div>
                 )}
                 {gs && (gs.isDealer || gs.isSmallBlind || gs.isBigBlind) && (

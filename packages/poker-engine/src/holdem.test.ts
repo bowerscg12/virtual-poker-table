@@ -5,7 +5,7 @@ import { computeLegalActions, nextActiveSeat } from './holdem.js';
 const noLimitConfig: VariantConfig = {
   game: 'holdem',
   limit: 'no_limit',
-  maxPlayers: 9,
+  maxPlayers: 8,
   blinds: { small: 5, big: 50 },
   buyIn: 1000,
   minBuyIn: 1000,

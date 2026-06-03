@@ -790,8 +790,8 @@ select {
   top: var(--seat-y);
   transform: translate(-50%, -50%);
   text-align: center;
-  font-size: 0.75rem;
-  min-width: 88px;
+  font-size: 0.8rem;
+  min-width: 96px;
   transition: opacity 0.4s ease;
 }
 
@@ -2124,7 +2124,7 @@ select {
   white-space: nowrap;
 }
 
-/* ── Deal stagger delay classes (hole cards, 9 seats × 2 rounds) ── */
+/* ── Deal stagger delay classes (hole cards, 8 seats × 2 rounds) ── */
 
 .deal-delay-0  { animation-delay: 0ms; }
 .deal-delay-1  { animation-delay: 70ms; }
@@ -2142,8 +2142,6 @@ select {
 .deal-delay-13 { animation-delay: 910ms; }
 .deal-delay-14 { animation-delay: 980ms; }
 .deal-delay-15 { animation-delay: 1050ms; }
-.deal-delay-16 { animation-delay: 1120ms; }
-.deal-delay-17 { animation-delay: 1190ms; }
 
 /* ── Board card stagger delay classes (flop = 3 cards max) ─ */
 

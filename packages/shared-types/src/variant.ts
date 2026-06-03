@@ -1,6 +1,6 @@
 export type GameVariant = 'holdem' | 'omaha' | 'plo8' | 'stud' | 'twelve_card_flip';
 export type BettingLimit = 'no_limit' | 'pot_limit' | 'fixed';
-export type MaxPlayers = 2 | 6 | 9;
+export type MaxPlayers = 2 | 6 | 8;
 
 /** Valid action timer durations in seconds. 0 = no timer. */
 export const TIMER_STEPS_SEC = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180] as const;
@@ -59,7 +59,7 @@ export function getTableBuyIn(settings: VariantConfig): number {
 export const DEFAULT_VARIANT_CONFIG: VariantConfig = {
   game: 'holdem',
   limit: 'no_limit',
-  maxPlayers: 9,
+  maxPlayers: 8,
   blinds: { small: 5, big: 10 },
   buyIn: 500,
   minBuyIn: 500,

@@ -8,7 +8,7 @@ describe('omaha module', () => {
     const mod = getVariantModule({
       game: 'omaha',
       limit: 'pot_limit',
-      maxPlayers: 9,
+      maxPlayers: 8,
       blinds: { small: 5, big: 10 },
       buyIn: 500,
       minBuyIn: 100,

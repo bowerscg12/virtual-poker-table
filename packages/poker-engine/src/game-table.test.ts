@@ -5,7 +5,7 @@ import { applyAction, createInitialTable } from './game-table.js';
 const config: VariantConfig = {
   game: 'holdem',
   limit: 'no_limit',
-  maxPlayers: 9,
+  maxPlayers: 8,
   blinds: { small: 5, big: 10 },
   buyIn: 500,
   minBuyIn: 500,

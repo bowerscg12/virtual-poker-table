@@ -11,11 +11,11 @@ export const RULES_PRESETS: RulesPreset[] = [
   {
     id: 'nlhe-standard',
     name: 'No-Limit Hold\'em',
-    description: 'Standard Texas Hold\'em, 9-max',
+    description: 'Standard Texas Hold\'em, 8-max',
     config: {
       game: 'holdem',
       limit: 'no_limit',
-      maxPlayers: 9,
+      maxPlayers: 8,
       blinds: { small: 5, big: 10 },
       buyIn: 500,
       minBuyIn: 500,
@@ -29,7 +29,7 @@ export const RULES_PRESETS: RulesPreset[] = [
     config: {
       game: 'omaha',
       limit: 'pot_limit',
-      maxPlayers: 9,
+      maxPlayers: 8,
       blinds: { small: 5, big: 10 },
       buyIn: 500,
       minBuyIn: 500,

@@ -139,7 +139,7 @@ export default function TablePage() {
     ? table.pots.reduce((s, p) => s + p.amount, 0) + table.seats.reduce((s, seat) => s + seat.betThisStreet, 0)
     : 0;
 
-  const maxSeats = headerLobby?.settings.maxPlayers ?? 9;
+  const maxSeats = headerLobby?.settings.maxPlayers ?? 8;
   const dealerSeatIndex = table?.dealerSeatIndex ?? 0;
   const isDealingThisHand = anim.dealingHandNum === table?.handNumber;
   function holeDealDelayClass(cardRound: 0 | 1): string {

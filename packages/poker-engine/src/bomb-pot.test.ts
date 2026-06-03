@@ -6,7 +6,7 @@ import { compareHands, evaluateHoldem, evaluateOmaha, type EvaluatedHand } from 
 const holdem: VariantConfig = {
   game: 'holdem',
   limit: 'no_limit',
-  maxPlayers: 9,
+  maxPlayers: 8,
   blinds: { small: 5, big: 10 },
   buyIn: 500,
   minBuyIn: 500,
