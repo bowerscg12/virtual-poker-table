@@ -19,6 +19,7 @@ export type ClientMessage =
   | { type: 'host_start' }
   | { type: 'host_pause'; paused: boolean }
   | { type: 'host_kick'; seatIndex: number }
+  | { type: 'host_transfer'; seatIndex: number }
   | { type: 'host_approve_rebuy'; seatIndex: number; amount: number }
   | { type: 'host_adjust_blinds'; small: number; big: number }
   | { type: 'game_action'; actionId: string; action: PlayerActionType; amount?: number }
@@ -60,4 +61,6 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isHost?: boolean;
+  /** Server-generated announcement (e.g. host migration), not a player message */
+  isSystem?: boolean;
 }

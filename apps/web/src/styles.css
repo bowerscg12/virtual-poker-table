@@ -961,6 +961,13 @@ select {
   color: var(--gold);
 }
 
+.chat-msg.system {
+  text-align: center;
+  font-style: italic;
+  opacity: 0.75;
+  font-size: 0.85em;
+}
+
 .chat-panel form {
   display: flex;
   padding: 0.5rem;

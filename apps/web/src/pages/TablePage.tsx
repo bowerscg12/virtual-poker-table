@@ -271,6 +271,7 @@ export default function TablePage() {
             onStart={() => send({ type: 'host_start' })}
             onPause={(paused) => send({ type: 'host_pause', paused })}
             onKick={(seatIndex) => send({ type: 'host_kick', seatIndex })}
+            onTransferHost={(seatIndex) => send({ type: 'host_transfer', seatIndex })}
             onSetBuyIn={(amount) => send({ type: 'host_set_buy_in', buyIn: amount })}
             onSetActionTimer={(seconds) => send({ type: 'host_set_action_timer', seconds })}
             onSetFlipAnte={(ante) => send({ type: 'host_set_flip_ante', ante })}

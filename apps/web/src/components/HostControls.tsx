@@ -11,13 +11,14 @@ interface Props {
   onStart: () => void;
   onPause: (paused: boolean) => void;
   onKick: (seatIndex: number) => void;
+  onTransferHost: (seatIndex: number) => void;
   onSetBuyIn: (amount: number) => void;
   onSetActionTimer: (seconds: number) => void;
   onSetFlipAnte?: (ante: number) => void;
   onSetBombPot?: (value: { enabled: boolean; amount?: number; doubleBoard?: boolean }) => void;
 }
 
-export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot }: Props) {
+export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
   const currentBuyIn = getTableBuyIn(lobby.settings);
   const [buyIn, setBuyIn] = useState(String(currentBuyIn));
@@ -218,6 +219,21 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
           </button>
         )}
       </div>
+      <details>
+        <summary>Transfer host</summary>
+        <ul>
+          {lobby.seats
+            .filter((s) => s.userId && s.userId !== lobby.hostUserId)
+            .map((s) => (
+              <li key={s.seatIndex}>
+                {s.displayName} ({formatChips(s.stack)} chips){' '}
+                <button type="button" className="btn small" onClick={() => onTransferHost(s.seatIndex)}>
+                  Make host
+                </button>
+              </li>
+            ))}
+        </ul>
+      </details>
       <details>
         <summary>Kick player</summary>
         <ul>

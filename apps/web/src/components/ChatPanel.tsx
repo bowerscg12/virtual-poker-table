@@ -31,12 +31,18 @@ export function ChatPanel({ messages, onSend, onClose }: Props) {
         </button>
       </header>
       <div className="chat-messages">
-        {messages.map((m) => (
-          <div key={m.id} className={`chat-msg ${m.isHost ? 'host' : ''}`}>
-            <strong>{m.displayName}</strong>
-            <span>: {m.text}</span>
-          </div>
-        ))}
+        {messages.map((m) =>
+          m.isSystem ? (
+            <div key={m.id} className="chat-msg system">
+              <span>{m.text}</span>
+            </div>
+          ) : (
+            <div key={m.id} className={`chat-msg ${m.isHost ? 'host' : ''}`}>
+              <strong>{m.displayName}</strong>
+              <span>: {m.text}</span>
+            </div>
+          )
+        )}
         <div ref={endRef} />
       </div>
       <form onSubmit={submit}>

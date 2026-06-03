@@ -6,6 +6,7 @@ import { getUserById } from '../services/auth.js';
 import {
   approveRebuy,
   autoSeatPlayer,
+  claimHostIfVacant,
   getActiveSeatForUser,
   getLobbyById,
   kickSeat,
@@ -21,6 +22,7 @@ import {
   setWaitingForReentryBlind,
   sitAtSeat,
   syncEndOfHandStacks,
+  transferHost,
   updateLobbyStatus,
 } from '../services/lobby.js';
 import {
@@ -43,7 +45,7 @@ import {
   updateLastHandHistoryFoldWin,
   updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
-import { addChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
+import { addChatMessage, addSystemChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
 import { getMemoryLobby } from '../services/lobby.js';
 import { redisDel, keys } from '../store/redis.js';
 import {
@@ -582,6 +584,22 @@ function broadcastLobby(
   }
 }
 
+/**
+ * After a seat is vacated, post a system chat message if host status migrated to a new player.
+ * `updated` is the lobby summary reflecting the post-removal state.
+ */
+function announceHostChange(
+  lobbyId: string,
+  prevHostUserId: string | null,
+  updated: { hostUserId: string | null; hostDisplayName: string } | null
+): void {
+  if (!updated) return;
+  if (updated.hostUserId && updated.hostUserId !== prevHostUserId) {
+    const msg = addSystemChatMessage(lobbyId, `${updated.hostDisplayName} is now the host.`);
+    broadcastLobby(lobbyId, () => ({ type: 'chat', message: msg }));
+  }
+}
+
 async function broadcastTableState(lobbyId: string): Promise<void> {
   const connected = getConnectedSet(lobbyId);
   const lobby = await getLobbyById(lobbyId, connected);
@@ -964,6 +982,7 @@ async function onSeatReleaseExpired(sessionId: string, userId: string, lobbyId: 
   const session = await getSession(sessionId);
   if (session && !session.disconnectedAt) return; // reconnected
 
+  const prevHost = (await getLobbyById(lobbyId))?.hostUserId ?? null;
   await deleteSession(sessionId);
   await removeSeat(lobbyId, userId);
 
@@ -971,6 +990,7 @@ async function onSeatReleaseExpired(sessionId: string, userId: string, lobbyId: 
   const updatedLobby = await getLobbyById(lobbyId, connected);
   if (updatedLobby) {
     broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
+    announceHostChange(lobbyId, prevHost, updatedLobby);
   }
 
   await maybeScheduleAllPlayersGoneClose(lobbyId);
@@ -1008,6 +1028,7 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
     const gameSeat = game?.seats.find((s) => s.userId === userId);
     const finalStack = gameSeat?.stack ?? seat.stack;
     const summary = finalizeCashOut(lobbyId, userId, finalStack);
+    const prevHost = lobby.hostUserId;
 
     await removeSeat(lobbyId, userId);
 
@@ -1028,6 +1049,7 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
     const withConnected = await getLobbyById(lobbyId, connected);
     if (withConnected) {
       broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
+      announceHostChange(lobbyId, prevHost, withConnected);
     }
 
     await maybeScheduleAllPlayersGoneClose(lobbyId);
@@ -1047,6 +1069,10 @@ async function processPendingCashOuts(lobbyId: string): Promise<void> {
     if (pending.lobbyId === lobbyId) toProcess.push(userId);
   }
   if (toProcess.length === 0) return;
+
+  // Capture host before any removals so we can announce a migration after the final broadcast.
+  // (Connected players go through processCashOut, which announces on its own.)
+  const prevHost = (await getLobbyById(lobbyId))?.hostUserId ?? null;
 
   for (const userId of toProcess) {
     const ws = connectedUserSockets.get(userId);
@@ -1079,6 +1105,7 @@ async function processPendingCashOuts(lobbyId: string): Promise<void> {
   const updatedLobby = await getLobbyById(lobbyId, connected);
   if (updatedLobby) {
     broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
+    announceHostChange(lobbyId, prevHost, updatedLobby);
   }
 }
 
@@ -1490,6 +1517,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           clearTimeout(priorReleaseTimer);
           seatReleaseTimers.delete(st.userId);
         }
+        const priorHost = (await getLobbyById(priorSeat.lobbyId))?.hostUserId ?? null;
         await removeSeat(priorSeat.lobbyId, st.userId);
         // Only delete sessions for the old lobby — the current WS session must survive.
         await deleteSessionsByUserAndLobby(st.userId, priorSeat.lobbyId);
@@ -1497,6 +1525,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         const priorLobbyState = await getLobbyById(priorSeat.lobbyId, priorConnected);
         if (priorLobbyState) {
           broadcastLobby(priorSeat.lobbyId, () => ({ type: 'lobby_state', lobby: priorLobbyState }));
+          announceHostChange(priorSeat.lobbyId, priorHost, priorLobbyState);
         }
       }
 
@@ -1535,10 +1564,14 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         initSession(msg.lobbyId, st.userId, user.displayName, freshSeat.stack);
       }
 
+      // Empty-table case: a host-less lobby gets its host from the first player to (re)join.
+      const claimed = await claimHostIfVacant(msg.lobbyId, st.userId);
+
       const connected = getConnectedSet(msg.lobbyId);
       const lobbyState = await getLobbyById(msg.lobbyId, connected);
       if (lobbyState) {
         broadcastLobby(msg.lobbyId, () => ({ type: 'lobby_state', lobby: lobbyState }));
+        if (claimed) announceHostChange(msg.lobbyId, null, lobbyState);
       }
       for (const m of getChatHistory(msg.lobbyId)) {
         send(ws, { type: 'chat', message: m });
@@ -1781,8 +1814,29 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         }
         await deleteSessionsByUserId(kickedSeat.userId);
       }
+      const prevHost = lobby.hostUserId;
       const updated = await kickSeat(st.lobbyId, msg.seatIndex);
-      if (updated) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: updated }));
+      if (updated) {
+        broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: updated }));
+        announceHostChange(st.lobbyId, prevHost, updated);
+      }
+      return;
+    }
+
+    case 'host_transfer': {
+      if (!st.userId || !st.lobbyId) return;
+      const prevHost = (await getLobbyById(st.lobbyId))?.hostUserId ?? null;
+      const result = await transferHost(st.lobbyId, st.userId, msg.seatIndex);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      const connected = getConnectedSet(st.lobbyId);
+      const withConnected = await getLobbyById(st.lobbyId, connected);
+      if (withConnected) {
+        broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
+        announceHostChange(st.lobbyId, prevHost, withConnected);
+      }
       return;
     }
 

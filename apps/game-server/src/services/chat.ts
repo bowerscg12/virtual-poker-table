@@ -27,6 +27,23 @@ export function addChatMessage(
   return msg;
 }
 
+/** Push a server-generated announcement (e.g. host migration) into a lobby's chat. */
+export function addSystemChatMessage(lobbyId: string, text: string): ChatMessage {
+  const msg: ChatMessage = {
+    id: randomUUID(),
+    userId: '',
+    displayName: 'System',
+    text: text.slice(0, 500),
+    timestamp: new Date().toISOString(),
+    isSystem: true,
+  };
+  const list = chatByLobby.get(lobbyId) ?? [];
+  list.push(msg);
+  if (list.length > MAX_MESSAGES) list.shift();
+  chatByLobby.set(lobbyId, list);
+  return msg;
+}
+
 export function getChatHistory(lobbyId: string): ChatMessage[] {
   return chatByLobby.get(lobbyId) ?? [];
 }

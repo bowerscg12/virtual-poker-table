@@ -53,6 +53,7 @@ async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_next_hand BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_blind_owed BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS waiting_for_reentry_blind BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS seated_at TIMESTAMP;
     `);
   } catch (err) {
     console.error('[schema] Failed to apply column updates:', err);
@@ -111,6 +112,55 @@ function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): Lobb
     }),
     createdAt: lobby.createdAt,
   };
+}
+
+/**
+ * Determine host succession: the userId of the seated player with the earliest seatedAt
+ * (longest-tenured), tie-broken by seatIndex. Returns null when no seat is occupied.
+ */
+function pickLongestTenuredSeated(
+  seats: Array<{ userId: string | null; seatedAt: Date | string | null; seatIndex: number }>
+): string | null {
+  const occupied = seats.filter((s) => s.userId);
+  if (occupied.length === 0) return null;
+  occupied.sort((a, b) => {
+    const ta = a.seatedAt ? new Date(a.seatedAt).getTime() : 0;
+    const tb = b.seatedAt ? new Date(b.seatedAt).getTime() : 0;
+    if (ta !== tb) return ta - tb;
+    return a.seatIndex - b.seatIndex;
+  });
+  return occupied[0].userId;
+}
+
+/**
+ * If a player just vacated their seat and that player was the host, hand host status to the
+ * longest-tenured remaining seated player (or null if the table is now empty). Mutates the
+ * in-memory lobby; the caller is responsible for the Postgres write.
+ */
+function reassignMemoryHostIfLeft(mem: MemoryLobby, leavingUserId: string): void {
+  if (mem.hostUserId !== leavingUserId) return;
+  mem.hostUserId = pickLongestTenuredSeated(mem.seats);
+}
+
+/**
+ * Assign host to `userId` if the lobby currently has no host (e.g. the original host left an
+ * empty table and a new player just joined). Returns the updated summary when a change was made.
+ */
+export async function claimHostIfVacant(lobbyId: string, userId: string): Promise<LobbySummary | null> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem || mem.hostUserId) return null;
+    if (!mem.seats.some((s) => s.userId === userId)) return null;
+    mem.hostUserId = userId;
+    return toSummary(mem);
+  }
+  const db = getDb();
+  const [lobby] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
+  if (!lobby || lobby.hostUserId) return null;
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  if (!seats.some((s) => s.userId === userId)) return null;
+  await db.update(lobbies).set({ hostUserId: userId }).where(eq(lobbies.id, lobbyId));
+  return getLobbyById(lobbyId);
 }
 
 function deserializeAvatar(value?: string | null): AvatarConfig | undefined {
@@ -429,6 +479,7 @@ export async function sitAtSeat(
     }
     seat.userId = userId;
     seat.stack = amount;
+    seat.seatedAt = new Date().toISOString();
     return toSummary(mem);
   }
 
@@ -454,7 +505,7 @@ export async function sitAtSeat(
       }
     }
   }
-  await db.update(tableSeats).set({ userId, stack: amount }).where(eq(tableSeats.id, seat.id));
+  await db.update(tableSeats).set({ userId, stack: amount, seatedAt: new Date() }).where(eq(tableSeats.id, seat.id));
   return (await getLobbyById(lobbyId))!;
 }
 
@@ -473,22 +524,61 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
     const lobby = memoryStore.lobbies.get(lobbyId);
     if (!lobby) return null;
     const seat = lobby.seats.find((s) => s.seatIndex === seatIndex);
+    const kickedUserId = seat?.userId ?? null;
     if (seat) {
       seat.userId = null;
       seat.stack = 0;
       seat.sitOutNextHand = false;
       seat.sitOutBlindOwed = false;
       seat.waitingForReentryBlind = false;
+      seat.seatedAt = null;
     }
+    if (kickedUserId) reassignMemoryHostIfLeft(lobby, kickedUserId);
     return toSummary(lobby);
   }
   const db = getDb();
   const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
   const seat = seats.find((s) => s.seatIndex === seatIndex);
+  const kickedUserId = seat?.userId ?? null;
   if (seat) {
-    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false }).where(eq(tableSeats.id, seat.id));
+    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, seatedAt: null }).where(eq(tableSeats.id, seat.id));
+    if (kickedUserId) {
+      const [lobbyRow] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
+      if (lobbyRow?.hostUserId === kickedUserId) {
+        const newHost = pickLongestTenuredSeated(seats.filter((s) => s.id !== seat.id));
+        await db.update(lobbies).set({ hostUserId: newHost }).where(eq(lobbies.id, lobbyId));
+      }
+    }
   }
   return getLobbyById(lobbyId);
+}
+
+/** Voluntarily transfer host to the player at `seatIndex`. The caller must already be the host. */
+export async function transferHost(
+  lobbyId: string,
+  fromUserId: string,
+  toSeatIndex: number
+): Promise<LobbySummary | { error: string }> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    if (mem.hostUserId !== fromUserId) return { error: 'Only the host can transfer host' };
+    const target = mem.seats.find((s) => s.seatIndex === toSeatIndex);
+    if (!target?.userId) return { error: 'No player in that seat' };
+    if (target.userId === fromUserId) return { error: 'Already the host' };
+    mem.hostUserId = target.userId;
+    return toSummary(mem);
+  }
+  const db = getDb();
+  const [lobbyRow] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
+  if (!lobbyRow) return { error: 'Lobby not found' };
+  if (lobbyRow.hostUserId !== fromUserId) return { error: 'Only the host can transfer host' };
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const target = seats.find((s) => s.seatIndex === toSeatIndex);
+  if (!target?.userId) return { error: 'No player in that seat' };
+  if (target.userId === fromUserId) return { error: 'Already the host' };
+  await db.update(lobbies).set({ hostUserId: target.userId }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
 }
 
 export async function approveRebuy(
@@ -594,7 +684,9 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
       seat.sitOutNextHand = false;
       seat.sitOutBlindOwed = false;
       seat.waitingForReentryBlind = false;
+      seat.seatedAt = null;
     }
+    reassignMemoryHostIfLeft(mem, userId);
     return toSummary(mem);
   }
   const db = getDb();
@@ -603,8 +695,13 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
   if (seat) {
     await db
       .update(tableSeats)
-      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false })
+      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, seatedAt: null })
       .where(eq(tableSeats.id, seat.id));
+    const [lobbyRow] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
+    if (lobbyRow?.hostUserId === userId) {
+      const newHost = pickLongestTenuredSeated(seats.filter((s) => s.id !== seat.id));
+      await db.update(lobbies).set({ hostUserId: newHost }).where(eq(lobbies.id, lobbyId));
+    }
   }
   return getLobbyById(lobbyId);
 }
