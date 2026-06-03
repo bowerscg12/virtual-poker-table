@@ -87,6 +87,7 @@ export default function HomePage() {
           seat={activeSeat}
           onRejoin={handleRejoin}
           onDecline={handleDecline}
+          onExpired={clearActiveSeat}
           declining={declining}
         />
       )}

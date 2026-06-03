@@ -229,6 +229,7 @@ export default function TablePage() {
           <HostControls
             lobby={headerLobby}
             handActive={handActive}
+            intermissionDeadline={table?.intermissionDeadline}
             onStart={() => send({ type: 'host_start' })}
             onPause={(paused) => send({ type: 'host_pause', paused })}
             onKick={(seatIndex) => send({ type: 'host_kick', seatIndex })}

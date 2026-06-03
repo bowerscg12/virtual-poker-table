@@ -1,8 +1,8 @@
 import type { ActiveSeatInfo, AvatarConfig, CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
 import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, TIMER_STEPS_SEC, getTableBuyIn } from '@vct/shared-types';
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
-import { lobbies, tableSeats, users } from '../db/schema.js';
+import { lobbies, playerSessions, tableSeats, users } from '../db/schema.js';
 import {
   memoryCreateLobby,
   memoryStore,
@@ -11,6 +11,8 @@ import {
 import { initAuthStore } from './auth.js';
 
 let useMemory = false;
+
+const SEAT_RELEASE_MS = parseInt(process.env.SEAT_RELEASE_MS ?? '600000', 10);
 
 /**
  * Per-lobby mutex to serialize concurrent entry attempts (name check + seat assignment).
@@ -651,16 +653,28 @@ export async function getActiveSeatForUser(userId: string): Promise<ActiveSeatIn
     for (const [lobbyId, lobby] of memoryStore.lobbies) {
       if (lobby.status === 'closed') continue;
       const seat = lobby.seats.find((s) => s.userId === userId);
-      if (seat) {
-        const host = lobby.hostUserId ? memoryStore.users.get(lobby.hostUserId) : undefined;
-        return {
-          lobbyId,
-          inviteCode: lobby.inviteCode,
-          hostDisplayName: host?.displayName ?? 'Host',
-          seatIndex: seat.seatIndex,
-          stack: seat.stack,
-        };
+      if (!seat) continue;
+
+      // Find the most-recent disconnectedAt for this user+lobby from sessions
+      let disconnectedAt: Date | null = null;
+      for (const s of memoryStore.sessions.values()) {
+        if (s.userId !== userId || s.lobbyId !== lobbyId || !s.disconnectedAt) continue;
+        const dt = new Date(s.disconnectedAt);
+        if (!disconnectedAt || dt > disconnectedAt) disconnectedAt = dt;
       }
+      const expiresAt = disconnectedAt ? new Date(disconnectedAt.getTime() + SEAT_RELEASE_MS) : null;
+      if (expiresAt && expiresAt < new Date()) return null;
+
+      const host = lobby.hostUserId ? memoryStore.users.get(lobby.hostUserId) : undefined;
+      return {
+        lobbyId,
+        inviteCode: lobby.inviteCode,
+        hostDisplayName: host?.displayName ?? 'Host',
+        seatIndex: seat.seatIndex,
+        stack: seat.stack,
+        disconnectedAt: disconnectedAt?.toISOString() ?? null,
+        expiresAt: expiresAt?.toISOString() ?? null,
+      };
     }
     return null;
   }
@@ -687,12 +701,24 @@ export async function getActiveSeatForUser(userId: string): Promise<ActiveSeatIn
     ? await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, row.hostUserId)).limit(1)
     : [];
 
+  const [sessRow] = await db
+    .select({ disconnectedAt: playerSessions.disconnectedAt })
+    .from(playerSessions)
+    .where(and(eq(playerSessions.userId, userId), eq(playerSessions.lobbyId, row.lobbyId)))
+    .orderBy(desc(playerSessions.createdAt))
+    .limit(1);
+  const disconnectedAt = sessRow?.disconnectedAt ?? null;
+  const expiresAt = disconnectedAt ? new Date(disconnectedAt.getTime() + SEAT_RELEASE_MS) : null;
+  if (expiresAt && expiresAt < new Date()) return null;
+
   return {
     lobbyId: row.lobbyId,
     inviteCode: row.inviteCode,
     hostDisplayName: host?.displayName ?? 'Host',
     seatIndex: row.seatIndex,
     stack: row.stack,
+    disconnectedAt: disconnectedAt?.toISOString() ?? null,
+    expiresAt: expiresAt?.toISOString() ?? null,
   };
 }
 

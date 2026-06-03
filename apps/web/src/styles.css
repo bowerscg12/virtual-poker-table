@@ -198,6 +198,18 @@ a {
   opacity: 0.7;
 }
 
+.rejoin-prompt-expiry {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.rejoin-prompt-expiry--urgent {
+  color: #f59e0b;
+  opacity: 1;
+  font-weight: 600;
+}
+
 .rejoin-prompt-actions {
   display: flex;
   gap: 0.6rem;

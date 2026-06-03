@@ -49,6 +49,7 @@ import {
   deleteSessionsByUserId,
   deleteSessionsByUserAndLobby,
   getSession,
+  getSessionByUserAndLobby,
   markSessionConnected,
   markSessionDisconnected,
   updateSessionLobby,
@@ -595,6 +596,101 @@ function evictSocket(existing: WebSocket): void {
   try { existing.close(); } catch { /* already closed */ }
 }
 
+// ── Stuck-game recovery helpers ───────────────────────────
+
+const ACTIVE_STREETS = ['preflop', 'flop', 'turn', 'river', 'showdown', 'reveal'] as const;
+
+/**
+ * Returns true when the active game has seats that no longer exist in the lobby.
+ * This happens when all players' SEAT_RELEASE_MS elapsed mid-hand and their seats
+ * were removed, leaving an orphaned engine state that blocks new hands from starting.
+ */
+async function isGameOrphaned(lobbyId: string): Promise<boolean> {
+  const game = await getActiveGame(lobbyId);
+  if (!game) return false;
+  if (!(ACTIVE_STREETS as readonly string[]).includes(game.street)) return false;
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return true;
+  const lobbySeatUserIds = new Set(lobby.seats.filter((s) => s.userId).map((s) => s.userId!));
+  const anyMatch = game.seats.some((s) => lobbySeatUserIds.has(s.userId));
+  return !anyMatch;
+}
+
+/**
+ * Clear an orphaned game for a lobby: wipes the in-memory and Redis game state so
+ * a fresh hand can start. Safe to call; no-op if the game is not orphaned.
+ */
+async function clearOrphanedGame(lobbyId: string): Promise<boolean> {
+  if (!(await isGameOrphaned(lobbyId))) return false;
+  console.log(`[recovery] Clearing orphaned game state for lobby ${lobbyId} — all original players left`);
+  clearGame(lobbyId);
+  await redisDel(keys.tableState(lobbyId));
+  return true;
+}
+
+/**
+ * When a player joins or reconnects, ensure the lobby's hand lifecycle is healthy:
+ *  - Clear orphaned game state (all original players' seats have been released).
+ *  - If the game is complete (or gone) and no intermission/runout is scheduled,
+ *    start a short intermission so the next hand begins automatically.
+ *  - If the action-seat player is disconnected and no action timer is running,
+ *    reconstruct their grace-period countdown so the hand eventually self-resolves.
+ */
+async function recoverHandLifecycle(lobbyId: string): Promise<void> {
+  const orphanCleared = await clearOrphanedGame(lobbyId);
+
+  const game = orphanCleared ? null : await getActiveGame(lobbyId);
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.status !== 'playing') return;
+
+  // Schedule an intermission if the game is stuck between hands with no timer running.
+  const isComplete = !game || game.street === 'complete' || game.street === 'waiting';
+  if (
+    isComplete &&
+    !intermissionTimers.has(lobbyId) &&
+    !activeRunouts.has(lobbyId) &&
+    !bombPotPending.has(lobbyId)
+  ) {
+    console.log(`[recovery] Scheduling intermission for stuck lobby ${lobbyId}`);
+    scheduleIntermission(lobbyId, lobby.settings, 5000);
+    return;
+  }
+
+  // For an active hand, reconstruct the grace timer for a disconnected action-seat player.
+  if (!game || !(ACTIVE_STREETS as readonly string[]).includes(game.street)) return;
+  if (actionTimers.has(lobbyId)) return; // action timer already covers it
+
+  const actionSeat = game.seats.find(
+    (s) => s.seatIndex === game.actionSeatIndex && !s.folded && !s.allIn,
+  );
+  if (!actionSeat) return;
+  if (connectedUserSockets.has(actionSeat.userId)) return; // player is online
+
+  // Look up their session to see how long they've been gone.
+  const sess = await getSessionByUserAndLobby(actionSeat.userId, lobbyId);
+  if (!sess?.disconnectedAt) return; // no session or not marked disconnected
+
+  const disconnectedMs = Date.now() - sess.disconnectedAt.getTime();
+  const remainingMs = Math.max(0, GRACE_PERIOD_MS - disconnectedMs);
+
+  if (disconnectTimers.has(sess.id)) return; // grace timer already running
+
+  console.log(
+    `[recovery] Reconstructing grace timer for ${actionSeat.userId} in lobby ${lobbyId} ` +
+    `(${Math.round(remainingMs / 1000)}s remaining)`,
+  );
+
+  if (remainingMs === 0) {
+    // Grace period already elapsed — act immediately.
+    await onGracePeriodExpired(sess.id, actionSeat.userId, lobbyId);
+  } else {
+    const timer = setTimeout(() => {
+      onGracePeriodExpired(sess.id, actionSeat.userId, lobbyId).catch(() => {});
+    }, remainingMs);
+    disconnectTimers.set(sess.id, timer);
+  }
+}
+
 /**
  * Cancel any running action timer for the lobby.
  * Incrementing the generation prevents an already-queued callback from firing.
@@ -609,20 +705,46 @@ function cancelActionTimer(lobbyId: string): void {
   actionTimerGenerations.set(lobbyId, (actionTimerGenerations.get(lobbyId) ?? 0) + 1);
 }
 
-/** Start (or restart) the action timer for the current action seat in state. No-op if timer is disabled. */
+/**
+ * Start (or restart) the action timer for the current action seat in state.
+ * - If actionTimerSec > 0: schedule the normal countdown.
+ * - If actionTimerSec === 0 BUT the action-seat player is currently disconnected:
+ *   schedule a GRACE_PERIOD_MS fallback so the hand self-resolves even without a
+ *   configured timer (handles server-restart scenarios where grace timers were lost).
+ */
 function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: GameTableState): void {
   cancelActionTimer(lobbyId); // always cancel first; increments generation
 
-  const timerSec = config.actionTimerSec;
-  if (!timerSec || timerSec <= 0) return;
   if (state.actionSeatIndex === null) return;
   if (state.street === 'complete' || state.street === 'waiting' || state.street === 'reveal') return;
 
   const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
   if (!seat || seat.folded || seat.allIn) return;
 
-  const deadline = new Date(Date.now() + timerSec * 1000).toISOString();
-  setActionDeadline(lobbyId, deadline);
+  const timerSec = config.actionTimerSec;
+  const isConnected = connectedUserSockets.has(seat.userId);
+
+  // Determine effective duration:
+  // - configured action timer, OR
+  // - grace-period fallback when the player is offline and no timer is configured
+  let durationMs: number;
+  let hasDeadline = false;
+
+  if (timerSec && timerSec > 0) {
+    durationMs = timerSec * 1000;
+    hasDeadline = true;
+  } else if (!isConnected) {
+    // No action timer configured, but the player is offline.
+    // Use GRACE_PERIOD_MS so the hand eventually self-resolves.
+    durationMs = GRACE_PERIOD_MS;
+  } else {
+    return; // no timer needed: player is online, no countdown configured
+  }
+
+  if (hasDeadline) {
+    const deadline = new Date(Date.now() + durationMs).toISOString();
+    setActionDeadline(lobbyId, deadline);
+  }
 
   const { userId, seatIndex } = seat;
   const gen = actionTimerGenerations.get(lobbyId) ?? 0;
@@ -630,7 +752,7 @@ function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: Game
   const timer = setTimeout(() => {
     if ((actionTimerGenerations.get(lobbyId) ?? 0) !== gen) return;
     onActionTimerExpired(lobbyId, userId, seatIndex, config).catch(() => {});
-  }, timerSec * 1000);
+  }, durationMs);
 
   actionTimers.set(lobbyId, timer);
 }
@@ -1235,17 +1357,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           scheduleActionTimer(session.lobbyId, reconnLobby.settings, reconnGame);
         }
 
-        // Recovery: if the game completed while the server was down (e.g., mid-runout restart),
-        // the intermission timer was lost — start a short one so the next hand begins.
-        if (
-          reconnGame?.street === 'complete' &&
-          !intermissionTimers.has(session.lobbyId) &&
-          !activeRunouts.has(session.lobbyId) &&
-          reconnLobby?.status === 'playing'
-        ) {
-          scheduleIntermission(session.lobbyId, reconnLobby.settings, 5000);
-          await broadcastTableState(session.lobbyId);
-        }
+        // Recovery: detect and resolve any stuck hand lifecycle state.
+        // Handles: orphaned game, lost intermission timer, lost grace timers.
+        await recoverHandLifecycle(session.lobbyId);
+        await broadcastTableState(session.lobbyId);
 
         // If the player reconnects with 0 chips, show them the rebuy prompt
         if (!pendingCashOuts.has(session.userId)) {
@@ -1355,6 +1470,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'chat', message: m });
       }
       await broadcastTableState(msg.lobbyId);
+      // Recover any stuck hand lifecycle (orphaned game, lost intermission/grace timers).
+      await recoverHandLifecycle(msg.lobbyId);
       // A new seated player may satisfy the active-player threshold.
       await tryStartWaitingHand(msg.lobbyId);
       return;
@@ -1420,27 +1537,51 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'error', message: 'Only host can start' });
         return;
       }
-      // Only allow manual start before the first hand; auto-progression handles all subsequent hands.
-      if (lobby.status !== 'open') {
+
+      // Block if a hand is genuinely in progress (active betting round, runout, or bomb-pot opt-in).
+      const existingGame = await getActiveGame(st.lobbyId);
+      const isActiveHand =
+        existingGame && (ACTIVE_STREETS as readonly string[]).includes(existingGame.street);
+      if (isActiveHand || activeRunouts.has(st.lobbyId) || bombPotPending.has(st.lobbyId)) {
         send(ws, { type: 'error', message: 'Game already in progress' });
         return;
       }
-      // If a Bomb Pot is queued, mark the game playing and run the opt-in flow instead.
+
+      // Allow start when:
+      //   (a) First hand: lobby is still 'open'
+      //   (b) Recovery: lobby is 'playing' but no hand is running and no intermission is
+      //       scheduled (e.g. server restarted and lost the intermission timer).
+      const isFirstStart = lobby.status === 'open';
+      const isRecoveryStart =
+        lobby.status === 'playing' &&
+        !intermissionTimers.has(st.lobbyId);
+
+      if (!isFirstStart && !isRecoveryStart) {
+        // Intermission is already ticking — no need to start manually.
+        send(ws, { type: 'error', message: 'Next hand is already scheduled' });
+        return;
+      }
+
+      // Cancel any stale intermission before starting (covers the recovery path).
+      cancelIntermissionTimer(st.lobbyId);
+
+      // If a Bomb Pot is queued, run the opt-in flow instead.
       if (lobby.settings.nextHandBombPot) {
-        await updateLobbyStatus(st.lobbyId, 'playing');
+        if (isFirstStart) await updateLobbyStatus(st.lobbyId, 'playing');
         await startBombPotOptIn(st.lobbyId, lobby.settings);
         const bpLobby = await getLobbyById(st.lobbyId);
         if (bpLobby) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: bpLobby }));
         await broadcastTableState(st.lobbyId);
         return;
       }
+
       const result = await startHand(st.lobbyId, lobby.settings);
       if ('error' in result) {
         send(ws, { type: 'error', message: result.error });
         return;
       }
       recordHandStart(st.lobbyId, result);
-      await updateLobbyStatus(st.lobbyId, 'playing');
+      if (isFirstStart) await updateLobbyStatus(st.lobbyId, 'playing');
       scheduleActionTimer(st.lobbyId, lobby.settings, result);
       const startedLobby = await getLobbyById(st.lobbyId);
       if (startedLobby) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));

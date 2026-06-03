@@ -6,6 +6,8 @@ import { formatChips } from '../utils/formatChips';
 interface Props {
   lobby: LobbySummary;
   handActive: boolean;
+  /** ISO deadline for the next hand's intermission countdown; undefined when none is running. */
+  intermissionDeadline?: string;
   onStart: () => void;
   onPause: (paused: boolean) => void;
   onKick: (seatIndex: number) => void;
@@ -15,7 +17,7 @@ interface Props {
   onSetBombPot?: (value: { enabled: boolean; amount?: number; doubleBoard?: boolean }) => void;
 }
 
-export function HostControls({ lobby, handActive, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot }: Props) {
+export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
   const currentBuyIn = getTableBuyIn(lobby.settings);
   const [buyIn, setBuyIn] = useState(String(currentBuyIn));
@@ -196,6 +198,13 @@ export function HostControls({ lobby, handActive, onStart, onPause, onKick, onSe
         {!gameStarted && (
           <button type="button" className="btn primary" onClick={onStart}>
             Start hand
+          </button>
+        )}
+        {/* Recovery button: shown when the game is between hands but no auto-progression
+            is running (e.g. intermission timer was lost after a server restart). */}
+        {gameStarted && !handActive && lobby.status === 'playing' && !intermissionDeadline && (
+          <button type="button" className="btn primary" onClick={onStart}>
+            Start next hand
           </button>
         )}
         {gameStarted && lobby.status === 'playing' && (

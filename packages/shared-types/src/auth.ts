@@ -41,4 +41,8 @@ export interface ActiveSeatInfo {
   hostDisplayName: string;
   seatIndex: number;
   stack: number;
+  /** ISO timestamp when the player's WS disconnected; null if still connected. */
+  disconnectedAt: string | null;
+  /** ISO timestamp when the rejoin window closes; null if no expiry (still connected). */
+  expiresAt: string | null;
 }

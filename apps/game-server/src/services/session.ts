@@ -141,6 +141,42 @@ export async function deleteSessionsByUserAndLobby(userId: string, lobbyId: stri
   );
 }
 
+/** Find the most-recently-created active session for a user in a specific lobby. */
+export async function getSessionByUserAndLobby(userId: string, lobbyId: string): Promise<PlayerSession | null> {
+  if (isMemoryMode()) {
+    let best: MemorySession | null = null;
+    for (const s of memoryStore.sessions.values()) {
+      if (s.userId !== userId || s.lobbyId !== lobbyId) continue;
+      if (new Date(s.expiresAt) < new Date()) continue;
+      if (!best || s.createdAt > best.createdAt) best = s;
+    }
+    if (!best) return null;
+    return {
+      id: best.id,
+      userId: best.userId,
+      lobbyId: best.lobbyId,
+      disconnectedAt: best.disconnectedAt ? new Date(best.disconnectedAt) : null,
+      expiresAt: new Date(best.expiresAt),
+    };
+  }
+
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(playerSessions)
+    .where(and(eq(playerSessions.userId, userId), eq(playerSessions.lobbyId, lobbyId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row || row.expiresAt < new Date()) return null;
+  return {
+    id: row.id,
+    userId: row.userId,
+    lobbyId: row.lobbyId ?? null,
+    disconnectedAt: row.disconnectedAt ?? null,
+    expiresAt: row.expiresAt,
+  };
+}
+
 export async function cleanExpiredSessions(): Promise<void> {
   if (isMemoryMode()) {
     const now = new Date();
