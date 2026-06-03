@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { playerSessions } from '../db/schema.js';
 import { memoryStore, type MemorySession } from '../store/memory-fallback.js';
@@ -187,4 +187,28 @@ export async function cleanExpiredSessions(): Promise<void> {
   }
   const db = getDb();
   await db.delete(playerSessions).where(lt(playerSessions.expiresAt, new Date()));
+}
+
+/**
+ * Mark all currently-connected sessions (disconnectedAt = null) as disconnected now.
+ * Called once at server startup so that sessions from before a crash correctly reflect
+ * the disconnect time, allowing the reconnect-window and seat-release logic to work
+ * properly without relying on in-memory timers that were lost during the restart.
+ *
+ * Players who reconnect after this will have markSessionConnected() called, which
+ * clears disconnectedAt again — the normal reconnect flow is unaffected.
+ */
+export async function markAllSessionsDisconnected(): Promise<void> {
+  const now = new Date();
+  if (isMemoryMode()) {
+    for (const session of memoryStore.sessions.values()) {
+      if (!session.disconnectedAt) session.disconnectedAt = now.toISOString();
+    }
+    return;
+  }
+  const db = getDb();
+  await db
+    .update(playerSessions)
+    .set({ disconnectedAt: now })
+    .where(isNull(playerSessions.disconnectedAt));
 }

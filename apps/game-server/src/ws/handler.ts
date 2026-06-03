@@ -47,6 +47,7 @@ import {
 } from '../services/game-manager.js';
 import { addChatMessage, addSystemChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
 import { getMemoryLobby } from '../services/lobby.js';
+import { deleteLobby } from '../services/lobby-cleanup.js';
 import { redisDel, keys } from '../store/redis.js';
 import {
   createSession,
@@ -195,12 +196,11 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelBombPotOptIn(lobbyId);
   waitingForPlayers.delete(lobbyId);
 
-  await updateLobbyStatus(lobbyId, 'closed');
   clearGame(lobbyId);
-  await redisDel(keys.tableState(lobbyId));
   lobbyClients.delete(lobbyId);
 
-  console.log(`[lobby] Auto-closed empty lobby ${lobbyId} after 1 hour of inactivity`);
+  await deleteLobby(lobbyId);
+  console.log(`[lobby] Deleted abandoned lobby ${lobbyId}`);
 }
 
 /**
