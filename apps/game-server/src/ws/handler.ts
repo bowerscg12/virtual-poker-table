@@ -18,7 +18,9 @@ import {
   setSitOutNextHand,
   setTableBuyIn,
   setSittingOut,
+  setWaitingForReentryBlind,
   sitAtSeat,
+  syncEndOfHandStacks,
   updateLobbyStatus,
 } from '../services/lobby.js';
 import {
@@ -231,6 +233,9 @@ async function tryStartWaitingHand(lobbyId: string): Promise<void> {
 
   recordHandStart(lobbyId, result);
   scheduleActionTimer(lobbyId, lobby.settings, result);
+  const connected = getConnectedSet(lobbyId);
+  const startedLobby = await getLobbyById(lobbyId, connected);
+  if (startedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));
   await broadcastTableState(lobbyId);
 }
 
@@ -243,6 +248,28 @@ interface RunoutState {
   gen: number;
   /** Whether all participants' hole cards should be revealed at this point in the runout. */
   revealHoleCards: boolean;
+  /**
+   * Stack for each seat *before* pot distribution. The engine resolves the showdown (and
+   * credits winner stacks) atomically, so during the runout animation we override seat stacks
+   * with these values so chips appear to remain in the center pot until the reveal is done.
+   */
+  prePayoutStacks: Map<number, number>;
+}
+
+/**
+ * Compute each seat's stack as it was immediately before pots were awarded.
+ * The engine state has already applied winnerPayouts to seat.stack; we reverse that here.
+ */
+function computePrePayoutStacks(finalState: GameTableState): Map<number, number> {
+  const wonBySeat = new Map<number, number>();
+  for (const payout of finalState.winnerPayouts) {
+    wonBySeat.set(payout.seatIndex, (wonBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
+  }
+  const stacks = new Map<number, number>();
+  for (const seat of finalState.seats) {
+    stacks.set(seat.seatIndex, seat.stack - (wonBySeat.get(seat.seatIndex) ?? 0));
+  }
+  return stacks;
 }
 
 /** lobbyId → active runout sequence (board cards being progressively revealed) */
@@ -290,6 +317,7 @@ async function startAllInRunout(
     visibleBoardCount: startBoardCount,
     gen,
     revealHoleCards: true, // all-in runout reveals hole cards throughout
+    prePayoutStacks: computePrePayoutStacks(finalState),
   });
 
   // Step 0: broadcast initial state — holes visible, board at startBoardCount
@@ -353,6 +381,7 @@ async function startBombPotRunout(
     visibleBoardCount: 0,
     gen,
     revealHoleCards: false, // own cards only during the 5s viewing delay
+    prePayoutStacks: computePrePayoutStacks(finalState),
   });
 
   // Step 0: hole cards hidden, board empty
@@ -410,12 +439,12 @@ function cancelBombPotOptIn(lobbyId: string): void {
   bombPotGenerations.set(lobbyId, (bombPotGenerations.get(lobbyId) ?? 0) + 1);
 }
 
-/** Seated players eligible to be offered a Bomb Pot: have chips and are not sitting out next hand. */
+/** Seated players eligible to be offered a Bomb Pot: have chips, not sitting out, not waiting for reentry blind. */
 async function eligibleBombPotPlayers(lobbyId: string): Promise<string[]> {
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return [];
   return lobby.seats
-    .filter((s) => s.userId && s.stack > 0 && !s.sitOutNextHand)
+    .filter((s) => s.userId && s.stack > 0 && !s.sitOutNextHand && !s.waitingForReentryBlind)
     .map((s) => s.userId!);
 }
 
@@ -563,9 +592,20 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   const paused = lobby.status === 'paused';
   const isWaitingForPlayers = waitingForPlayers.get(lobbyId) ?? false;
 
-  // When a runout is active use the final engine state and a truncated board count
+  // When a runout is active use the final engine state and a truncated board count.
+  // Override seat stacks with pre-payout values so chips appear to stay in the center
+  // pot until the board has been fully revealed and handleHandComplete fires.
   const runout = activeRunouts.get(lobbyId);
-  const game = runout ? runout.finalEngineState : await getActiveGame(lobbyId);
+  const rawGame = runout ? runout.finalEngineState : await getActiveGame(lobbyId);
+  const game = runout && rawGame
+    ? {
+        ...rawGame,
+        seats: rawGame.seats.map((s) => ({
+          ...s,
+          stack: runout.prePayoutStacks.get(s.seatIndex) ?? s.stack,
+        })),
+      }
+    : rawGame;
   const visibleBoardCount = runout ? runout.visibleBoardCount : undefined;
   const runoutActive = runout !== undefined;
   const revealHoleCards = runout ? runout.revealHoleCards : undefined;
@@ -812,6 +852,9 @@ async function onIntermissionExpired(lobbyId: string, _config: VariantConfig): P
 
   recordHandStart(lobbyId, result);
   scheduleActionTimer(lobbyId, lobby.settings, result);
+  const connectedPlayers = getConnectedSet(lobbyId);
+  const startedLobby = await getLobbyById(lobbyId, connectedPlayers);
+  if (startedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));
   await broadcastTableState(lobbyId);
 }
 
@@ -1086,6 +1129,8 @@ async function processPendingRebuys(lobbyId: string): Promise<void> {
     await rebuyPlayer(lobbyId, userId, pending.amount);
     await updateSeatStackAfterRebuy(lobbyId, userId, pending.amount);
     await setSitOutNextHand(lobbyId, userId, false);
+    await setSittingOut(lobbyId, userId, false);
+    await setWaitingForReentryBlind(lobbyId, userId, true);
     recordRebuy(lobbyId, userId, pending.amount);
     const ws = connectedUserSockets.get(userId);
     if (ws) send(ws, { type: 'rebuy_confirmed', newStack: pending.amount });
@@ -1192,6 +1237,26 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
 
   await broadcastTableState(lobbyId);
   await processPendingRebuys(lobbyId);
+
+  // Sync final chip counts to the lobby store (both in-memory and Postgres) so that:
+  //   1. seatedPlayers() in the next startHand correctly excludes zero-stack players.
+  //   2. The lobby_state broadcast below updates every client's player tray immediately,
+  //      replacing the stale buy-in amount with the real post-hand stack (0 for busted).
+  // We read the active game AFTER processPendingRebuys so any just-applied rebuys are
+  // included (updateSeatStackAfterRebuy mutates the active game before we reach here).
+  const postHandGame = await getActiveGame(lobbyId);
+  if (postHandGame) {
+    await syncEndOfHandStacks(
+      lobbyId,
+      new Map(postHandGame.seats.map((s) => [s.userId, s.stack]))
+    );
+    const connectedPostHand = getConnectedSet(lobbyId);
+    const lobbyPostHand = await getLobbyById(lobbyId, connectedPostHand);
+    if (lobbyPostHand) {
+      broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: lobbyPostHand }));
+    }
+  }
+
   await notifyBustedPlayers(lobbyId);
 
   if (isFoldWin(state)) {
@@ -1367,10 +1432,14 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         await recoverHandLifecycle(session.lobbyId);
         await broadcastTableState(session.lobbyId);
 
-        // If the player reconnects with 0 chips, show them the rebuy prompt
-        if (!pendingCashOuts.has(session.userId)) {
+        // If the player reconnects with 0 chips (busted, not yet rebuyed), show rebuy prompt.
+        // Busted players are excluded from engine seats (stack > 0 filter), so check the lobby seat.
+        if (!pendingCashOuts.has(session.userId) && reconnLobby) {
           const reconnGameSeat = reconnGame?.seats.find((s) => s.userId === session.userId);
-          if (reconnGameSeat && reconnGameSeat.stack === 0 && reconnLobby) {
+          const reconnLobbySeat = reconnLobby.seats.find((s) => s.userId === session.userId);
+          const isBusted = reconnLobbySeat && reconnLobbySeat.stack === 0 && !reconnLobbySeat.waitingForReentryBlind;
+          const isInGameBusted = reconnGameSeat && reconnGameSeat.stack === 0;
+          if (isBusted || isInGameBusted) {
             send(ws, { type: 'rebuy_available', amount: getTableBuyIn(reconnLobby.settings) });
           }
         }
@@ -1856,9 +1925,14 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       await rebuyPlayer(lobbyId, userId, buyIn);
       await updateSeatStackAfterRebuy(lobbyId, userId, buyIn);
       await setSitOutNextHand(lobbyId, userId, false);
+      await setSittingOut(lobbyId, userId, false);
+      await setWaitingForReentryBlind(lobbyId, userId, true);
       recordRebuy(lobbyId, userId, buyIn);
 
       send(ws, { type: 'rebuy_confirmed', newStack: buyIn });
+      const connected = getConnectedSet(lobbyId);
+      const updatedLobby = await getLobbyById(lobbyId, connected);
+      if (updatedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
       await broadcastTableState(lobbyId);
       await tryStartWaitingHand(lobbyId);
       return;

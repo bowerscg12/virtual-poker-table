@@ -30,6 +30,7 @@ export default function TablePage() {
   const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
   const [cashOutOpen, setCashOutOpen] = useState(false);
   const [rebuyClicked, setRebuyClicked] = useState(false);
+  const [rebuyDismissed, setRebuyDismissed] = useState(false);
   const [dismissedShowdownHandNum, setDismissedShowdownHandNum] = useState<number | null>(null);
 
   const {
@@ -83,10 +84,14 @@ export default function TablePage() {
     if (cashOutQueued) setCashOutOpen(true);
   }, [cashOutQueued]);
 
-  // Reset the clicked flag whenever the rebuy state resets (new bust or confirmed)
+  // Reset clicked/dismissed when rebuy cycle fully completes
   useEffect(() => {
     if (!rebuyAvailable && !rebuyQueued) setRebuyClicked(false);
   }, [rebuyAvailable, rebuyQueued]);
+  // Reset dismissed whenever a fresh bust fires (rebuyAvailable transitions to non-null)
+  useEffect(() => {
+    if (rebuyAvailable) setRebuyDismissed(false);
+  }, [rebuyAvailable]);
 
   // Escape key global listener to open/focus chat panel
   useEffect(() => {
@@ -298,8 +303,27 @@ export default function TablePage() {
             </div>
             <div className="player-tray__meta">
               <span className="player-tray__stack">{formatChips(mySeat.stack)}</span>
-              {rebuyQueued || rebuyClicked ? (
+              {mySeat.waitingForReentryBlind ? (
+                <span className="rebuy-pending-badge">Waiting for Big Blind...</span>
+              ) : rebuyQueued || rebuyClicked ? (
                 <span className="rebuy-pending-badge">Rebuy pending...</span>
+              ) : rebuyAvailable && rebuyDismissed ? (
+                <div className="rebuy-bar">
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    onClick={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
+                  >
+                    Buy Back In
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => send({ type: 'cash_out' })}
+                  >
+                    Leave Table
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -309,7 +333,7 @@ export default function TablePage() {
                   {cashOutQueued ? 'Queued' : 'Cash Out'}
                 </button>
               )}
-              {gameStarted && (
+              {gameStarted && !rebuyAvailable && !mySeat.waitingForReentryBlind && (
                 <button
                   type="button"
                   className={`btn small sit-out-toggle${mySeat.sitOutNextHand ? ' sit-out-toggle--active' : ''}`}
@@ -405,14 +429,16 @@ export default function TablePage() {
         />
       )}
 
-      {rebuyAvailable && !rebuyClicked && !cashOutSummary && (
+      {rebuyAvailable && !rebuyClicked && !rebuyDismissed && !cashOutSummary && (
         <RebuyModal
           amount={rebuyAvailable.amount}
           onRebuy={() => {
             setRebuyClicked(true);
             send({ type: 'rebuy' });
           }}
+          onSitOut={() => setRebuyDismissed(true)}
           onLeave={() => send({ type: 'cash_out' })}
+          onDismiss={() => setRebuyDismissed(true)}
         />
       )}
 

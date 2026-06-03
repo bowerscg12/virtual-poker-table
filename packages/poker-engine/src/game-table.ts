@@ -403,6 +403,7 @@ function awardPots(
 function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; state: GameTableState } {
   const module = getVariantModule(config);
   const pots = buildSidePots(state.seats.map((s) => ({ seatIndex: s.seatIndex, amount: s.totalBet })));
+  const chipsBefore = state.seats.reduce((s, seat) => s + seat.stack + seat.totalBet, 0);
 
   for (const seat of state.seats) {
     if (!seat.folded) seat.shownCards = [...seat.holeCards];
@@ -417,6 +418,10 @@ function runShowdown(state: GameTableState, config: VariantConfig): { ok: true; 
   }
 
   const payouts = awardPots(state.seats, pots, evaluatedHands);
+  const chipsAfter = state.seats.reduce((s, seat) => s + seat.stack, 0);
+  if (chipsBefore !== chipsAfter) {
+    console.error(`[chip-conservation] VIOLATION in showdown: before=${chipsBefore} after=${chipsAfter}`);
+  }
 
   const showdownHands = [...evaluatedHands.entries()].map(([seatIndex, hand]) => ({
     seatIndex,
@@ -451,6 +456,7 @@ function runDoubleBoardShowdown(
   const module = getVariantModule(config);
   const boardB = state.secondBoard ?? [];
   const pots = buildSidePots(state.seats.map((s) => ({ seatIndex: s.seatIndex, amount: s.totalBet })));
+  const chipsBefore = state.seats.reduce((s, seat) => s + seat.stack + seat.totalBet, 0);
 
   for (const seat of state.seats) {
     if (!seat.folded) seat.shownCards = [...seat.holeCards];
@@ -477,6 +483,10 @@ function runDoubleBoardShowdown(
     ...awardPots(state.seats, potsA, handsA).map((p) => ({ ...p, board: 'A' as const })),
     ...awardPots(state.seats, potsB, handsB).map((p) => ({ ...p, board: 'B' as const })),
   ];
+  const chipsAfter = state.seats.reduce((s, seat) => s + seat.stack, 0);
+  if (chipsBefore !== chipsAfter) {
+    console.error(`[chip-conservation] VIOLATION in double-board showdown: before=${chipsBefore} after=${chipsAfter}`);
+  }
 
   const toEntries = (m: Map<number, EvaluatedHand>) =>
     [...m.entries()].map(([seatIndex, hand]) => ({
@@ -581,8 +591,13 @@ export function createBombPotTable(
 
 function awardToWinner(state: GameTableState, seatIndex: number): GameTableState {
   const total = state.seats.reduce((s, seat) => s + seat.totalBet, 0);
+  const chipsBefore = state.seats.reduce((s, seat) => s + seat.stack + seat.totalBet, 0);
   const seat = getSeat(state.seats, seatIndex)!;
   seat.stack += total;
+  const chipsAfter = state.seats.reduce((s, seat) => s + seat.stack, 0);
+  if (chipsBefore !== chipsAfter) {
+    console.error(`[chip-conservation] VIOLATION in fold win: before=${chipsBefore} after=${chipsAfter}`);
+  }
   return {
     ...state,
     street: 'complete',

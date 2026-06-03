@@ -52,6 +52,7 @@ async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
     await pool.query(`
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_next_hand BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_blind_owed BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS waiting_for_reentry_blind BOOLEAN NOT NULL DEFAULT false;
     `);
   } catch (err) {
     console.error('[schema] Failed to apply column updates:', err);
@@ -105,6 +106,7 @@ function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): Lobb
         isConnected: s.userId ? connected.has(s.userId) : false,
         sitOutNextHand: s.sitOutNextHand,
         sitOutBlindOwed: s.sitOutBlindOwed,
+        waitingForReentryBlind: s.waitingForReentryBlind,
       };
     }),
     createdAt: lobby.createdAt,
@@ -148,6 +150,7 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
       isConnected: s.userId ? connected.has(s.userId) : false,
       sitOutNextHand: s.sitOutNextHand,
       sitOutBlindOwed: s.sitOutBlindOwed,
+      waitingForReentryBlind: s.waitingForReentryBlind,
     });
   }
   return {
@@ -475,6 +478,7 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
       seat.stack = 0;
       seat.sitOutNextHand = false;
       seat.sitOutBlindOwed = false;
+      seat.waitingForReentryBlind = false;
     }
     return toSummary(lobby);
   }
@@ -482,7 +486,7 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
   const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
   const seat = seats.find((s) => s.seatIndex === seatIndex);
   if (seat) {
-    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false }).where(eq(tableSeats.id, seat.id));
+    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false }).where(eq(tableSeats.id, seat.id));
   }
   return getLobbyById(lobbyId);
 }
@@ -589,6 +593,7 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
       seat.sittingOut = false;
       seat.sitOutNextHand = false;
       seat.sitOutBlindOwed = false;
+      seat.waitingForReentryBlind = false;
     }
     return toSummary(mem);
   }
@@ -598,7 +603,7 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
   if (seat) {
     await db
       .update(tableSeats)
-      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false })
+      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false })
       .where(eq(tableSeats.id, seat.id));
   }
   return getLobbyById(lobbyId);
@@ -616,6 +621,21 @@ export async function clearSitOutBlindOwed(lobbyId: string, userId: string): Pro
   await db
     .update(tableSeats)
     .set({ sitOutBlindOwed: false })
+    .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
+}
+
+export async function setWaitingForReentryBlind(lobbyId: string, userId: string, value: boolean): Promise<void> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return;
+    const seat = mem.seats.find((s) => s.userId === userId);
+    if (seat) seat.waitingForReentryBlind = value;
+    return;
+  }
+  const db = getDb();
+  await db
+    .update(tableSeats)
+    .set({ waitingForReentryBlind: value })
     .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
 }
 
@@ -771,3 +791,11 @@ export async function restorePreHandStacks(
       .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
   }
 }
+
+/**
+ * Persist each player's final chip count after a hand completes so the lobby store
+ * (both in-memory and Postgres) is authoritative for `seatedPlayers()` queries.
+ * Identical implementation to `restorePreHandStacks` but semantically distinct:
+ * this writes *post-hand* values rather than crash-recovery pre-hand values.
+ */
+export const syncEndOfHandStacks = restorePreHandStacks;

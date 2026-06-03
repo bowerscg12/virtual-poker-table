@@ -4,6 +4,7 @@ import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
   applyFlipCard,
+  buildSidePots,
   createBombPotTable,
   createInitialTable,
   createTwelveCardFlipState,
@@ -16,7 +17,7 @@ import {
 import { getDb } from '../db/client.js';
 import { tableSeats, users } from '../db/schema.js';
 import { keys, redisDel, redisGet, redisSet } from '../store/redis.js';
-import { clearSitOutBlindOwed, getActiveLobbyIds, getMemoryLobby, isMemoryMode, restorePreHandStacks } from './lobby.js';
+import { clearSitOutBlindOwed, getActiveLobbyIds, getMemoryLobby, isMemoryMode, restorePreHandStacks, setWaitingForReentryBlind } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
 import { getSessionBadgeData } from './session-stats.js';
 
@@ -139,6 +140,7 @@ interface SeatedPlayer {
   stack: number;
   sitOutNextHand: boolean;
   sitOutBlindOwed: boolean;
+  waitingForReentryBlind: boolean;
 }
 
 async function seatedPlayers(lobbyId: string): Promise<SeatedPlayer[]> {
@@ -154,6 +156,7 @@ async function seatedPlayers(lobbyId: string): Promise<SeatedPlayer[]> {
         stack: s.stack,
         sitOutNextHand: s.sitOutNextHand,
         sitOutBlindOwed: s.sitOutBlindOwed,
+        waitingForReentryBlind: s.waitingForReentryBlind,
       }));
   }
 
@@ -174,19 +177,33 @@ async function seatedPlayers(lobbyId: string): Promise<SeatedPlayer[]> {
       stack: seat.stack,
       sitOutNextHand: seat.sitOutNextHand,
       sitOutBlindOwed: seat.sitOutBlindOwed,
+      waitingForReentryBlind: seat.waitingForReentryBlind,
     }));
 }
 
 export async function startHand(lobbyId: string, config: VariantConfig): Promise<GameTableState | { error: string }> {
   const allSeated = await seatedPlayers(lobbyId);
 
-  // Separate fully-active, blind-owed, and fully-sitting-out players
-  const fullyActive = allSeated.filter((p) => !p.sitOutNextHand);
-  const blindOwed   = allSeated.filter((p) => p.sitOutNextHand && p.sitOutBlindOwed);
+  // Separate fully-active, blind-owed, sitting-out, and reentry-waiting players
+  const fullyActive    = allSeated.filter((p) => !p.sitOutNextHand && !p.waitingForReentryBlind);
+  const blindOwed      = allSeated.filter((p) => p.sitOutNextHand && p.sitOutBlindOwed);
+  const reentryWaiting = allSeated.filter((p) => p.waitingForReentryBlind);
   // fullyOut = sitOutNextHand && !sitOutBlindOwed — excluded from all hands
 
-  // Candidate pool for this hand: active players + those who still owe a blind
-  const candidates = [...fullyActive, ...blindOwed];
+  // Reentry-blind deferral lets a player who just bought back in wait until they reach the
+  // big blind before being dealt (so they can't rebuy in late position to dodge blinds).
+  // That deferral is only safe when the rest of the table can already run a hand without
+  // them. If there are fewer than 2 fully-active players, deferring would deadlock the table
+  // (classic heads-up case: one player busts and rebuys, but is never the BB so never gets
+  // dealt in). In that case promote reentry-waiting players to be dealt in immediately.
+  const deferReentry = fullyActive.length >= 2;
+  const immediateReentry  = deferReentry ? [] : reentryWaiting; // dealt in like fully-active
+  const positionalReentry = deferReentry ? reentryWaiting : []; // dealt in only when in BB
+  const activePlayers = [...fullyActive, ...immediateReentry];
+
+  // Candidate pool for dealer rotation: active + blind-owed + positional reentry-waiting
+  // (positional reentry-waiting players join the rotation so the table doesn't stall)
+  const candidates = [...activePlayers, ...blindOwed, ...positionalReentry];
   if (candidates.length < 2) return { error: 'Need at least 2 players' };
 
   if (config.game === 'twelve_card_flip' && candidates.length !== 2) {
@@ -199,7 +216,7 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
   const nextDealerIdx = candidateIndices.find((i) => i > prevDealer) ?? candidateIndices[0];
   dealerRotations.set(lobbyId, nextDealerIdx);
 
-  // Compute SB/BB positions from the candidate pool to determine which blind-owed seats must play
+  // Compute SB/BB positions from the candidate pool
   const headsUp = candidates.length === 2;
   const sbSeat = headsUp
     ? nextDealerIdx
@@ -210,7 +227,10 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
   // Include blind-owed players only if they're in SB or BB position this hand
   const includedBlindOwed = blindOwed.filter((p) => blindSeats.has(p.seatIndex));
 
-  const players = [...fullyActive, ...includedBlindOwed].sort((a, b) => a.seatIndex - b.seatIndex);
+  // Include positional reentry-waiting players only when they land in the BB (their reentry cost)
+  const includedReentry = positionalReentry.filter((p) => p.seatIndex === bbSeat);
+
+  const players = [...activePlayers, ...includedBlindOwed, ...includedReentry].sort((a, b) => a.seatIndex - b.seatIndex);
   if (players.length < 2) return { error: 'Need at least 2 players' };
 
   const handNumber = (activeGames.get(lobbyId)?.handNumber ?? 0) + 1;
@@ -224,6 +244,12 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
   // Clear blind-owed flag for any sit-out player who just posted their final blind cycle
   for (const p of includedBlindOwed) {
     clearSitOutBlindOwed(lobbyId, p.userId).catch(() => {});
+  }
+
+  // Clear reentry flag for players who just entered: those who posted their entry big blind
+  // (positional) and those force-dealt because the table couldn't otherwise reach 2 players.
+  for (const p of [...includedReentry, ...immediateReentry]) {
+    setWaitingForReentryBlind(lobbyId, p.userId, false).catch(() => {});
   }
 
   seatLastActions.delete(lobbyId);
@@ -554,6 +580,17 @@ export function toPublicState(
     };
   }
 
+  // Compute pots for display. state.pots is only populated at showdown; during an active hand
+  // we derive a live pot from each seat's total committed chips so the center always shows the
+  // correct amount. After the hand is complete (fold win) pots is empty but we don't show it.
+  const handInProgress = state.street !== 'complete' && state.street !== 'waiting';
+  const displayPots =
+    state.pots.length > 0
+      ? state.pots
+      : handInProgress
+        ? buildSidePots(state.seats.map((s) => ({ seatIndex: s.seatIndex, amount: s.totalBet })))
+        : [];
+
   const activeIndices = state.seats.map((s) => s.seatIndex).sort((a, b) => a - b);
   const headsUp = activeIndices.length === 2;
   const sbSeatIndex = activeIndices.length >= 2
@@ -598,7 +635,7 @@ export function toPublicState(
       lastAction: lastActions?.get(s.seatIndex),
       badges: badges.get(s.seatIndex),
     })),
-    pots: state.pots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
+    pots: displayPots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
     dealerSeatIndex: state.dealerSeatIndex,
     actionSeatIndex: state.actionSeatIndex,
     currentBet: state.currentBet,

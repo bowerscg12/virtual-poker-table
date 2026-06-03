@@ -1018,6 +1018,51 @@ select {
   border: 1px solid rgba(120, 120, 120, 0.25);
 }
 
+/* ── Out-of-chips seat badge ─────────────────────────────────────────────── */
+.out-of-chips-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--danger);
+  background: rgba(196, 68, 68, 0.12);
+  border: 1px solid rgba(196, 68, 68, 0.3);
+}
+
+/* ── Waiting-for-BB seat badge ───────────────────────────────────────────── */
+.waiting-bb-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+/* ── Persistent rebuy bar (shown after popup auto-closes) ────────────────── */
+.rebuy-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── Rebuy modal dismiss hint ────────────────────────────────────────────── */
+.rebuy-dismiss-hint {
+  margin-top: 0.75rem;
+  font-size: 0.78rem;
+  opacity: 0.5;
+}
+
 /* ── Name-taken inline form ──────────────────────────────── */
 
 .name-change-form {

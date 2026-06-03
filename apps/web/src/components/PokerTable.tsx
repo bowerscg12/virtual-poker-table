@@ -398,7 +398,13 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     Bet: {formatChips(gs.betThisStreet)}
                   </span>
                 ) : null}
-                {occupied && seat.sitOutNextHand && (
+                {occupied && stack === 0 && !seat.waitingForReentryBlind && (
+                  <span className="out-of-chips-badge">Out of Chips</span>
+                )}
+                {occupied && seat.waitingForReentryBlind && (
+                  <span className="waiting-bb-badge">Waiting for BB</span>
+                )}
+                {occupied && seat.sitOutNextHand && !seat.waitingForReentryBlind && (
                   <span className="sit-out-badge">
                     {seat.sitOutBlindOwed ? 'Blind owed' : 'Sitting Out'}
                   </span>

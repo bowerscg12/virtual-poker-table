@@ -21,6 +21,8 @@ export interface TableSeat {
   sitOutNextHand: boolean;
   /** True on the first sit-out hand — player still owes their next blind cycle */
   sitOutBlindOwed: boolean;
+  /** Player rebuyed after busting and must post a big blind before re-entering active play */
+  waitingForReentryBlind: boolean;
 }
 
 export interface LobbySummary {
