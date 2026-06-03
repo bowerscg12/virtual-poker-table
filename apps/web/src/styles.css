@@ -2759,3 +2759,33 @@ select {
   justify-content: center;
   margin-bottom: 0.5rem;
 }
+
+/* Keyboard Shortcut Key Hints */
+.key-hint {
+  display: inline-block;
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: monospace, sans-serif;
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 1px 4px;
+  margin-left: 5px;
+  vertical-align: middle;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  text-transform: uppercase;
+}
+
+/* Custom button styles to make sure hints stand out but look premium */
+.btn:hover .key-hint {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* Hide keyboard hints on mobile screens (max-width: 767px) */
+@media (max-width: 767px) {
+  .key-hint {
+    display: none !important;
+  }
+}

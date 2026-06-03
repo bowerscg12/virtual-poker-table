@@ -41,6 +41,7 @@ export function ChatPanel({ messages, onSend, onClose }: Props) {
       </div>
       <form onSubmit={submit}>
         <input
+          id="chat-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Message table…"

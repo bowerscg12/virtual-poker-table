@@ -7,6 +7,7 @@ interface Props {
   onAction: (action: PlayerActionType, amount?: number) => void;
   pot: number;
   currentBet: number;
+  limit?: string;
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -19,7 +20,7 @@ function computeDefaultRaise(pot: number, currentBet: number, min: number, max: 
   return clamp(raw, min, max);
 }
 
-export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
+export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Props) {
   const [showRaise, setShowRaise] = useState(false);
   const [raiseAmount, setRaiseAmount] = useState(0);
   const [inputValue, setInputValue] = useState('0');
@@ -28,6 +29,14 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
   const raiseMin = raise?.minAmount ?? 0;
   const raiseMax = raise?.maxAmount ?? 0;
   const hasRaise = !!raise && raiseMin > 0 && raiseMax > 0;
+
+  const callAction = legalActions.find((a) => a.type === 'call');
+
+  function applyRaiseAmount(v: number) {
+    const clamped = clamp(v, raiseMin, raiseMax);
+    setRaiseAmount(clamped);
+    setInputValue(String(clamped));
+  }
 
   // Reset whenever legal actions change (new betting round or new turn); compute smart default
   useEffect(() => {
@@ -39,15 +48,102 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
     }
   }, [legalActions, hasRaise, raiseMin, raiseMax, pot, currentBet]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Focus the raise amount input when the raise panel is opened
+  useEffect(() => {
+    if (showRaise) {
+      setTimeout(() => {
+        const input = document.querySelector('.raise-panel__amount-input') as HTMLInputElement;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }, 50);
+    }
+  }, [showRaise]);
+
+  // Keyboard shortcut listener
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ignore shortcuts if the user is typing in an input, textarea, or contentEditable
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // Ignore shortcuts if any modal overlay/dialog is active
+      if (document.querySelector('.modal-overlay, [role="dialog"]')) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      const toCall = callAction ? (callAction.amount ?? 0) : 0;
+
+      if (key === 'f') {
+        const hasFold = legalActions.some((a) => a.type === 'fold');
+        if (hasFold) {
+          e.preventDefault();
+          onAction('fold');
+        }
+      } else if (key === 'c') {
+        const hasCheck = legalActions.some((a) => a.type === 'check');
+        if (hasCheck) {
+          e.preventDefault();
+          onAction('check');
+        } else if (callAction) {
+          e.preventDefault();
+          onAction('call', callAction.amount);
+        }
+      } else if (key === 'r') {
+        if (hasRaise) {
+          e.preventDefault();
+          if (!showRaise) {
+            setShowRaise(true);
+          } else {
+            onAction('raise', raiseAmount);
+            setShowRaise(false);
+          }
+        }
+      } else if (key === '1') {
+        if (hasRaise) {
+          e.preventDefault();
+          applyRaiseAmount(raiseMin);
+          if (!showRaise) setShowRaise(true);
+        }
+      } else if (key === '2') {
+        if (hasRaise) {
+          e.preventDefault();
+          applyRaiseAmount(Math.floor(pot / 2));
+          if (!showRaise) setShowRaise(true);
+        }
+      } else if (key === '3') {
+        if (hasRaise && limit !== 'fixed') {
+          e.preventDefault();
+          applyRaiseAmount(currentBet + pot + toCall);
+          if (!showRaise) setShowRaise(true);
+        }
+      } else if (key === '4') {
+        if (hasRaise) {
+          e.preventDefault();
+          applyRaiseAmount(raiseMax);
+          if (!showRaise) setShowRaise(true);
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [legalActions, onAction, pot, currentBet, limit, showRaise, raiseAmount, raiseMin, raiseMax, hasRaise, callAction]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (legalActions.length === 0) return null;
 
-  const callAction = legalActions.find((a) => a.type === 'call');
-
-  function applyRaiseAmount(v: number) {
-    const clamped = clamp(v, raiseMin, raiseMax);
-    setRaiseAmount(clamped);
-    setInputValue(String(clamped));
-  }
+  const toCall = callAction ? (callAction.amount ?? 0) : 0;
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.replace(/[^\d]/g, '');
@@ -69,17 +165,17 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
       <div className="action-bar__btns">
         {legalActions.some((a) => a.type === 'fold') && (
           <button type="button" className="btn danger small" onClick={() => onAction('fold')}>
-            Fold
+            Fold <kbd className="key-hint">F</kbd>
           </button>
         )}
         {legalActions.some((a) => a.type === 'check') && (
           <button type="button" className="btn small" onClick={() => onAction('check')}>
-            Check
+            Check <kbd className="key-hint">C</kbd>
           </button>
         )}
         {callAction && (
           <button type="button" className="btn small" onClick={() => onAction('call', callAction.amount)}>
-            Call {formatChips(callAction.amount ?? 0)}
+            Call {formatChips(callAction.amount ?? 0)} <kbd className="key-hint">C</kbd>
           </button>
         )}
         {hasRaise && (
@@ -89,7 +185,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
             onClick={() => setShowRaise((s) => !s)}
             aria-expanded={showRaise}
           >
-            Raise {showRaise ? '▾' : '▸'}
+            Raise {showRaise ? '▾' : '▸'} <kbd className="key-hint">R</kbd>
           </button>
         )}
         {legalActions.some((a) => a.type === 'all_in') && (
@@ -130,7 +226,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
               onClick={() => applyRaiseAmount(raiseMin)}
               title={`Minimum: ${formatChips(raiseMin)}`}
             >
-              Min
+              Min <kbd className="key-hint">1</kbd>
             </button>
             <button
               type="button"
@@ -138,15 +234,25 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
               onClick={() => applyRaiseAmount(Math.floor(pot / 2))}
               title={`Half pot: ${formatChips(Math.floor(pot / 2))}`}
             >
-              ½ Pot
+              ½ Pot <kbd className="key-hint">2</kbd>
             </button>
+            {limit !== 'fixed' && limit !== 'pot_limit' && (
+              <button
+                type="button"
+                className="btn small raise-quick-btn"
+                onClick={() => applyRaiseAmount(currentBet + pot + toCall)}
+                title={`Pot: ${formatChips(currentBet + pot + toCall)}`}
+              >
+                Pot <kbd className="key-hint">3</kbd>
+              </button>
+            )}
             <button
               type="button"
               className="btn small raise-quick-btn"
               onClick={() => applyRaiseAmount(raiseMax)}
-              title={`All-in: ${formatChips(raiseMax)}`}
+              title={`${limit === 'pot_limit' ? 'Pot' : 'All-in'}: ${formatChips(raiseMax)}`}
             >
-              Max / All-In
+              {limit === 'pot_limit' ? 'Pot' : 'Max / All-In'} <kbd className="key-hint">{limit === 'pot_limit' ? '3' : '4'}</kbd>
             </button>
           </div>
 
@@ -159,6 +265,12 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
               value={inputValue}
               onChange={handleInputChange}
               onBlur={handleInputBlur}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  onAction('raise', raiseAmount);
+                  setShowRaise(false);
+                }
+              }}
               aria-label="Raise amount"
             />
             <button
@@ -166,7 +278,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet }: Props) {
               className="btn primary small"
               onClick={() => { onAction('raise', raiseAmount); setShowRaise(false); }}
             >
-              Raise
+              Raise <kbd className="key-hint">R</kbd>
             </button>
             <button
               type="button"

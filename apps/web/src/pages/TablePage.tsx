@@ -88,6 +88,39 @@ export default function TablePage() {
     if (!rebuyAvailable && !rebuyQueued) setRebuyClicked(false);
   }, [rebuyAvailable, rebuyQueued]);
 
+  // Escape key global listener to open/focus chat panel
+  useEffect(() => {
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        // Disable shortcuts if any modal dialog is active
+        if (document.querySelector('.modal-overlay, [role="dialog"]')) {
+          return;
+        }
+
+        e.preventDefault();
+        if (!chatOpen) {
+          setChatOpen(true);
+          setTimeout(() => {
+            const input = document.getElementById('chat-input');
+            if (input) {
+              (input as HTMLInputElement).focus();
+            }
+          }, 50);
+        } else {
+          const input = document.getElementById('chat-input');
+          if (input) {
+            (input as HTMLInputElement).focus();
+          }
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [chatOpen]);
+
   const headerLobby = lobby ?? snapshotLobby;
   const isHost = user && headerLobby && headerLobby.hostUserId === user.id;
   const mySeat = headerLobby?.seats.find((s) => s.userId === user?.id);
@@ -296,6 +329,7 @@ export default function TablePage() {
               legalActions={privateState.legalActions}
               pot={totalPot}
               currentBet={table.currentBet}
+              limit={headerLobby?.settings.limit}
               onAction={(action, amount) => {
                 send({ type: 'game_action', actionId: crypto.randomUUID(), action, amount });
               }}
