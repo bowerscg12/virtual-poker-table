@@ -445,6 +445,17 @@ select {
   flex: 1;
 }
 
+.table-layout--hero .table-main {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.table-felt-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
 .status.on {
   color: #6f6;
 }
@@ -456,7 +467,7 @@ select {
 .felt {
   position: relative;
   width: 100%;
-  max-width: 720px;
+  max-width: min(100%, calc((100dvh - 56px) * 4 / 3));
   aspect-ratio: 4/3;
   margin: 0.25rem auto;
   background: radial-gradient(ellipse at center, #1a7a42 0%, var(--felt) 50%, var(--felt-dark) 100%);
@@ -1835,10 +1846,6 @@ select {
     padding: 0 0.75rem;
   }
 
-  .hero-action-panel {
-    grid-template-columns: 140px 1fr;
-  }
-
   .hero-panel__cards .playing-card {
     width: 40px;
     height: 56px;
@@ -2957,34 +2964,33 @@ select {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   HERO ACTION PANEL — in-flow panel below the table
+   HERO ACTION PANEL — left-column, no background box
    ═══════════════════════════════════════════════════════════ */
 
 .hero-action-panel {
   flex-shrink: 0;
-  display: grid;
-  grid-template-columns: 190px 1fr;
-  gap: 0;
-  background: rgba(0, 0, 0, 0.7);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  /* Stretch to full-width but cap at felt max-width and center */
-  width: 100%;
-  max-width: 720px;
-  margin-left: auto;
-  margin-right: auto;
+  width: 175px;
+  display: flex;
+  /* DOM order: [cards, actions] — column-reverse puts cards at bottom, actions above */
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 0.75rem 1.25rem;
+  background: transparent;
+  border: none;
 }
 
 .hero-panel__cards {
-  padding: 0.55rem 0.75rem;
-  background: rgba(0, 0, 0, 0.25);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0;
+  background: transparent;
+  border: none;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
 }
 
 .hero-panel__actions {
-  padding: 0.45rem 0.65rem;
+  padding: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -3071,7 +3077,7 @@ select {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MOBILE — hero panel sticks to bottom, full-width
+   MOBILE — small-screen header tweaks
    ═══════════════════════════════════════════════════════════ */
 
 @media (max-width: 640px) {
@@ -3089,25 +3095,44 @@ select {
     letter-spacing: 0.1em;
   }
 
-  .hero-action-panel {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    max-width: 100%;
-    grid-template-columns: 150px 1fr;
-    z-index: 20;
-    border-top: 1px solid rgba(212, 175, 55, 0.2);
-  }
-
   .hero-panel__cards .playing-card {
     width: 44px;
     height: 62px;
     font-size: 0.85rem;
   }
+}
 
-  /* Pad the table content so it isn't hidden behind the fixed hero panel */
-  .table-layout:not(.table-layout--tcf) .table-main {
-    padding-bottom: 115px;
+/* ═══════════════════════════════════════════════════════════
+   PORTRAIT — rotate device prompt for touch devices
+   ═══════════════════════════════════════════════════════════ */
+
+.rotate-overlay {
+  display: none;
+}
+
+@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  .rotate-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    background: var(--felt-dark);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
+    color: var(--text);
+    font-size: 1.1rem;
+    text-align: center;
+    padding: 2rem;
+  }
+}
+
+/* ── Landscape phone: narrow hero panel (placed after base styles so it wins) ── */
+
+@media (max-height: 500px) {
+  .hero-action-panel {
+    width: 130px;
+    padding: 0.5rem 0.5rem 1rem;
   }
 }

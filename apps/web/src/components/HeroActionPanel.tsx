@@ -29,11 +29,6 @@ interface Props {
   onLeaveTable: () => void;
   onSitOutToggle: (enabled: boolean) => void;
 
-  // Host quick controls
-  isHost: boolean;
-  lobbyStatus?: string;
-  onHostStart: () => void;
-  onHostPause: (paused: boolean) => void;
 }
 
 export function HeroActionPanel({
@@ -56,10 +51,6 @@ export function HeroActionPanel({
   onRebuyClick,
   onLeaveTable,
   onSitOutToggle,
-  isHost,
-  lobbyStatus,
-  onHostStart,
-  onHostPause,
 }: Props) {
   return (
     <div className="hero-action-panel">
@@ -116,29 +107,6 @@ export function HeroActionPanel({
 
       {/* Right column — ACTIONS */}
       <div className="hero-panel__actions">
-        {isHost && (
-          <div className="hero-panel__host">
-            {!gameStarted && (
-              <button type="button" className="btn small primary" onClick={onHostStart}>
-                Start
-              </button>
-            )}
-            {gameStarted && lobbyStatus === 'paused' && (
-              <button
-                type="button"
-                className="btn small primary"
-                onClick={() => onHostPause(false)}
-              >
-                Resume
-              </button>
-            )}
-            {gameStarted && lobbyStatus === 'playing' && (
-              <button type="button" className="btn small" onClick={() => onHostPause(true)}>
-                Pause
-              </button>
-            )}
-          </div>
-        )}
         {legalActions.length > 0 && (
           <ActionBar
             legalActions={legalActions}

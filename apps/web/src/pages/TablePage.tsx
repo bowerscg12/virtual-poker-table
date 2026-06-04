@@ -156,7 +156,11 @@ export default function TablePage() {
   const showHeroPanel = !!(mySeat && !isTcf);
 
   return (
-    <div className={`table-layout${isTcf ? ' table-layout--tcf' : ''}`}>
+    <div className={`table-layout${isTcf ? ' table-layout--tcf' : ''}${showHeroPanel ? ' table-layout--hero' : ''}`}>
+      <div className="rotate-overlay">
+        <span style={{ fontSize: '3rem' }}>⟳</span>
+        <p>Rotate your device to play</p>
+      </div>
       <TableHeader
         lobby={headerLobby}
         isHost={isHost}
@@ -196,68 +200,65 @@ export default function TablePage() {
       )}
 
       <main className="table-main">
-        {isTcf ? (
-          <TwelveCardFlip
-            lobby={headerLobby!}
-            table={table}
-            myUserId={user?.id}
-            privateHoleCards={holeCards}
+        {showHeroPanel && (
+          <HeroActionPanel
+            holeCards={holeCards}
+            isDealingThisHand={isDealingThisHand}
+            dealDelayClasses={[holeDealDelayClass(0), holeDealDelayClass(1)]}
             legalActions={privateState?.legalActions ?? []}
-            onAction={(action) => send({ type: 'game_action', actionId: crypto.randomUUID(), action })}
-            anim={anim}
-            isHost={isHost}
-            onDealAgain={() => send({ type: 'host_start' })}
-          />
-        ) : (
-          <PokerTable
-            lobby={headerLobby}
-            table={table}
-            myUserId={user?.id}
-            anim={anim}
-            messages={chat}
+            pot={totalPot}
+            currentBet={table?.currentBet ?? 0}
+            limit={headerLobby?.settings.limit}
+            onAction={(action, amount) =>
+              send({ type: 'game_action', actionId: crypto.randomUUID(), action, amount })
+            }
+            seat={mySeat}
+            gameStarted={gameStarted}
+            cashOutQueued={cashOutQueued}
+            rebuyAvailable={!!rebuyAvailable}
+            rebuyQueued={rebuyQueued}
+            rebuyClicked={rebuyClicked}
+            rebuyDismissed={rebuyDismissed}
+            onCashOutOpen={() => setCashOutOpen(true)}
+            onRebuyClick={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
+            onLeaveTable={() => send({ type: 'cash_out' })}
+            onSitOutToggle={(enabled) => send({ type: 'sit_out_next_hand', enabled })}
           />
         )}
+        <div className="table-felt-wrapper">
+          {isTcf ? (
+            <TwelveCardFlip
+              lobby={headerLobby!}
+              table={table}
+              myUserId={user?.id}
+              privateHoleCards={holeCards}
+              legalActions={privateState?.legalActions ?? []}
+              onAction={(action) => send({ type: 'game_action', actionId: crypto.randomUUID(), action })}
+              anim={anim}
+              isHost={isHost}
+              onDealAgain={() => send({ type: 'host_start' })}
+            />
+          ) : (
+            <PokerTable
+              lobby={headerLobby}
+              table={table}
+              myUserId={user?.id}
+              anim={anim}
+              messages={chat}
+            />
+          )}
 
-        {!mySeat && headerLobby && token && connected && !isTcf && (
-          <div className="sit-panel panel">
-            {tableFull ? (
-              <p>Table is full. Wait for a seat to open.</p>
-            ) : (
-              <p>Joining table... you will be seated automatically with {formatChips(buyIn)} chips.</p>
-            )}
-          </div>
-        )}
+          {!mySeat && headerLobby && token && connected && !isTcf && (
+            <div className="sit-panel panel">
+              {tableFull ? (
+                <p>Table is full. Wait for a seat to open.</p>
+              ) : (
+                <p>Joining table... you will be seated automatically with {formatChips(buyIn)} chips.</p>
+              )}
+            </div>
+          )}
+        </div>
       </main>
-
-      {showHeroPanel && (
-        <HeroActionPanel
-          holeCards={holeCards}
-          isDealingThisHand={isDealingThisHand}
-          dealDelayClasses={[holeDealDelayClass(0), holeDealDelayClass(1)]}
-          legalActions={privateState?.legalActions ?? []}
-          pot={totalPot}
-          currentBet={table?.currentBet ?? 0}
-          limit={headerLobby?.settings.limit}
-          onAction={(action, amount) =>
-            send({ type: 'game_action', actionId: crypto.randomUUID(), action, amount })
-          }
-          seat={mySeat}
-          gameStarted={gameStarted}
-          cashOutQueued={cashOutQueued}
-          rebuyAvailable={!!rebuyAvailable}
-          rebuyQueued={rebuyQueued}
-          rebuyClicked={rebuyClicked}
-          rebuyDismissed={rebuyDismissed}
-          onCashOutOpen={() => setCashOutOpen(true)}
-          onRebuyClick={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
-          onLeaveTable={() => send({ type: 'cash_out' })}
-          onSitOutToggle={(enabled) => send({ type: 'sit_out_next_hand', enabled })}
-          isHost={isHost}
-          lobbyStatus={headerLobby?.status}
-          onHostStart={() => send({ type: 'host_start' })}
-          onHostPause={(paused) => send({ type: 'host_pause', paused })}
-        />
-      )}
 
       {/* Host settings — full controls panel, scrollable, host only */}
       {isHost && headerLobby && (
