@@ -36,6 +36,12 @@ export async function withLobbyEntryLock<T>(lobbyId: string, fn: () => Promise<T
 
 export async function initLobbyStore(): Promise<void> {
   await initAuthStore();
+  // Test-only escape hatch: force the in-memory store even when a Postgres
+  // service is reachable (e.g. CI), so memory-store unit tests stay deterministic.
+  if (process.env.FORCE_MEMORY_STORE === '1') {
+    useMemory = true;
+    return;
+  }
   try {
     const pool = (await import('../db/client.js')).getPool();
     await pool.query('SELECT 1');

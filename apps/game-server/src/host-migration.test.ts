@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   initLobbyStore,
   createLobby,
@@ -37,8 +37,17 @@ async function makeTable(names: string[]) {
 }
 
 describe('host migration', () => {
+  // This suite pokes memoryStore directly, so it must run against the in-memory
+  // store even when CI provides a Postgres service. Force memory mode here.
+  const prevForceMemory = process.env.FORCE_MEMORY_STORE;
   beforeAll(async () => {
+    process.env.FORCE_MEMORY_STORE = '1';
     await initLobbyStore();
+  });
+
+  afterAll(() => {
+    if (prevForceMemory === undefined) delete process.env.FORCE_MEMORY_STORE;
+    else process.env.FORCE_MEMORY_STORE = prevForceMemory;
   });
 
   it('passes host to the longest-tenured remaining player in join order', async () => {
