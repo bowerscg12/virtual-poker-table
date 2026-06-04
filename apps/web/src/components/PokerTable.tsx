@@ -8,6 +8,9 @@ import { useActionTimer } from '../hooks/useActionTimer';
 import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
 
+/** How far (as fraction of seat orbit radius) the felt buttons sit from center. */
+const BTN_RADIUS_FACTOR = 0.80;
+
 const BADGE_ICON: Record<BadgeType, string> = {
   big_stack:       '👑',
   short_stack:     '💸',
@@ -382,13 +385,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     <AvatarSvg config={seat.avatar} size={32} />
                   </div>
                 )}
-                {gs && (gs.isDealer || gs.isSmallBlind || gs.isBigBlind) && (
-                  <div className="position-markers" aria-label="Position markers">
-                    {gs.isDealer && <span className="position-marker position-marker--d" title="Dealer Button">D</span>}
-                    {gs.isSmallBlind && <span className="position-marker position-marker--sb" title="Small Blind">SB</span>}
-                    {gs.isBigBlind && <span className="position-marker position-marker--bb" title="Big Blind">BB</span>}
-                  </div>
-                )}
+
                 <strong className="seat-name">{seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}</strong>
                 {occupied && stack > 0 && <ChipStack amount={stack} />}
                 {!occupied && <span className="seat-empty-label">Open</span>}
@@ -465,6 +462,27 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
           );
         })}
       </ul>
+
+      {/* Dealer / blind buttons on the felt — physical poker-table style */}
+      {seats.map((seat, i) => {
+        const gs = table?.seats.find((s) => s.seatIndex === seat.seatIndex);
+        if (!gs || (!gs.isDealer && !gs.isSmallBlind && !gs.isBigBlind)) return null;
+        const angle = angleStep * i - Math.PI / 2;
+        const bx = 50 + 46 * BTN_RADIUS_FACTOR * Math.cos(angle);
+        const by = 50 + 42 * BTN_RADIUS_FACTOR * Math.sin(angle);
+        return (
+          <div
+            key={`pos-btn-${seat.seatIndex}`}
+            className="felt-position-markers"
+            style={{ '--btn-x': `${bx}%`, '--btn-y': `${by}%` } as React.CSSProperties}
+            aria-label="Position markers"
+          >
+            {gs.isDealer && <span className="position-marker position-marker--d" title="Dealer Button">D</span>}
+            {gs.isSmallBlind && <span className="position-marker position-marker--sb" title="Small Blind">SB</span>}
+            {gs.isBigBlind && <span className="position-marker position-marker--bb" title="Big Blind">BB</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }

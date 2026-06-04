@@ -1866,6 +1866,12 @@ select {
     font-size: 0.6rem;
   }
 
+  .position-marker {
+    width: 18px;
+    height: 18px;
+    font-size: 0.48rem;
+  }
+
   .hole-cards .playing-card {
     width: 20px;
     height: 29px;
@@ -2441,28 +2447,34 @@ select {
   margin-top: 0.75rem;
 }
 
-/* ── Position markers (D / SB / BB) ─────────────────────────────────────── */
+/* ── Position markers (D / SB / BB) — physical poker buttons on the felt ─── */
 
-.position-markers {
+/* Container: absolutely positioned on the felt between each seat and center */
+.felt-position-markers {
+  position: absolute;
+  left: var(--btn-x);
+  top: var(--btn-y);
+  transform: translate(-50%, -50%);
   display: flex;
-  gap: 3px;
-  justify-content: center;
-  margin-bottom: 3px;
+  gap: 4px;
+  z-index: 4;
+  pointer-events: none;
+  transition: left 0.35s ease, top 0.35s ease;
 }
 
 .position-marker {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  font-size: 0.55rem;
+  font-size: 0.52rem;
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1;
-  border: 1.5px solid rgba(0, 0, 0, 0.3);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  border: 2px solid rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   -webkit-user-select: none;
   user-select: none;
   flex-shrink: 0;

@@ -89,7 +89,7 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'users' AND column_name = 'email'
+    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email'
   ) THEN
     ALTER TABLE users RENAME COLUMN email TO username;
     ALTER TABLE users ALTER COLUMN username TYPE VARCHAR(30);
