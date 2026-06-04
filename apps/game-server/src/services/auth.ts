@@ -111,6 +111,16 @@ export async function getUserById(id: string): Promise<AuthUser | null> {
   return { id: row.id, displayName: row.displayName, avatar: deserializeAvatar(row.avatarUrl), isGuest: row.isGuest };
 }
 
+export async function updateUserAvatar(id: string, avatar: AvatarConfig): Promise<void> {
+  if (useMemory) {
+    const u = memoryStore.users.get(id);
+    if (u) u.avatar = avatar;
+    return;
+  }
+  const db = getDb();
+  await db.update(users).set({ avatarUrl: serializeAvatar(avatar) }).where(eq(users.id, id));
+}
+
 export function toAuthResponse(user: AuthUser, token: string): AuthResponse {
   return { user, token };
 }

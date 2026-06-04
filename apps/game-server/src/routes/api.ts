@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AuthUser, CreateLobbyRequest } from '@vct/shared-types';
 import { RULES_PRESETS } from '@vct/shared-types';
-import { guestLogin, getUserById, loginUser, registerUser, toAuthResponse, updateUserDisplayName } from '../services/auth.js';
+import { guestLogin, getUserById, loginUser, registerUser, toAuthResponse, updateUserAvatar, updateUserDisplayName } from '../services/auth.js';
 import {
   autoSeatPlayer,
   createLobby,
@@ -93,7 +93,12 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     let user: AuthUser;
 
     if (authUser) {
-      user = authUser;
+      if (body.avatar) {
+        await updateUserAvatar(authUser.id, body.avatar);
+        user = { ...authUser, avatar: body.avatar };
+      } else {
+        user = authUser;
+      }
     } else {
       if (!body.displayName) {
         return reply.status(400).send({ error: 'Display name required' });
@@ -143,6 +148,8 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
           return reply.status(409).send({ error: 'Table is full', code: 'TABLE_FULL' });
         }
 
+        if (body.avatar) await updateUserAvatar(authUser.id, body.avatar);
+
         const seatResult = await autoSeatPlayer(lobbyId, authUser.id, authUser.displayName);
         if (!seatResult || 'error' in seatResult) {
           const r = seatResult as { error: string; code?: string } | null;
@@ -151,7 +158,8 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
 
         const token = await reply.jwtSign({ sub: authUser.id });
         const sessionId = await createSession(authUser.id, lobbyId);
-        return { user: authUser, token, sessionId };
+        const user = body.avatar ? { ...authUser, avatar: body.avatar } : authUser;
+        return { user, token, sessionId };
       });
     }
 
