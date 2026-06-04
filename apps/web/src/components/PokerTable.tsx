@@ -59,11 +59,11 @@ interface Props {
 
 interface ChipFlight {
   id: string;
-  startX: number;  // px from felt left edge
-  startY: number;  // px from felt top edge
-  dx: number;      // px displacement to winner seat
+  startX: number;
+  startY: number;
+  dx: number;
   dy: number;
-  delay: number;   // animation-delay in ms
+  delay: number;
 }
 
 /** Compute seat center in pixels relative to the felt element. */
@@ -72,8 +72,8 @@ function computeSeatCenterPx(
   angleStep: number,
   feltRect: DOMRect,
 ): { x: number; y: number } {
-  const xPct = 50 + 42 * Math.cos(angleStep * loopIdx - Math.PI / 2);
-  const yPct = 50 + 38 * Math.sin(angleStep * loopIdx - Math.PI / 2);
+  const xPct = 50 + 46 * Math.cos(angleStep * loopIdx - Math.PI / 2);
+  const yPct = 50 + 42 * Math.sin(angleStep * loopIdx - Math.PI / 2);
   return {
     x: (feltRect.width * xPct) / 100,
     y: (feltRect.height * yPct) / 100,
@@ -97,10 +97,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
   const timerSec = lobby?.settings.actionTimerSec ?? 0;
   const isUrgent = remaining !== null && remaining <= 10;
 
-  // ── Badge tooltip state (seatIndex:badge key, or null) ───
   const [activeBadgeTip, setActiveBadgeTip] = useState<string | null>(null);
 
-  // ── Chat bubble state ─────────────────────────────────────
+  // ── Chat bubble state ──────────────────────────────────────
   const [activeBubbles, setActiveBubbles] = useState<Map<string, ActiveBubble>>(new Map());
   const bubbleTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const processedMsgCountRef = useRef<number | null>(null);
@@ -119,9 +118,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     newMessages.forEach((msg) => {
       const existing = bubbleTimers.current.get(msg.userId);
       if (existing !== undefined) clearTimeout(existing);
-
       setActiveBubbles((b) => new Map(b).set(msg.userId, { text: msg.text, key: msg.id }));
-
       const tid = setTimeout(() => {
         setActiveBubbles((b) => {
           const next = new Map(b);
@@ -130,7 +127,6 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
         });
         bubbleTimers.current.delete(msg.userId);
       }, BUBBLE_DURATION_MS);
-
       bubbleTimers.current.set(msg.userId, tid);
     });
   }, [messages]);
@@ -140,23 +136,23 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     return () => { timers.forEach((t) => clearTimeout(t)); };
   }, []);
 
-  // ── Chip flight state ─────────────────────────────────────
+  // ── Chip flight state ──────────────────────────────────────
   const feltRef = useRef<HTMLDivElement>(null);
 
-  // ── All-in shake — fire once per new all-in event ────────
+  // ── All-in shake ───────────────────────────────────────────
   const shakeTriggerRef = useRef(anim.allInShakeTrigger);
   useEffect(() => {
     const felt = feltRef.current;
     if (!felt || anim.allInShakeTrigger === shakeTriggerRef.current) return;
     shakeTriggerRef.current = anim.allInShakeTrigger;
     felt.classList.remove('shake');
-    void felt.offsetWidth; // force reflow so animation restarts on rapid all-ins
+    void felt.offsetWidth;
     felt.classList.add('shake');
     const tid = setTimeout(() => felt.classList.remove('shake'), 500);
     return () => clearTimeout(tid);
   }, [anim.allInShakeTrigger]);
 
-  // ── All-in runout: flip opponents' hole cards face-up ────
+  // ── All-in runout: flip opponents' hole cards face-up ─────
   const runoutRevealTriggerRef = useRef(anim.runoutHoleRevealTrigger);
   useEffect(() => {
     if (anim.runoutHoleRevealTrigger === runoutRevealTriggerRef.current) return;
@@ -174,6 +170,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     }, 1000);
     return () => clearTimeout(tid);
   }, [anim.runoutHoleRevealTrigger]);
+
   const potAreaRef = useRef<HTMLDivElement>(null);
   const [flyingChips, setFlyingChips] = useState<ChipFlight[]>([]);
   const prevWinnerBannerRef = useRef<WinnerBannerData | null>(null);
@@ -182,8 +179,6 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     const banner = anim.winnerBanner;
     const prev = prevWinnerBannerRef.current;
     prevWinnerBannerRef.current = banner;
-
-    // Only fire when a new banner appears (null → non-null or different object)
     if (!banner || banner === prev) return;
 
     const felt = feltRef.current;
@@ -201,9 +196,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     banner.winners.forEach((winner, streamIdx) => {
       const loopIdx = seats.findIndex(s => s.seatIndex === winner.seatIndex);
       if (loopIdx === -1) return;
-
       const dest = computeSeatCenterPx(loopIdx, angleStep, feltRect);
-      // Two chips per winner in quick succession — looks like a stream
       for (let chipIdx = 0; chipIdx < 2; chipIdx++) {
         chips.push({
           id: `cf-${winner.seatIndex}-${chipIdx}-${now}`,
@@ -218,25 +211,18 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
 
     if (chips.length === 0) return;
     setFlyingChips(chips);
-
-    // Clean up after all animations finish (duration 800ms + max stagger + buffer)
     const maxDelay = (banner.winners.length - 1) * 65 + 125;
     const tid = setTimeout(() => setFlyingChips([]), 800 + maxDelay + 150);
     return () => clearTimeout(tid);
-  }, [anim.winnerBanner]); // seats/angleStep captured from current render — correct
-
-  // ─────────────────────────────────────────────────────────
+  }, [anim.winnerBanner]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dealerSeatIndex = table?.dealerSeatIndex ?? 0;
   const isDealingThisHand = anim.dealingHandNum === table?.handNumber;
 
-  // Deal order: seat immediately after dealer is dealt first (0-indexed round-trip)
   function dealOrderOf(seatIndex: number) {
     return (seatIndex - dealerSeatIndex - 1 + maxSeats) % maxSeats;
   }
 
-  // CSS class name that encodes the stagger delay for hole cards
-  // Round 0 = first card, round 1 = second card dealt to each player
   function holeDealDelayClass(seatIndex: number, cardRound: 0 | 1): string {
     const idx = dealOrderOf(seatIndex) + cardRound * maxSeats;
     return `deal-delay-${idx}`;
@@ -245,22 +231,22 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
   const isRunoutActive = table?.runout?.active === true;
 
   return (
-    <div className={`felt${isRunoutActive ? ' runout-active' : ''}`} ref={feltRef} role="region" aria-label="Poker table" onPointerDown={() => setActiveBadgeTip(null)}>
+    <div
+      className={`felt${isRunoutActive ? ' runout-active' : ''}`}
+      ref={feltRef}
+      role="region"
+      aria-label="Poker table"
+      onPointerDown={() => setActiveBadgeTip(null)}
+    >
       {table?.paused && (
-        <div className="pause-overlay">
-          <span>Game Paused</span>
-        </div>
+        <div className="pause-overlay"><span>Game Paused</span></div>
       )}
       {isRunoutActive && (
-        <div className="runout-overlay" aria-live="polite">
-          <span>All-In Showdown</span>
-        </div>
+        <div className="runout-overlay" aria-live="polite"><span>All-In Showdown</span></div>
       )}
 
       {anim.winnerBanner && <WinnerBanner data={anim.winnerBanner} />}
 
-      {/* Chip flights — absolutely positioned over the felt.
-          Positioned via ref callback to avoid JSX inline-style lint rule. */}
       {flyingChips.map(chip => (
         <div
           key={chip.id}
@@ -289,8 +275,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
           const isDoubleBoard = !!table?.secondBoard;
           const renderCards = (cards: Card[]) =>
             cards.map((c, i) => {
-              const isNewCard =
-                anim.boardDealFromIndex !== null && i >= anim.boardDealFromIndex;
+              const isNewCard = anim.boardDealFromIndex !== null && i >= anim.boardDealFromIndex;
               const relativeIdx = isNewCard ? i - (anim.boardDealFromIndex ?? 0) : 0;
               return (
                 <div
@@ -299,9 +284,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     'card-anim-wrapper',
                     isNewCard ? 'board-dealing' : '',
                     isNewCard ? `board-delay-${relativeIdx}` : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
+                  ].filter(Boolean).join(' ')}
                 >
                   <CardView card={c} faceUp />
                 </div>
@@ -328,9 +311,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
           );
         })()}
         {intermissionRemaining !== null && table?.street === 'complete' && (
-          <div className="intermission">
-            Next hand in {intermissionRemaining}s
-          </div>
+          <div className="intermission">Next hand in {intermissionRemaining}s</div>
         )}
       </div>
 
@@ -344,8 +325,10 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
           const isWinner = anim.winningSeats.has(seat.seatIndex);
           const isBetting = anim.recentBetSeat === seat.seatIndex;
           const isAllIn = gs?.allIn === true;
-          const x = 50 + 42 * Math.cos(angleStep * i - Math.PI / 2);
-          const y = 50 + 38 * Math.sin(angleStep * i - Math.PI / 2);
+
+          // Seats pushed further toward the rail (46% x-radius, 42% y-radius)
+          const x = 50 + 46 * Math.cos(angleStep * i - Math.PI / 2);
+          const y = 50 + 42 * Math.sin(angleStep * i - Math.PI / 2);
 
           const seatClass = [
             'seat',
@@ -355,11 +338,12 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
             isMe ? 'me' : '',
             isWinner ? 'winner' : '',
             isAllIn ? 'all-in' : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
+          ].filter(Boolean).join(' ');
 
           const bubble = seat.userId ? activeBubbles.get(seat.userId) : undefined;
+
+          // Show face-down backs for opponents during active hand (not folded, not complete)
+          const showFaceDownBacks = !isMe && gs && !gs.folded && table?.street !== 'complete' && occupied;
 
           return (
             <li
@@ -374,10 +358,28 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     : bubble.text}
                 </div>
               )}
+
+              {/* Face-down backs before capsule in DOM — capsule paints over their bottom edge */}
+              {showFaceDownBacks && (
+                <div className="hole-cards">
+                  {([0, 1] as const).map(cardRound => (
+                    <div
+                      key={cardRound}
+                      className={[
+                        'playing-card back',
+                        isDealingThisHand ? 'dealing' : '',
+                        isDealingThisHand ? holeDealDelayClass(seat.seatIndex, cardRound) : '',
+                      ].filter(Boolean).join(' ')}
+                    />
+                  ))}
+                </div>
+              )}
+
               <div className="seat-info">
+                <span className="seat-number" aria-hidden="true">{seat.seatIndex + 1}</span>
                 {occupied && seat.avatar && (
                   <div className="seat-avatar">
-                    <AvatarSvg config={seat.avatar} size={44} />
+                    <AvatarSvg config={seat.avatar} size={32} />
                   </div>
                 )}
                 {gs && (gs.isDealer || gs.isSmallBlind || gs.isBigBlind) && (
@@ -387,7 +389,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                     {gs.isBigBlind && <span className="position-marker position-marker--bb" title="Big Blind">BB</span>}
                   </div>
                 )}
-                <strong>{seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}</strong>
+                <strong className="seat-name">{seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}</strong>
                 {occupied && stack > 0 && <ChipStack amount={stack} />}
                 {!occupied && <span className="seat-empty-label">Open</span>}
                 {gs?.betThisStreet ? (
@@ -443,6 +445,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                   </span>
                 )}
               </div>
+
               {isActor && remaining !== null && timerSec > 0 && (
                 <div className="timer-bar-track">
                   <div
@@ -451,25 +454,13 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
                   />
                 </div>
               )}
-              <div className="hole-cards">
-                {!isMe && gs && !gs.folded && table?.street !== 'complete' && occupied && (
-                  <>
-                    {([0, 1] as const).map(cardRound => (
-                      <div
-                        key={cardRound}
-                        className={[
-                          'playing-card back',
-                          isDealingThisHand ? 'dealing' : '',
-                          isDealingThisHand ? holeDealDelayClass(seat.seatIndex, cardRound) : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                      />
-                    ))}
-                  </>
-                )}
-                {gs?.shownCards?.map((c, j) => <CardView key={j} card={c} faceUp />)}
-              </div>
+
+              {/* Shown cards at showdown — visible below capsule for all seats */}
+              {gs?.shownCards && gs.shownCards.length > 0 && (
+                <div className="shown-cards">
+                  {gs.shownCards.map((c, j) => <CardView key={j} card={c} faceUp />)}
+                </div>
+              )}
             </li>
           );
         })}

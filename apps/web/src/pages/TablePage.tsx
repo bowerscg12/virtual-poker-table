@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getTableBuyIn, type LobbySummary } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
@@ -9,8 +8,8 @@ import { useGameSocket } from '../hooks/useGameSocket';
 import { useTableAnimations } from '../hooks/useTableAnimations';
 import { PokerTable } from '../components/PokerTable';
 import { TwelveCardFlip } from '../components/TwelveCardFlip';
-import { ActionBar } from '../components/ActionBar';
-import { CardView } from '../components/CardView';
+import { TableHeader } from '../components/TableHeader';
+import { HeroActionPanel } from '../components/HeroActionPanel';
 import { ChatPanel } from '../components/ChatPanel';
 import { HostControls } from '../components/HostControls';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
@@ -27,6 +26,8 @@ export default function TablePage() {
   const { user, token } = useAuth();
   const [chatOpen, setChatOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
+  const prevChatLengthRef = useRef(0);
   const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
   const [cashOutOpen, setCashOutOpen] = useState(false);
   const [rebuyClicked, setRebuyClicked] = useState(false);
@@ -54,7 +55,6 @@ export default function TablePage() {
     send,
   } = useGameSocket(token, lobbyId ?? null);
 
-  // Local Bomb Pot opt-in choice, reset whenever a new prompt arrives.
   const [bombPotChoice, setBombPotChoice] = useState<boolean | null>(null);
   useEffect(() => {
     setBombPotChoice(null);
@@ -64,7 +64,6 @@ export default function TablePage() {
 
   useEffect(() => {
     if (!lobbyId) return;
-
     let cancelled = false;
     getLobbyById(lobbyId)
       .then(({ lobby: fetchedLobby }) => {
@@ -73,68 +72,60 @@ export default function TablePage() {
       .catch(() => {
         if (!cancelled) setSnapshotLobby(null);
       });
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [lobbyId]);
 
-  // Auto-open the confirmation modal when a queued cash out is acknowledged
+  // Track unread messages while chat panel is closed
+  useEffect(() => {
+    const incoming = chat.length - prevChatLengthRef.current;
+    if (incoming > 0 && !chatOpen) setUnreadChat((n) => n + incoming);
+    prevChatLengthRef.current = chat.length;
+  }, [chat, chatOpen]);
+
+  useEffect(() => {
+    if (chatOpen) setUnreadChat(0);
+  }, [chatOpen]);
+
   useEffect(() => {
     if (cashOutQueued) setCashOutOpen(true);
   }, [cashOutQueued]);
 
-  // Reset clicked/dismissed when rebuy cycle fully completes
   useEffect(() => {
     if (!rebuyAvailable && !rebuyQueued) setRebuyClicked(false);
   }, [rebuyAvailable, rebuyQueued]);
-  // Reset dismissed whenever a fresh bust fires (rebuyAvailable transitions to non-null)
+
   useEffect(() => {
     if (rebuyAvailable) setRebuyDismissed(false);
   }, [rebuyAvailable]);
 
-  // Escape key global listener to open/focus chat panel
+  // Escape → open/focus chat
   useEffect(() => {
     function handleGlobalKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        // Disable shortcuts if any modal dialog is active
-        if (document.querySelector('.modal-overlay, [role="dialog"]')) {
-          return;
-        }
-
+        if (document.querySelector('.modal-overlay, [role="dialog"]')) return;
         e.preventDefault();
         if (!chatOpen) {
           setChatOpen(true);
           setTimeout(() => {
-            const input = document.getElementById('chat-input');
-            if (input) {
-              (input as HTMLInputElement).focus();
-            }
+            (document.getElementById('chat-input') as HTMLInputElement | null)?.focus();
           }, 50);
         } else {
-          const input = document.getElementById('chat-input');
-          if (input) {
-            (input as HTMLInputElement).focus();
-          }
+          (document.getElementById('chat-input') as HTMLInputElement | null)?.focus();
         }
       }
     }
-
     window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown);
-    };
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [chatOpen]);
 
   const headerLobby = lobby ?? snapshotLobby;
-  const isHost = user && headerLobby && headerLobby.hostUserId === user.id;
+  const isHost = !!(user && headerLobby && headerLobby.hostUserId === user.id);
   const mySeat = headerLobby?.seats.find((s) => s.userId === user?.id);
   const mySeatIndex = mySeat?.seatIndex ?? 0;
   const tableFull = headerLobby && !mySeat && headerLobby.seats.every((s) => s.userId);
   const buyIn = headerLobby ? getTableBuyIn(headerLobby.settings) : 0;
   const gameStarted = headerLobby?.status === 'playing' || headerLobby?.status === 'paused';
 
-  // Deal animation helpers for the local player's hole cards
   const totalPot = table
     ? table.pots.reduce((s, p) => s + p.amount, 0) + table.seats.reduce((s, seat) => s + seat.betThisStreet, 0)
     : 0;
@@ -142,6 +133,7 @@ export default function TablePage() {
   const maxSeats = headerLobby?.settings.maxPlayers ?? 8;
   const dealerSeatIndex = table?.dealerSeatIndex ?? 0;
   const isDealingThisHand = anim.dealingHandNum === table?.handNumber;
+
   function holeDealDelayClass(cardRound: 0 | 1): string {
     const dealOrder = (mySeatIndex - dealerSeatIndex - 1 + maxSeats) % maxSeats;
     const idx = dealOrder + cardRound * maxSeats;
@@ -152,52 +144,30 @@ export default function TablePage() {
 
   function copyInvite() {
     if (!headerLobby) return;
-    const url = `${window.location.origin}/join/${headerLobby.inviteCode}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(`${window.location.origin}/join/${headerLobby.inviteCode}`);
   }
 
-  function handleCashOutConfirm() {
-    send({ type: 'cash_out' });
-  }
-
-  function handleCancelQueue() {
-    send({ type: 'cash_out_cancel' });
-    setCashOutOpen(false);
-  }
-
-  function handleLeaveTable() {
-    clearCashOutSummary();
-    navigate('/');
-  }
+  function handleCashOutConfirm() { send({ type: 'cash_out' }); }
+  function handleCancelQueue() { send({ type: 'cash_out_cancel' }); setCashOutOpen(false); }
+  function handleLeaveTable() { clearCashOutSummary(); navigate('/'); }
 
   const isTcf = headerLobby?.settings.game === 'twelve_card_flip';
   const handActive = !!(table && table.street !== 'complete' && table.street !== 'waiting');
+  const showHeroPanel = !!(mySeat && !isTcf);
 
   return (
     <div className={`table-layout${isTcf ? ' table-layout--tcf' : ''}`}>
-      <header className="table-header">
-        <div>
-          <h1>{headerLobby ? `${headerLobby.hostDisplayName}'s Table` : 'Table ...'}</h1>
-          {headerLobby && <p className="invite-code">Code: {headerLobby.inviteCode}</p>}
-          <span className={`status ${connected ? 'on' : reconnecting ? 'reconnecting' : 'off'}`}>
-            {connected ? 'Connected' : reconnecting ? 'Reconnecting...' : 'Connecting...'}
-          </span>
-          {headerLobby && <p className="table-meta">Buy-in: {formatChips(buyIn)} chips per player</p>}
-        </div>
-        <div className="header-actions">
-          {headerLobby && (
-            <button type="button" className="btn small" onClick={copyInvite}>
-              Copy invite link
-            </button>
-          )}
-          <button type="button" className="btn small" onClick={() => setChatOpen((o) => !o)}>
-            Chat
-          </button>
-          <button type="button" className="btn small" onClick={() => setHistoryOpen((o) => !o)}>
-            History
-          </button>
-        </div>
-      </header>
+      <TableHeader
+        lobby={headerLobby}
+        isHost={isHost}
+        connected={connected}
+        reconnecting={reconnecting}
+        unreadChat={unreadChat}
+        chatOpen={chatOpen}
+        onCopyInvite={copyInvite}
+        onChatToggle={() => setChatOpen((o) => !o)}
+        onHistoryToggle={() => setHistoryOpen((o) => !o)}
+      />
 
       {reconnecting && !connected && (
         <div className="banner warning">Connection lost — reconnecting to your session...</div>
@@ -226,18 +196,16 @@ export default function TablePage() {
       )}
 
       <main className="table-main">
-        {headerLobby?.settings.game === 'twelve_card_flip' ? (
+        {isTcf ? (
           <TwelveCardFlip
-            lobby={headerLobby}
+            lobby={headerLobby!}
             table={table}
             myUserId={user?.id}
-            privateHoleCards={privateState?.holeCards ?? []}
+            privateHoleCards={holeCards}
             legalActions={privateState?.legalActions ?? []}
-            onAction={(action) => {
-              send({ type: 'game_action', actionId: crypto.randomUUID(), action });
-            }}
+            onAction={(action) => send({ type: 'game_action', actionId: crypto.randomUUID(), action })}
             anim={anim}
-            isHost={!!isHost}
+            isHost={isHost}
             onDealAgain={() => send({ type: 'host_start' })}
           />
         ) : (
@@ -250,7 +218,7 @@ export default function TablePage() {
           />
         )}
 
-        {!mySeat && headerLobby && token && connected && headerLobby.settings.game !== 'twelve_card_flip' && (
+        {!mySeat && headerLobby && token && connected && !isTcf && (
           <div className="sit-panel panel">
             {tableFull ? (
               <p>Table is full. Wait for a seat to open.</p>
@@ -261,7 +229,37 @@ export default function TablePage() {
         )}
       </main>
 
-      {/* Host settings — scrollable section below gameplay, host only */}
+      {showHeroPanel && (
+        <HeroActionPanel
+          holeCards={holeCards}
+          isDealingThisHand={isDealingThisHand}
+          dealDelayClasses={[holeDealDelayClass(0), holeDealDelayClass(1)]}
+          legalActions={privateState?.legalActions ?? []}
+          pot={totalPot}
+          currentBet={table?.currentBet ?? 0}
+          limit={headerLobby?.settings.limit}
+          onAction={(action, amount) =>
+            send({ type: 'game_action', actionId: crypto.randomUUID(), action, amount })
+          }
+          seat={mySeat}
+          gameStarted={gameStarted}
+          cashOutQueued={cashOutQueued}
+          rebuyAvailable={!!rebuyAvailable}
+          rebuyQueued={rebuyQueued}
+          rebuyClicked={rebuyClicked}
+          rebuyDismissed={rebuyDismissed}
+          onCashOutOpen={() => setCashOutOpen(true)}
+          onRebuyClick={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
+          onLeaveTable={() => send({ type: 'cash_out' })}
+          onSitOutToggle={(enabled) => send({ type: 'sit_out_next_hand', enabled })}
+          isHost={isHost}
+          lobbyStatus={headerLobby?.status}
+          onHostStart={() => send({ type: 'host_start' })}
+          onHostPause={(paused) => send({ type: 'host_pause', paused })}
+        />
+      )}
+
+      {/* Host settings — full controls panel, scrollable, host only */}
       {isHost && headerLobby && (
         <section className="host-section">
           <HostControls
@@ -280,111 +278,6 @@ export default function TablePage() {
         </section>
       )}
 
-      {/* Compact player tray — portalled to document.body so no ancestor transform/filter
-          can break position:fixed. Cards always anchor to the bottom via column-reverse.
-          Hidden for twelve_card_flip which has its own in-component card display. */}
-      {mySeat && headerLobby?.settings.game !== 'twelve_card_flip' && createPortal(
-        <div className="player-tray">
-          {/* 1st in DOM = renders at bottom */}
-          <div className="player-tray__cards-row">
-            <div className="player-tray__cards">
-              {holeCards.map((card, index) => {
-                const dealClass = isDealingThisHand
-                  ? `dealing ${holeDealDelayClass(index as 0 | 1)}`
-                  : '';
-                return (
-                  <div
-                    key={index}
-                    className={['card-anim-wrapper', dealClass].filter(Boolean).join(' ')}
-                  >
-                    <CardView card={card} faceUp />
-                  </div>
-                );
-              })}
-            </div>
-            <div className="player-tray__meta">
-              <span className="player-tray__stack">{formatChips(mySeat.stack)}</span>
-              {mySeat.waitingForReentryBlind ? (
-                <span className="rebuy-pending-badge">Waiting for Big Blind...</span>
-              ) : rebuyQueued || rebuyClicked ? (
-                <span className="rebuy-pending-badge">Rebuy pending...</span>
-              ) : rebuyAvailable && rebuyDismissed ? (
-                <div className="rebuy-bar">
-                  <button
-                    type="button"
-                    className="btn small primary"
-                    onClick={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
-                  >
-                    Buy Back In
-                  </button>
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={() => send({ type: 'cash_out' })}
-                  >
-                    Leave Table
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="btn small cash-out-btn"
-                  onClick={() => setCashOutOpen(true)}
-                >
-                  {cashOutQueued ? 'Queued' : 'Cash Out'}
-                </button>
-              )}
-              {gameStarted && !rebuyAvailable && !mySeat.waitingForReentryBlind && (
-                <button
-                  type="button"
-                  className={`btn small sit-out-toggle${mySeat.sitOutNextHand ? ' sit-out-toggle--active' : ''}`}
-                  onClick={() => send({ type: 'sit_out_next_hand', enabled: !mySeat.sitOutNextHand })}
-                >
-                  {mySeat.sitOutNextHand
-                    ? mySeat.sitOutBlindOwed ? 'Cancel Sit Out' : 'Resume Play'
-                    : 'Sit Out'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* 2nd in DOM = renders above cards */}
-          {table && privateState && privateState.legalActions.length > 0 && (
-            <ActionBar
-              legalActions={privateState.legalActions}
-              pot={totalPot}
-              currentBet={table.currentBet}
-              limit={headerLobby?.settings.limit}
-              onAction={(action, amount) => {
-                send({ type: 'game_action', actionId: crypto.randomUUID(), action, amount });
-              }}
-            />
-          )}
-
-          {/* 3rd in DOM = renders at top */}
-          {isHost && headerLobby && (
-            <div className="player-tray__host">
-              {!gameStarted && (
-                <button type="button" className="btn small primary" onClick={() => send({ type: 'host_start' })}>
-                  Start
-                </button>
-              )}
-              {gameStarted && headerLobby.status === 'paused' && (
-                <button type="button" className="btn small primary" onClick={() => send({ type: 'host_pause', paused: false })}>
-                  Resume
-                </button>
-              )}
-              {gameStarted && headerLobby.status === 'playing' && (
-                <button type="button" className="btn small" onClick={() => send({ type: 'host_pause', paused: true })}>
-                  Pause
-                </button>
-              )}
-            </div>
-          )}
-        </div>,
-        document.body
-      )}
-
       {chatOpen && (
         <ChatPanel
           messages={chat}
@@ -393,7 +286,9 @@ export default function TablePage() {
         />
       )}
 
-      {historyOpen && lobbyId && <HandHistoryPanel lobbyId={lobbyId} onClose={() => setHistoryOpen(false)} />}
+      {historyOpen && lobbyId && (
+        <HandHistoryPanel lobbyId={lobbyId} onClose={() => setHistoryOpen(false)} />
+      )}
 
       {cashOutOpen && !cashOutSummary && mySeat && (
         <CashOutModal
@@ -419,24 +314,15 @@ export default function TablePage() {
           amount={bombPotPrompt.amount}
           doubleBoard={bombPotPrompt.doubleBoard}
           choice={bombPotChoice}
-          onJoin={() => {
-            setBombPotChoice(true);
-            send({ type: 'bomb_pot_join', join: true });
-          }}
-          onSitOut={() => {
-            setBombPotChoice(false);
-            send({ type: 'bomb_pot_join', join: false });
-          }}
+          onJoin={() => { setBombPotChoice(true); send({ type: 'bomb_pot_join', join: true }); }}
+          onSitOut={() => { setBombPotChoice(false); send({ type: 'bomb_pot_join', join: false }); }}
         />
       )}
 
       {rebuyAvailable && !rebuyClicked && !rebuyDismissed && !cashOutSummary && (
         <RebuyModal
           amount={rebuyAvailable.amount}
-          onRebuy={() => {
-            setRebuyClicked(true);
-            send({ type: 'rebuy' });
-          }}
+          onRebuy={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
           onSitOut={() => setRebuyDismissed(true)}
           onLeave={() => send({ type: 'cash_out' })}
           onDismiss={() => setRebuyDismissed(true)}
