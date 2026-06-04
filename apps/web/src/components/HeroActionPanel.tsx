@@ -87,14 +87,14 @@ export function HeroActionPanel({
               </button>
             </div>
           ) : (
-            <button type="button" className="btn small cash-out-btn" onClick={onCashOutOpen}>
+            <button type="button" className="btn cash-out-btn" onClick={onCashOutOpen}>
               {cashOutQueued ? 'Queued' : 'Cash Out'}
             </button>
           )}
           {gameStarted && !rebuyAvailable && !seat.waitingForReentryBlind && (
             <button
               type="button"
-              className={`btn small sit-out-toggle${seat.sitOutNextHand ? ' sit-out-toggle--active' : ''}`}
+              className={`btn sit-out-toggle${seat.sitOutNextHand ? ' sit-out-toggle--active' : ''}`}
               onClick={() => onSitOutToggle(!seat.sitOutNextHand)}
             >
               {seat.sitOutNextHand

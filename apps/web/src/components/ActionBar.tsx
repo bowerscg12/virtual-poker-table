@@ -22,6 +22,7 @@ function computeDefaultRaise(pot: number, currentBet: number, min: number, max: 
 
 export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Props) {
   const [showRaise, setShowRaise] = useState(false);
+  const [showAllInConfirm, setShowAllInConfirm] = useState(false);
   const [raiseAmount, setRaiseAmount] = useState(0);
   const [inputValue, setInputValue] = useState('0');
 
@@ -41,6 +42,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
   // Reset whenever legal actions change (new betting round or new turn); compute smart default
   useEffect(() => {
     setShowRaise(false);
+    setShowAllInConfirm(false);
     if (hasRaise) {
       const def = computeDefaultRaise(pot, currentBet, raiseMin, raiseMax);
       setRaiseAmount(def);
@@ -164,24 +166,24 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
       {/* Buttons first in DOM — with column-reverse on parent they render closest to cards */}
       <div className="action-bar__btns">
         {legalActions.some((a) => a.type === 'fold') && (
-          <button type="button" className="btn danger small" onClick={() => onAction('fold')}>
+          <button type="button" className="btn fold" onClick={() => onAction('fold')}>
             Fold <kbd className="key-hint">F</kbd>
           </button>
         )}
         {legalActions.some((a) => a.type === 'check') && (
-          <button type="button" className="btn small" onClick={() => onAction('check')}>
+          <button type="button" className="btn check" onClick={() => onAction('check')}>
             Check <kbd className="key-hint">C</kbd>
           </button>
         )}
         {callAction && (
-          <button type="button" className="btn small" onClick={() => onAction('call', callAction.amount)}>
+          <button type="button" className="btn call" onClick={() => onAction('call', callAction.amount)}>
             Call {formatChips(callAction.amount ?? 0)} <kbd className="key-hint">C</kbd>
           </button>
         )}
         {hasRaise && (
           <button
             type="button"
-            className={`btn small${showRaise ? ' primary' : ''}`}
+            className={`btn raise-btn${showRaise ? ' active' : ''}`}
             onClick={() => setShowRaise((s) => !s)}
             aria-expanded={showRaise}
           >
@@ -189,9 +191,29 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
           </button>
         )}
         {legalActions.some((a) => a.type === 'all_in') && (
-          <button type="button" className="btn warn small" onClick={() => onAction('all_in')}>
-            All-in
-          </button>
+          showAllInConfirm ? (
+            <>
+              <button
+                type="button"
+                className="btn all-in"
+                onClick={() => { onAction('all_in'); setShowAllInConfirm(false); }}
+              >
+                Confirm All-in
+              </button>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => setShowAllInConfirm(false)}
+                aria-label="Cancel all-in"
+              >
+                ✕
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn all-in" onClick={() => setShowAllInConfirm(true)}>
+              All-in
+            </button>
+          )
         )}
       </div>
 
@@ -275,7 +297,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
             />
             <button
               type="button"
-              className="btn primary small"
+              className="btn primary"
               onClick={() => { onAction('raise', raiseAmount); setShowRaise(false); }}
             >
               Raise <kbd className="key-hint">R</kbd>

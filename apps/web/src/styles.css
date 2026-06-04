@@ -6,6 +6,10 @@
   --card-bg: #fffef8;
   --danger: #c44;
   --warn: #c90;
+  --check: #1a7a52;
+  --call: #1a558f;
+  --raise-red: #b83232;
+  --all-in-yellow: #e0c800;
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -405,6 +409,39 @@ select {
   color: #111;
 }
 
+/* Action-button color scheme */
+.btn.fold {
+  background: #555;
+  color: #ddd;
+}
+
+.btn.check {
+  background: var(--check);
+  color: #c8ffe4;
+}
+
+.btn.call {
+  background: var(--call);
+  color: #c8e8ff;
+}
+
+.btn.raise-btn {
+  background: var(--raise-red);
+  color: #ffe8e8;
+}
+
+.btn.raise-btn.active {
+  background: #d63030;
+  outline: 2px solid rgba(255, 140, 140, 0.5);
+  outline-offset: 1px;
+}
+
+.btn.all-in {
+  background: var(--all-in-yellow);
+  color: #1a1a00;
+  font-weight: 600;
+}
+
 .btn.small {
   padding: 0.35rem 0.75rem;
   font-size: 0.85rem;
@@ -633,7 +670,7 @@ select {
 
 .action-bar__btns {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -665,7 +702,7 @@ select {
 .raise-panel__slider-wrap {
   position: relative;
   width: 24px;
-  height: 90px;
+  height: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -674,7 +711,7 @@ select {
 
 .raise-panel__slider {
   position: absolute;
-  width: 90px;
+  width: 150px;
   height: 24px;
   transform: rotate(270deg); /* bottom = min, top = max */
   cursor: pointer;
@@ -1023,6 +1060,8 @@ select {
 .cash-out-btn {
   flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.42rem 0.85rem;
+  font-size: 0.87rem;
 }
 
 /* ── Sit Out Next Hand toggle ─────────────────────────────────────────────── */
@@ -1030,6 +1069,8 @@ select {
   flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
   opacity: 0.75;
+  padding: 0.42rem 0.85rem;
+  font-size: 0.87rem;
 }
 
 .sit-out-toggle--active {
@@ -1847,9 +1888,13 @@ select {
   }
 
   .hero-panel__cards .playing-card {
-    width: 40px;
-    height: 56px;
-    font-size: 0.78rem;
+    width: 44px;
+    height: 62px;
+    font-size: 0.82rem;
+  }
+
+  .hero-panel__cards-row {
+    min-height: 62px;
   }
 
   .board .playing-card {
@@ -1864,6 +1909,18 @@ select {
 
   .raise-panel__slider {
     width: 70px;
+  }
+
+  /* Revert button sizes for tight landscape layout */
+  .hero-panel__actions .action-bar__btns .btn {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .cash-out-btn,
+  .sit-out-toggle {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
   }
 }
 
@@ -2969,7 +3026,7 @@ select {
 
 .hero-action-panel {
   flex-shrink: 0;
-  width: 175px;
+  width: 215px;
   display: flex;
   /* DOM order: [cards, actions] — column-reverse puts cards at bottom, actions above */
   flex-direction: column-reverse;
@@ -3007,14 +3064,14 @@ select {
 .hero-panel__cards-row {
   display: flex;
   gap: 0.4rem;
-  min-height: 74px;
+  min-height: 90px;
   align-items: center;
 }
 
 .hero-panel__cards .playing-card {
-  width: 52px;
-  height: 74px;
-  font-size: 0.95rem;
+  width: 64px;
+  height: 90px;
+  font-size: 1.1rem;
   border-radius: 6px;
 }
 
@@ -3049,6 +3106,12 @@ select {
   padding: 0;
   backdrop-filter: none;
   box-shadow: none;
+}
+
+/* Larger tap targets for main action buttons */
+.hero-panel__actions .action-bar__btns .btn {
+  padding: 0.55rem 1.05rem;
+  font-size: 0.92rem;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3095,10 +3158,18 @@ select {
     letter-spacing: 0.1em;
   }
 
+  .hero-action-panel {
+    width: 175px;
+  }
+
   .hero-panel__cards .playing-card {
-    width: 44px;
-    height: 62px;
-    font-size: 0.85rem;
+    width: 52px;
+    height: 72px;
+    font-size: 0.9rem;
+  }
+
+  .hero-panel__cards-row {
+    min-height: 72px;
   }
 }
 
@@ -3134,5 +3205,9 @@ select {
   .hero-action-panel {
     width: 130px;
     padding: 0.5rem 0.5rem 1rem;
+  }
+
+  .action-bar__btns {
+    gap: 0.35rem;
   }
 }

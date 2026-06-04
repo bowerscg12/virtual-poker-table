@@ -24,7 +24,7 @@ export default function TablePage() {
   const { lobbyId } = useParams<{ lobbyId: string }>();
   const navigate = useNavigate();
   const { user, token } = useAuth();
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [unreadChat, setUnreadChat] = useState(0);
   const prevChatLengthRef = useRef(0);
