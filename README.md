@@ -1,5 +1,7 @@
 # Virtual Card Table
 
+I love my girlfriend Mackenzie
+
 Server-authoritative web PWA for home poker games with friends. Play-money chips only — settle up IRL however you like.
 
 ## Stack
