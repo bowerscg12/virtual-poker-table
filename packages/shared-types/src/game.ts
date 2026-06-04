@@ -97,13 +97,17 @@ export interface ShowdownHandEntry {
   handDescription: string;
   bestFive: Card[];
   isWinner: boolean;
-  /** Total chips won across all pots; 0 for non-winners */
+  /** Total chips won from contested pots; 0 for non-winners */
   potWon: number;
+  /** Uncalled chips returned uncontested (short-stack overhang); absent if none */
+  chipsReturned?: number;
 }
 
 export interface ShowdownResult {
   hands: ShowdownHandEntry[];
   isSplit: boolean;
+  /** Display name of the sole contested-pot winner; absent on true splits or double-board results. */
+  soloWinner?: string;
   /** Board A community cards — present only for a Double Board Bomb Pot showdown. */
   board?: Card[];
   /** Board B cards — present only for a Double Board Bomb Pot showdown. */

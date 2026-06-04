@@ -1413,6 +1413,12 @@ select {
   margin-bottom: 0.1rem;
 }
 
+.showdown-modal__chips-returned {
+  font-size: 0.8rem;
+  color: #a0c4a0;
+  font-weight: 600;
+}
+
 /* ── Show cards modal ────────────────────────────────────── */
 
 .show-cards-overlay { z-index: 60; }
@@ -3362,4 +3368,68 @@ select {
   color: inherit;
   text-decoration: underline;
   opacity: 0.8;
+}
+
+/* ── Pot chip-pile display (below community cards) ──────────── */
+
+.pot-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0.5rem;
+}
+
+.pot-chip-pile {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.pot-chip-row {
+  display: flex;
+}
+
+.pot-chip-row .pot-chip-disc + .pot-chip-disc {
+  margin-left: -8px;
+}
+
+.pot-chip-disc {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #f7e060, #d4a017 55%, #9a7200 100%);
+  border: 2.5px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.pot-display__amount {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--gold);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.02em;
+}
+
+.pot-display.pot-distributing {
+  animation: pot-distribute 0.55s ease-out 0.25s both;
+}
+
+@media (max-width: 600px) {
+  .pot-chip-disc {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+  }
+
+  .pot-chip-row .pot-chip-disc + .pot-chip-disc {
+    margin-left: -5px;
+  }
+
+  .pot-display__amount {
+    font-size: 0.72rem;
+  }
 }

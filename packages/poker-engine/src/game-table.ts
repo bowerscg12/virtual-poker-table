@@ -25,8 +25,9 @@ export interface GameTableState {
   minRaise: number;
   lastAggressorSeat: number | null;
   lastWinningSeatIndices: number[];
-  /** `board` tags which board a payout came from in a Double Board Bomb Pot ('A'/'B'); absent otherwise. */
-  winnerPayouts: { seatIndex: number; amount: number; handDescription: string; board?: 'A' | 'B' }[];
+  /** `board` tags which board a payout came from in a Double Board Bomb Pot ('A'/'B'); absent otherwise.
+   *  `isContested` is true when 2+ players were eligible for the pot (false = uncalled chips returned uncontested). */
+  winnerPayouts: { seatIndex: number; amount: number; handDescription: string; board?: 'A' | 'B'; isContested: boolean }[];
   processedActionIds: Set<string>;
   bombPotActive: boolean;
   /** True when this hand is a per-hand Bomb Pot (forced ante, no betting, auto runout). */
@@ -372,8 +373,8 @@ function awardPots(
   seats: InternalSeat[],
   pots: SidePot[],
   evaluatedHands: Map<number, EvaluatedHand>
-): { seatIndex: number; amount: number; handDescription: string }[] {
-  const payouts: { seatIndex: number; amount: number; handDescription: string }[] = [];
+): { seatIndex: number; amount: number; handDescription: string; isContested: boolean }[] {
+  const payouts: { seatIndex: number; amount: number; handDescription: string; isContested: boolean }[] = [];
 
   for (const pot of pots) {
     const eligible = seats.filter(
@@ -401,7 +402,7 @@ function awardPots(
       const amount = share + (i === 0 ? remainder : 0);
       const seat = getSeat(seats, idx)!;
       seat.stack += amount;
-      payouts.push({ seatIndex: idx, amount, handDescription: best!.description });
+      payouts.push({ seatIndex: idx, amount, handDescription: best!.description, isContested: eligible.length > 1 });
     });
   }
 
@@ -488,8 +489,8 @@ function runDoubleBoardShowdown(
   }
 
   const winnerPayouts = [
-    ...awardPots(state.seats, potsA, handsA).map((p) => ({ ...p, board: 'A' as const })),
-    ...awardPots(state.seats, potsB, handsB).map((p) => ({ ...p, board: 'B' as const })),
+    ...awardPots(state.seats, potsA, handsA).map((p) => ({ ...p, board: 'A' as const, isContested: p.isContested })),
+    ...awardPots(state.seats, potsB, handsB).map((p) => ({ ...p, board: 'B' as const, isContested: p.isContested })),
   ];
   const chipsAfter = state.seats.reduce((s, seat) => s + seat.stack, 0);
   if (chipsBefore !== chipsAfter) {
@@ -611,7 +612,7 @@ function awardToWinner(state: GameTableState, seatIndex: number): GameTableState
     street: 'complete',
     actionSeatIndex: null,
     lastWinningSeatIndices: [seatIndex],
-    winnerPayouts: [{ seatIndex, amount: total, handDescription: '' }],
+    winnerPayouts: [{ seatIndex, amount: total, handDescription: '', isContested: false }],
     pendingActionSeatIndices: [],
   };
 }

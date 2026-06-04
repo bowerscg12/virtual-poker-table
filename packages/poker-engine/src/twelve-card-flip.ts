@@ -173,7 +173,7 @@ function finalizeHand(
     winners.forEach((w, i) => {
       const amount = share + (i === 0 ? remainder : 0);
       newSeats.find((s) => s.seatIndex === w.seatIndex)!.stack += amount;
-      payouts.push({ seatIndex: w.seatIndex, amount, handDescription: handOf(w).description });
+      payouts.push({ seatIndex: w.seatIndex, amount, handDescription: handOf(w).description, isContested: eligible.length > 1 });
     });
   }
 

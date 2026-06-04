@@ -119,7 +119,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
       } else if (key === '2') {
         if (hasRaise) {
           e.preventDefault();
-          applyRaiseAmount(Math.floor(pot / 2));
+          applyRaiseAmount(Math.floor((pot + toCall) / 2));
           if (!showRaise) setShowRaise(true);
         }
       } else if (key === '3') {
@@ -253,8 +253,8 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
             <button
               type="button"
               className="btn small raise-quick-btn"
-              onClick={() => applyRaiseAmount(Math.floor(pot / 2))}
-              title={`Half pot: ${formatChips(Math.floor(pot / 2))}`}
+              onClick={() => applyRaiseAmount(Math.floor((pot + toCall) / 2))}
+              title={`Half pot: ${formatChips(Math.floor((pot + toCall) / 2))}`}
             >
               ½ Pot <kbd className="key-hint">2</kbd>
             </button>

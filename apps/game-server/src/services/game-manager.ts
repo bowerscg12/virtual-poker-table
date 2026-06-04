@@ -555,25 +555,41 @@ export function toPublicState(
       board: 'A' | 'B' | null
     ) => {
       const payouts = board ? state.winnerPayouts.filter((p) => p.board === board) : state.winnerPayouts;
-      const potWonBySeat = new Map<number, number>();
+      const contestedBySeat = new Map<number, number>();
+      const returnedBySeat = new Map<number, number>();
       for (const payout of payouts) {
-        potWonBySeat.set(payout.seatIndex, (potWonBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
+        if (payout.isContested) {
+          contestedBySeat.set(payout.seatIndex, (contestedBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
+        } else {
+          returnedBySeat.set(payout.seatIndex, (returnedBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
+        }
       }
-      const winnerSeatIndices = new Set(payouts.map((p) => p.seatIndex));
       return hands.map((h) => ({
         seatIndex: h.seatIndex,
         displayName: displayNameFor(h.seatIndex),
         handDescription: h.handDescription,
         bestFive: h.bestFive,
-        isWinner: winnerSeatIndices.has(h.seatIndex),
-        potWon: potWonBySeat.get(h.seatIndex) ?? 0,
+        isWinner: contestedBySeat.has(h.seatIndex),
+        potWon: contestedBySeat.get(h.seatIndex) ?? 0,
+        chipsReturned: returnedBySeat.get(h.seatIndex),
       }));
     };
 
-    const uniqueWinners = new Set(state.winnerPayouts.map((w) => w.seatIndex));
+    // Only count winners of contested pots (2+ eligible players) to distinguish a true split
+    // from an uncalled-chip return in a short-stack all-in scenario.
+    const contestedWinnerIndices = new Set(
+      state.winnerPayouts.filter((p) => p.isContested).map((p) => p.seatIndex)
+    );
+    const isSplit = contestedWinnerIndices.size > 1;
+    const soloWinner =
+      !isDoubleBoard && contestedWinnerIndices.size === 1
+        ? displayNameFor([...contestedWinnerIndices][0])
+        : undefined;
+
     showdownResult = {
       hands: buildHands(state.showdownHands, isDoubleBoard ? 'A' : null),
-      isSplit: uniqueWinners.size > 1,
+      isSplit,
+      soloWinner,
       ...(isDoubleBoard
         ? { board: state.board, secondBoard: state.secondBoard, secondHands: buildHands(state.secondShowdownHands!, 'B') }
         : {}),

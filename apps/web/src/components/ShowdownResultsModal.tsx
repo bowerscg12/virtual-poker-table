@@ -62,6 +62,9 @@ function BoardSection({
                 <span className="showdown-modal__player-name showdown-modal__player-name--loser">
                   {h.displayName}
                 </span>
+                {h.chipsReturned !== undefined && h.chipsReturned > 0 && (
+                  <span className="showdown-modal__chips-returned">+{formatChips(h.chipsReturned)} returned</span>
+                )}
                 <span className="showdown-modal__hand-desc showdown-modal__hand-desc--small">
                   {h.handDescription}
                 </span>
@@ -80,7 +83,7 @@ function BoardSection({
 }
 
 export function ShowdownResultsModal({ result, onClose }: Props) {
-  const { hands, isSplit, secondBoard, secondHands } = result;
+  const { hands, isSplit, soloWinner, secondBoard, secondHands } = result;
   const isDoubleBoard = !!secondHands;
   const [countdown, setCountdown] = useState(AUTO_CLOSE_SEC);
 
@@ -111,6 +114,8 @@ export function ShowdownResultsModal({ result, onClose }: Props) {
       : 'Double Board Bomb Pot'
     : isSplit
     ? 'Split Pot'
+    : soloWinner
+    ? `${soloWinner} Wins!`
     : 'Showdown';
 
   return (

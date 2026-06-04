@@ -7,6 +7,7 @@ import { AvatarSvg } from './AvatarSvg';
 import { useActionTimer } from '../hooks/useActionTimer';
 import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
+import { PotDisplay } from './PotDisplay';
 
 /** How far (as fraction of seat orbit radius) the felt buttons sit from center. */
 const BTN_RADIUS_FACTOR = 0.80;
@@ -219,6 +220,13 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
     return () => clearTimeout(tid);
   }, [anim.winnerBanner]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const totalPot = table
+    ? table.pots.reduce((s, p) => s + p.amount, 0)
+      + table.seats.reduce((s, seat) => s + seat.betThisStreet, 0)
+    : 0;
+  const buyIn = lobby?.settings.buyIn ?? 0;
+  const isDistributing = !!anim.winnerBanner;
+
   const dealerSeatIndex = table?.dealerSeatIndex ?? 0;
   const isDealingThisHand = anim.dealingHandNum === table?.handNumber;
 
@@ -267,13 +275,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
       ))}
 
       <div className="pot-area" ref={potAreaRef}>
-        {table && table.pots.length > 0 ? (
-          <div className={`pot${anim.winnerBanner ? ' pot-distributing' : ''}`}>
-            Pot: {formatChips(table.pots.reduce((s, p) => s + p.amount, 0))}
-          </div>
-        ) : (
-          <div className="pot">Waiting for hand</div>
-        )}
+        {totalPot <= 0 && <div className="pot">Waiting for hand</div>}
         {(() => {
           const isDoubleBoard = !!table?.secondBoard;
           const renderCards = (cards: Card[]) =>
@@ -313,6 +315,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
             </>
           );
         })()}
+        <PotDisplay totalPot={totalPot} buyIn={buyIn} distributing={isDistributing} />
         {intermissionRemaining !== null && table?.street === 'complete' && (
           <div className="intermission">Next hand in {intermissionRemaining}s</div>
         )}
