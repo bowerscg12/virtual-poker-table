@@ -289,6 +289,12 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     };
   }, [token, lobbyId]);
 
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 4000);
+    return () => clearTimeout(t);
+  }, [error]);
+
   return {
     connected,
     reconnecting,
