@@ -98,4 +98,38 @@ describe('game-table betting flow', () => {
     expect(state.street).toBe('turn');
     expect(state.actionSeatIndex).toBe(1);
   });
+
+  it('runs the board out to showdown when an all-in is called and only one player can still act', () => {
+    // Heads-up: seat 0 (short stack) is dealer/SB and acts first preflop.
+    const headsUp = [
+      { seatIndex: 0, userId: 'u0', displayName: 'A', stack: 100 },
+      { seatIndex: 1, userId: 'u1', displayName: 'B', stack: 500 },
+    ];
+    let state = createInitialTable(headsUp, config, 1, 0, () => 0.5);
+    expect(state.street).toBe('preflop');
+    expect(state.actionSeatIndex).toBe(0);
+
+    // A shoves for less than B's stack.
+    let result = applyAction(state, config, 0, 'all_in', undefined, 'allin');
+    expectOk(result);
+    state = result.state;
+    expect(state.seats[0].allIn).toBe(true);
+    expect(state.actionSeatIndex).toBe(1);
+
+    // B calls. B still has chips, but there is no one left to bet against, so the
+    // hand must run straight out to showdown — B must NOT be prompted on the flop.
+    result = applyAction(state, config, 1, 'call', undefined, 'call');
+    expectOk(result);
+    state = result.state;
+
+    expect(state.street).toBe('complete');
+    expect(state.actionSeatIndex).toBeNull();
+    expect(state.board).toHaveLength(5);
+    expect(state.winnerPayouts.length).toBeGreaterThan(0);
+    // Winner is decided by hand strength at showdown, not by an erroneous fold.
+    expect(state.winnerPayouts.every((p) => p.handDescription !== '')).toBe(true);
+    // showdownHands must be populated — the server keys the dramatic board-reveal
+    // (startAllInRunout / isAllInRunoutTrigger) on this being non-empty.
+    expect(state.showdownHands?.length ?? 0).toBeGreaterThan(0);
+  });
 });

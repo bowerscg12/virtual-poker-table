@@ -313,14 +313,22 @@ function advanceStreet(
     return runShowdown({ ...state, board, deck, street: 'showdown' }, config);
   }
 
-  const firstToAct = nextActiveSeat(
-    state.seats.map((s) => s.seatIndex),
-    state.dealerSeatIndex + 1,
-    (idx) => {
-      const s = getSeat(state.seats, idx);
-      return !!s && isLiveSeat(s);
-    }
-  );
+  // Betting can only continue when at least two seats can still act. When one or
+  // fewer players are live (e.g. an all-in has been called and only the covering
+  // player has chips left), there is nothing left to bet — deal out the remaining
+  // board to showdown with no action.
+  const liveSeatCount = state.seats.filter((s) => isLiveSeat(s)).length;
+  const firstToAct =
+    liveSeatCount >= 2
+      ? nextActiveSeat(
+          state.seats.map((s) => s.seatIndex),
+          state.dealerSeatIndex + 1,
+          (idx) => {
+            const s = getSeat(state.seats, idx);
+            return !!s && isLiveSeat(s);
+          }
+        )
+      : null;
 
   if (firstToAct === null) {
     return advanceStreet(
