@@ -21,6 +21,7 @@ import {
   setSittingOut,
   setWaitingForReentryBlind,
   sitAtSeat,
+  swapSeats,
   syncEndOfHandStacks,
   transferHost,
   updateLobbyStatus,
@@ -1897,6 +1898,26 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
         announceHostChange(st.lobbyId, prevHost, withConnected);
       }
+      return;
+    }
+
+    case 'host_move_player': {
+      if (!st.userId || !st.lobbyId) return;
+      const lobby = await getLobbyById(st.lobbyId);
+      if (!lobby || lobby.hostUserId !== st.userId) return;
+      const game = await getActiveGame(st.lobbyId);
+      if (game && game.street !== 'waiting' && game.street !== 'complete') {
+        send(ws, { type: 'error', message: 'Cannot move players during a hand' });
+        return;
+      }
+      const result = await swapSeats(st.lobbyId, msg.fromSeatIndex, msg.toSeatIndex);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      const connected = getConnectedSet(st.lobbyId);
+      const withConnected = await getLobbyById(st.lobbyId, connected);
+      if (withConnected) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
       return;
     }
 

@@ -210,10 +210,16 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
     return { error: '12 Card Flip requires exactly 2 players' };
   }
 
-  // Advance dealer through candidate seat indices
-  const prevDealer = dealerRotations.get(lobbyId) ?? -1;
+  // Advance dealer through candidate seat indices; randomize on first hand
   const candidateIndices = candidates.map((p) => p.seatIndex).sort((a, b) => a - b);
-  const nextDealerIdx = candidateIndices.find((i) => i > prevDealer) ?? candidateIndices[0];
+  let nextDealerIdx: number;
+  if (!dealerRotations.has(lobbyId)) {
+    const randomOffset = randomBytes(4).readUInt32BE(0) % candidateIndices.length;
+    nextDealerIdx = candidateIndices[randomOffset];
+  } else {
+    const prevDealer = dealerRotations.get(lobbyId)!;
+    nextDealerIdx = candidateIndices.find((i) => i > prevDealer) ?? candidateIndices[0];
+  }
   dealerRotations.set(lobbyId, nextDealerIdx);
 
   // Compute SB/BB positions from the candidate pool

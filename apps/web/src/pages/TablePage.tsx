@@ -248,6 +248,9 @@ export default function TablePage() {
               myUserId={user?.id}
               anim={anim}
               messages={chat}
+              isHost={isHost}
+              handActive={handActive}
+              onMoveSeat={(from, to) => send({ type: 'host_move_player', fromSeatIndex: from, toSeatIndex: to })}
             />
           )}
 

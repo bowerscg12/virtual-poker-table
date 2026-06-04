@@ -59,6 +59,9 @@ interface Props {
   myUserId?: string;
   anim: TableAnimState;
   messages?: ChatMessage[];
+  isHost?: boolean;
+  handActive?: boolean;
+  onMoveSeat?: (fromSeatIndex: number, toSeatIndex: number) => void;
 }
 
 interface ChipFlight {
@@ -84,7 +87,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, handActive, onMoveSeat }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 8;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
@@ -102,6 +105,10 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
   const isUrgent = remaining !== null && remaining <= 10;
 
   const [activeBadgeTip, setActiveBadgeTip] = useState<string | null>(null);
+  const [dragFromSeat, setDragFromSeat] = useState<number | null>(null);
+  const [dragOverSeat, setDragOverSeat] = useState<number | null>(null);
+
+  const canDragSeats = isHost && !handActive;
 
   // ── Chat bubble state ──────────────────────────────────────
   const [activeBubbles, setActiveBubbles] = useState<Map<string, ActiveBubble>>(new Map());
@@ -336,6 +343,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
           const x = 50 + 46 * Math.cos(angleStep * i - Math.PI / 2);
           const y = 50 + 42 * Math.sin(angleStep * i - Math.PI / 2);
 
+          const isDraggable = !!(canDragSeats && occupied);
+          const isDragTarget = !!(canDragSeats && dragFromSeat !== null && seat.seatIndex !== dragFromSeat);
+
           const seatClass = [
             'seat',
             occupied ? 'occupied' : 'empty',
@@ -344,6 +354,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
             isMe ? 'me' : '',
             isWinner ? 'winner' : '',
             isAllIn ? 'all-in' : '',
+            isDraggable ? 'host-draggable' : '',
+            dragFromSeat === seat.seatIndex ? 'dragging' : '',
+            isDragTarget && dragOverSeat === seat.seatIndex ? 'drag-over' : '',
           ].filter(Boolean).join(' ');
 
           const bubble = seat.userId ? activeBubbles.get(seat.userId) : undefined;
@@ -356,6 +369,12 @@ export function PokerTable({ lobby, table, myUserId, anim, messages }: Props) {
               key={seat.seatIndex}
               className={seatClass}
               style={{ '--seat-x': `${x}%`, '--seat-y': `${y}%` } as React.CSSProperties}
+              draggable={isDraggable}
+              onDragStart={isDraggable ? () => setDragFromSeat(seat.seatIndex) : undefined}
+              onDragEnd={isDraggable ? () => { setDragFromSeat(null); setDragOverSeat(null); } : undefined}
+              onDragOver={isDragTarget ? (e) => { e.preventDefault(); setDragOverSeat(seat.seatIndex); } : undefined}
+              onDragLeave={isDragTarget ? (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverSeat(null); } : undefined}
+              onDrop={isDragTarget ? (e) => { e.preventDefault(); if (dragFromSeat !== null) onMoveSeat?.(dragFromSeat, seat.seatIndex); setDragFromSeat(null); setDragOverSeat(null); } : undefined}
             >
               {bubble && (
                 <div key={bubble.key} className="chat-bubble" aria-live="polite">

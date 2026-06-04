@@ -889,6 +889,24 @@ select {
   opacity: 0.45;
 }
 
+.seat.host-draggable {
+  cursor: grab;
+}
+
+.seat.host-draggable:active {
+  cursor: grabbing;
+}
+
+.seat.dragging {
+  opacity: 0.4;
+}
+
+.seat.drag-over .seat-info {
+  outline: 2px dashed #4a90e2;
+  outline-offset: 2px;
+  background: rgba(74, 144, 226, 0.2) !important;
+}
+
 /* ── Chat bubbles — appear above each speaking player's seat ─ */
 
 .chat-bubble {

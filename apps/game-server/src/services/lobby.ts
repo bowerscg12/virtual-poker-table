@@ -559,6 +559,39 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
   return getLobbyById(lobbyId);
 }
 
+/** Swap all player data between two seats. Either or both seats may be empty. */
+export async function swapSeats(
+  lobbyId: string,
+  seatA: number,
+  seatB: number,
+): Promise<LobbySummary | { error: string }> {
+  if (seatA === seatB) return (await getLobbyById(lobbyId)) ?? { error: 'Lobby not found' };
+
+  if (useMemory) {
+    const lobby = memoryStore.lobbies.get(lobbyId);
+    if (!lobby) return { error: 'Lobby not found' };
+    const sa = lobby.seats.find((s) => s.seatIndex === seatA);
+    const sb = lobby.seats.find((s) => s.seatIndex === seatB);
+    if (!sa || !sb) return { error: 'Invalid seat index' };
+    const tmp = { userId: sa.userId, stack: sa.stack, sittingOut: sa.sittingOut, sitOutNextHand: sa.sitOutNextHand, sitOutBlindOwed: sa.sitOutBlindOwed, waitingForReentryBlind: sa.waitingForReentryBlind, seatedAt: sa.seatedAt };
+    sa.userId = sb.userId; sa.stack = sb.stack; sa.sittingOut = sb.sittingOut; sa.sitOutNextHand = sb.sitOutNextHand; sa.sitOutBlindOwed = sb.sitOutBlindOwed; sa.waitingForReentryBlind = sb.waitingForReentryBlind; sa.seatedAt = sb.seatedAt;
+    sb.userId = tmp.userId; sb.stack = tmp.stack; sb.sittingOut = tmp.sittingOut; sb.sitOutNextHand = tmp.sitOutNextHand; sb.sitOutBlindOwed = tmp.sitOutBlindOwed; sb.waitingForReentryBlind = tmp.waitingForReentryBlind; sb.seatedAt = tmp.seatedAt;
+    return toSummary(lobby);
+  }
+
+  const db = getDb();
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const rowA = seats.find((s) => s.seatIndex === seatA);
+  const rowB = seats.find((s) => s.seatIndex === seatB);
+  if (!rowA || !rowB) return { error: 'Invalid seat index' };
+
+  await Promise.all([
+    db.update(tableSeats).set({ userId: rowB.userId, stack: rowB.stack, sittingOut: rowB.sittingOut, sitOutNextHand: rowB.sitOutNextHand, sitOutBlindOwed: rowB.sitOutBlindOwed, waitingForReentryBlind: rowB.waitingForReentryBlind, seatedAt: rowB.seatedAt }).where(eq(tableSeats.id, rowA.id)),
+    db.update(tableSeats).set({ userId: rowA.userId, stack: rowA.stack, sittingOut: rowA.sittingOut, sitOutNextHand: rowA.sitOutNextHand, sitOutBlindOwed: rowA.sitOutBlindOwed, waitingForReentryBlind: rowA.waitingForReentryBlind, seatedAt: rowA.seatedAt }).where(eq(tableSeats.id, rowB.id)),
+  ]);
+  return (await getLobbyById(lobbyId))!;
+}
+
 /** Voluntarily transfer host to the player at `seatIndex`. The caller must already be the host. */
 export async function transferHost(
   lobbyId: string,
