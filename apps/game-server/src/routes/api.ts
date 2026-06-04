@@ -22,18 +22,24 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({
         displayName: displayNameSchema,
-        email: z.string().email().optional(),
-        password: z.string().min(6).optional(),
+        username: z.string().min(3).max(20),
+        password: z.string().min(6),
       })
       .parse(req.body);
-    const user = await registerUser(body.displayName, body.email, body.password);
+    let user;
+    try {
+      user = await registerUser(body.displayName, body.username, body.password);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Registration failed';
+      return reply.status(400).send({ error: msg });
+    }
     const token = await reply.jwtSign({ sub: user.id });
     return toAuthResponse(user, token);
   });
 
   app.post('/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const body = z.object({ email: z.string().email(), password: z.string() }).parse(req.body);
-    const user = await loginUser(body.email, body.password);
+    const body = z.object({ username: z.string(), password: z.string() }).parse(req.body);
+    const user = await loginUser(body.username, body.password);
     if (!user) return reply.status(401).send({ error: 'Invalid credentials' });
     const token = await reply.jwtSign({ sub: user.id });
     return toAuthResponse(user, token);

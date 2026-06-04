@@ -4,6 +4,7 @@ import { getDb } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { memoryCreateUser, memoryStore } from '../store/memory-fallback.js';
+import { containsProfanity } from '../utils/profanity.js';
 
 function serializeAvatar(avatar?: AvatarConfig): string | null {
   if (!avatar) return null;
@@ -29,6 +30,16 @@ function assertDisplayName(displayName: string): string {
   return trimmed;
 }
 
+// Usernames are stored lowercased and must be 3–20 alphanumeric/underscore chars.
+function assertUsername(raw: string): string {
+  const u = raw.trim().toLowerCase();
+  if (u.length < 3) throw new Error('Username must be at least 3 characters');
+  if (u.length > 20) throw new Error('Username must be 20 characters or fewer');
+  if (!/^[a-z0-9_]+$/.test(u)) throw new Error('Username may only contain letters, numbers, and underscores');
+  if (containsProfanity(u)) throw new Error('That username is not allowed');
+  return u;
+}
+
 export async function initAuthStore(): Promise<void> {
   // Test-only escape hatch: force the in-memory store even when a Postgres
   // service is reachable (e.g. CI), so memory-store unit tests stay deterministic.
@@ -48,31 +59,40 @@ export async function initAuthStore(): Promise<void> {
 
 export async function registerUser(
   displayName: string,
-  email?: string,
-  password?: string
+  username: string,
+  password: string
 ): Promise<AuthUser> {
   const normalizedDisplayName = assertDisplayName(displayName);
-  const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
+  const normalizedUsername = assertUsername(username);
+  const passwordHash = await bcrypt.hash(password, 10);
+
   if (useMemory) {
-    const user = memoryCreateUser({ displayName: normalizedDisplayName, email, passwordHash, isGuest: false });
+    const taken = [...memoryStore.users.values()].some((u) => u.username === normalizedUsername);
+    if (taken) throw new Error('Username is already taken');
+    const user = memoryCreateUser({ displayName: normalizedDisplayName, username: normalizedUsername, passwordHash, isGuest: false });
     return { id: user.id, displayName: user.displayName, isGuest: false };
   }
+
   const db = getDb();
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.username, normalizedUsername)).limit(1);
+  if (existing) throw new Error('Username is already taken');
+
   const [row] = await db
     .insert(users)
-    .values({ displayName: normalizedDisplayName, email, passwordHash, isGuest: false })
+    .values({ displayName: normalizedDisplayName, username: normalizedUsername, passwordHash, isGuest: false })
     .returning();
   return { id: row.id, displayName: row.displayName, avatar: deserializeAvatar(row.avatarUrl), isGuest: false };
 }
 
-export async function loginUser(email: string, password: string): Promise<AuthUser | null> {
+export async function loginUser(username: string, password: string): Promise<AuthUser | null> {
+  const normalizedUsername = username.trim().toLowerCase();
   if (useMemory) {
-    const user = [...memoryStore.users.values()].find((u) => u.email === email);
+    const user = [...memoryStore.users.values()].find((u) => u.username === normalizedUsername);
     if (!user?.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) return null;
     return { id: user.id, displayName: user.displayName, avatar: user.avatar, isGuest: false };
   }
   const db = getDb();
-  const [row] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const [row] = await db.select().from(users).where(eq(users.username, normalizedUsername)).limit(1);
   if (!row?.passwordHash || !(await bcrypt.compare(password, row.passwordHash))) return null;
   return { id: row.id, displayName: row.displayName, avatar: deserializeAvatar(row.avatarUrl), isGuest: false };
 }

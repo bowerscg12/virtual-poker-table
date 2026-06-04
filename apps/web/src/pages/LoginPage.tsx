@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 type Mode = 'signin' | 'register' | 'guest';
@@ -7,7 +7,7 @@ type Mode = 'signin' | 'register' | 'guest';
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('signin');
   const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,6 +25,8 @@ export default function LoginPage() {
   function switchMode(m: Mode) {
     setMode(m);
     setError(null);
+    setUsername('');
+    setPassword('');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -33,9 +35,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (mode === 'signin') {
-        await loginAccount(email.trim(), password);
+        await loginAccount(username.trim(), password);
       } else if (mode === 'register') {
-        await registerAccount(displayName.trim(), email.trim(), password);
+        await registerAccount(displayName.trim(), username.trim(), password);
       } else {
         await loginGuest(displayName.trim());
       }
@@ -51,9 +53,9 @@ export default function LoginPage() {
   const canSubmit =
     !loading &&
     (mode === 'signin'
-      ? email.trim().length > 0 && password.length > 0
+      ? username.trim().length > 0 && password.length > 0
       : mode === 'register'
-      ? displayName.trim().length > 0 && email.trim().length > 0 && password.length > 0
+      ? displayName.trim().length > 0 && username.trim().length >= 3 && password.length >= 6
       : displayName.trim().length > 0);
 
   return (
@@ -108,16 +110,20 @@ export default function LoginPage() {
 
           {(mode === 'signin' || mode === 'register') && (
             <label>
-              Email
+              Username
               <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                autoComplete={mode === 'register' ? 'email' : 'username'}
+                type="text"
+                placeholder={mode === 'register' ? 'letters, numbers, underscores' : 'your_username'}
+                value={username}
+                onChange={(e) => { setUsername(e.target.value.slice(0, 20)); setError(null); }}
+                autoComplete="username"
                 autoFocus={mode === 'signin'}
+                maxLength={20}
                 disabled={loading}
               />
+              {mode === 'register' && (
+                <span className="field-hint">3–20 characters. Letters, numbers, and underscores only.</span>
+              )}
             </label>
           )}
 
@@ -141,6 +147,13 @@ export default function LoginPage() {
             </p>
           )}
 
+          {mode === 'register' && (
+            <p className="policy-notice">
+              By creating an account you agree to our{' '}
+              <Link to="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</Link>.
+            </p>
+          )}
+
           <button type="submit" className="btn primary" disabled={!canSubmit}>
             {loading
               ? 'Please wait…'
@@ -155,6 +168,8 @@ export default function LoginPage() {
 
       <footer className="disclaimer">
         Entertainment only. Play-money chips — no real-money wagering in this app.
+        {' · '}
+        <Link to="/privacy">Privacy Policy</Link>
       </footer>
     </div>
   );

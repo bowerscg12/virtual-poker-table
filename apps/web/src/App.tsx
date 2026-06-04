@@ -7,6 +7,7 @@ import CreateLobbyPage from './pages/CreateLobbyPage';
 import JoinLobbyPage from './pages/JoinLobbyPage';
 import NameSelectionPage from './pages/NameSelectionPage';
 import TablePage from './pages/TablePage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -21,6 +22,7 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
         <Route path="/create" element={<ProtectedRoute><CreateLobbyPage /></ProtectedRoute>} />
         <Route path="/join" element={<ProtectedRoute><JoinLobbyPage /></ProtectedRoute>} />

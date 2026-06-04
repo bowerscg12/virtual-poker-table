@@ -3211,3 +3211,143 @@ select {
     gap: 0.35rem;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PRIVACY POLICY PAGE
+   ═══════════════════════════════════════════════════════════ */
+
+.privacy-policy {
+  max-width: 720px;
+}
+
+.hero-sub {
+  margin: 0;
+  font-size: 1rem;
+  opacity: 0.75;
+}
+
+.privacy-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+  line-height: 1.6;
+}
+
+.privacy-panel h2 {
+  margin: 0.75rem 0 0;
+  font-size: 1rem;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.privacy-panel h3 {
+  margin: 0.5rem 0 0.15rem;
+  font-size: 0.9rem;
+}
+
+.privacy-panel p,
+.privacy-panel ul,
+.privacy-panel li {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.privacy-panel ul {
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.privacy-panel a {
+  color: var(--gold);
+}
+
+.privacy-panel code {
+  font-family: monospace;
+  background: rgba(255,255,255,0.08);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.policy-effective {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin: 0;
+}
+
+.policy-jurisdiction {
+  background: rgba(255,255,255,0.04);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 6px 6px 0;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.policy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.policy-table th,
+.policy-table td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  vertical-align: top;
+}
+
+.policy-table th {
+  color: var(--gold);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .policy-table thead {
+    display: none;
+  }
+
+  .policy-table tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+    padding-bottom: 0.75rem;
+  }
+
+  .policy-table td {
+    display: block;
+    border: none;
+    padding: 0.1rem 0;
+  }
+
+  .policy-table td:first-child {
+    font-weight: 600;
+    color: var(--gold);
+  }
+}
+
+/* Policy notice above submit button on register tab */
+.policy-notice {
+  font-size: 0.78rem;
+  opacity: 0.7;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.policy-notice a {
+  color: var(--gold);
+  text-decoration: underline;
+}
+
+.disclaimer a {
+  color: inherit;
+  text-decoration: underline;
+  opacity: 0.8;
+}

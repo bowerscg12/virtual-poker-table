@@ -24,29 +24,29 @@ export async function guestLogin(displayName: string): Promise<AuthResponse> {
   return res.json() as Promise<AuthResponse>;
 }
 
-export async function loginAccount(email: string, password: string): Promise<AuthResponse> {
+export async function loginAccount(username: string, password: string): Promise<AuthResponse> {
   let res: Response;
   try {
     res = await fetch(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
   } catch {
     throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
   }
-  if (res.status === 401) throw new Error('Invalid email or password.');
+  if (res.status === 401) throw new Error('Invalid username or password.');
   if (!res.ok) throw new Error('Sign in failed. Please try again.');
   return res.json() as Promise<AuthResponse>;
 }
 
-export async function registerAccount(displayName: string, email: string, password: string): Promise<AuthResponse> {
+export async function registerAccount(displayName: string, username: string, password: string): Promise<AuthResponse> {
   let res: Response;
   try {
     res = await fetch(`${API}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName, email, password }),
+      body: JSON.stringify({ displayName, username, password }),
     });
   } catch {
     throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');

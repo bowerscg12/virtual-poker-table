@@ -10,8 +10,8 @@ interface AuthContextValue {
   activeSeat: ActiveSeatInfo | null;
   clearActiveSeat: () => void;
   loginGuest: (name: string) => Promise<void>;
-  loginAccount: (email: string, password: string) => Promise<void>;
-  registerAccount: (displayName: string, email: string, password: string) => Promise<void>;
+  loginAccount: (username: string, password: string) => Promise<void>;
+  registerAccount: (displayName: string, username: string, password: string) => Promise<void>;
   /** Set auth state directly from an EnterLobbyResponse (bypasses guest-login flow). */
   setAuthDirect: (user: AuthUser, token: string, sessionId: string) => void;
   updateDisplayName: (displayName: string) => Promise<void>;
@@ -58,8 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveSeat(seat);
   }, []);
 
-  const loginAccount = useCallback(async (email: string, password: string) => {
-    const res = await apiLoginAccount(email, password);
+  const loginAccount = useCallback(async (username: string, password: string) => {
+    const res = await apiLoginAccount(username, password);
     localStorage.setItem('vct_token', res.token);
     setUser(res.user);
     setToken(res.token);
@@ -67,8 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveSeat(seat);
   }, []);
 
-  const registerAccount = useCallback(async (displayName: string, email: string, password: string) => {
-    const res = await apiRegisterAccount(displayName, email, password);
+  const registerAccount = useCallback(async (displayName: string, username: string, password: string) => {
+    const res = await apiRegisterAccount(displayName, username, password);
     localStorage.setItem('vct_token', res.token);
     setUser(res.user);
     setToken(res.token);

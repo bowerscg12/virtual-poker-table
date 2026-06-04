@@ -4,7 +4,7 @@ const SQL = `
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   display_name VARCHAR(64) NOT NULL,
-  email VARCHAR(255),
+  username VARCHAR(30),
   password_hash TEXT,
   avatar_url TEXT,
   is_guest BOOLEAN NOT NULL DEFAULT false,
@@ -83,6 +83,29 @@ ALTER TABLE table_seats ADD CONSTRAINT table_seats_user_id_fkey
 
 -- Partial index makes guest-cleanup queries fast regardless of how many non-guest rows exist.
 CREATE INDEX IF NOT EXISTS idx_users_guest_created ON users(created_at) WHERE is_guest = true;
+
+-- Rename legacy email column to username for existing databases.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'email'
+  ) THEN
+    ALTER TABLE users RENAME COLUMN email TO username;
+    ALTER TABLE users ALTER COLUMN username TYPE VARCHAR(30);
+  END IF;
+END $$;
+
+-- Add username/password columns if the users table predates auth support.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(30);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+-- Unique index on username (partial: guests have NULL username).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username IS NOT NULL;
+
+-- Add table_seats columns added after initial schema.
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS waiting_for_reentry_blind BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS seated_at TIMESTAMP;
 `;
 
 async function main() {

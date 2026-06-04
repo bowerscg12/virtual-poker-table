@@ -8,7 +8,7 @@ const nanoid = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 5);
 export interface MemoryUser {
   id: string;
   displayName: string;
-  email?: string;
+  username?: string;
   passwordHash?: string;
   avatarUrl?: string;
   avatar?: AvatarConfig;

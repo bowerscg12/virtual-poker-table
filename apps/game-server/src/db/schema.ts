@@ -3,7 +3,7 @@ import { boolean, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   displayName: varchar('display_name', { length: 64 }).notNull(),
-  email: varchar('email', { length: 255 }),
+  username: varchar('username', { length: 30 }).unique(),
   passwordHash: text('password_hash'),
   avatarUrl: text('avatar_url'),
   isGuest: boolean('is_guest').default(false).notNull(),
