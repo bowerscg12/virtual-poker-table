@@ -124,6 +124,18 @@ const intermissionPausedRemainingMs = new Map<string, number>();
 /** userId → pending cash-out request (deferred until hand ends) */
 const pendingCashOuts = new Map<string, PendingCashOut>();
 
+/** ms the player has to confirm a queued cash-out at hand end before auto-confirming */
+const CASH_OUT_CONFIRM_MS = 15_000;
+
+/** userId → pending end-of-hand cash-out confirmation */
+const pendingCashOutConfirms = new Map<string, {
+  lobbyId: string;
+  sessionId: string | null;
+  amount: number;
+  deadline: string;
+  confirmTimer: ReturnType<typeof setTimeout>;
+}>();
+
 /** userId → pending rebuy request (deferred when hand is in progress) */
 const pendingRebuys = new Map<string, { lobbyId: string; amount: number }>();
 
@@ -827,9 +839,9 @@ function cancelIntermissionTimer(lobbyId: string): void {
   intermissionTimerGenerations.set(lobbyId, (intermissionTimerGenerations.get(lobbyId) ?? 0) + 1);
 }
 
-const INTERMISSION_MS = 10_000;
+const INTERMISSION_MS = 20_000;
 
-/** Schedule the next hand to start after delayMs (default 10 s). */
+/** Schedule the next hand to start after delayMs (default 20 s). */
 function scheduleIntermission(lobbyId: string, config: VariantConfig, delayMs = INTERMISSION_MS): void {
   cancelIntermissionTimer(lobbyId);
   const gen = intermissionTimerGenerations.get(lobbyId) ?? 0;
@@ -1060,59 +1072,97 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
 }
 
 /**
- * Process all deferred cash-out requests for a lobby after a hand completes.
- * Connected players get the full summary; disconnected players are removed silently.
+ * At hand end, prompt connected queued players to confirm their cash-out (15 s window,
+ * auto-confirms on timeout). Disconnected queued players are removed silently.
+ * Call this AFTER syncEndOfHandStacks so lobby seat stacks are post-hand accurate.
  */
-async function processPendingCashOuts(lobbyId: string): Promise<void> {
+async function promptPendingCashOuts(lobbyId: string): Promise<void> {
   const toProcess: string[] = [];
   for (const [userId, pending] of pendingCashOuts) {
     if (pending.lobbyId === lobbyId) toProcess.push(userId);
   }
   if (toProcess.length === 0) return;
 
-  // Capture host before any removals so we can announce a migration after the final broadcast.
-  // (Connected players go through processCashOut, which announces on its own.)
-  const prevHost = (await getLobbyById(lobbyId))?.hostUserId ?? null;
+  let hadSilentRemoval = false;
 
   for (const userId of toProcess) {
+    const pending = pendingCashOuts.get(userId)!;
     const ws = connectedUserSockets.get(userId);
     const st = ws ? clients.get(ws) : null;
 
-    if (ws && st && st.lobbyId === lobbyId) {
-      await processCashOut(ws, st);
-    } else {
-      // Player disconnected — remove them silently
+    if (!ws || !st || st.lobbyId !== lobbyId) {
+      // Disconnected — remove silently
       if (cashOutInProgress.has(userId)) continue;
       cashOutInProgress.add(userId);
       try {
-        const pending = pendingCashOuts.get(userId);
         const lobby = await getLobbyById(lobbyId);
         const seat = lobby?.seats.find((s) => s.userId === userId);
         if (seat) {
           finalizeCashOut(lobbyId, userId, seat.stack);
           await removeSeat(lobbyId, userId);
         }
-        if (pending?.sessionId) await deleteSession(pending.sessionId);
+        if (pending.sessionId) await deleteSession(pending.sessionId);
         pendingCashOuts.delete(userId);
+        hadSilentRemoval = true;
       } finally {
         cashOutInProgress.delete(userId);
       }
+      continue;
     }
+
+    // Connected — read post-hand stack from lobby (already synced)
+    const lobby = await getLobbyById(lobbyId);
+    const seat = lobby?.seats.find((s) => s.userId === userId);
+    if (!seat) {
+      pendingCashOuts.delete(userId);
+      continue;
+    }
+
+    const deadline = new Date(Date.now() + CASH_OUT_CONFIRM_MS).toISOString();
+    send(ws, { type: 'cash_out_confirm_prompt', amount: seat.stack, deadline });
+
+    const confirmTimer = setTimeout(async () => {
+      pendingCashOutConfirms.delete(userId);
+      const userWs = connectedUserSockets.get(userId);
+      const userSt = userWs ? clients.get(userWs) : null;
+      if (userWs && userSt && userSt.lobbyId === lobbyId) {
+        await processCashOut(userWs, userSt);
+      } else {
+        // Disconnected during confirm window — remove silently
+        if (!cashOutInProgress.has(userId)) {
+          cashOutInProgress.add(userId);
+          try {
+            const lob = await getLobbyById(lobbyId);
+            const s = lob?.seats.find((s) => s.userId === userId);
+            if (s) {
+              finalizeCashOut(lobbyId, userId, s.stack);
+              await removeSeat(lobbyId, userId);
+            }
+            if (pending.sessionId) await deleteSession(pending.sessionId);
+            pendingCashOuts.delete(userId);
+          } finally {
+            cashOutInProgress.delete(userId);
+          }
+        }
+      }
+    }, CASH_OUT_CONFIRM_MS);
+
+    pendingCashOutConfirms.set(userId, { lobbyId, sessionId: pending.sessionId, amount: seat.stack, deadline, confirmTimer });
   }
 
-  // One final broadcast to reflect all seat removals
-  const connected = getConnectedSet(lobbyId);
-  const updatedLobby = await getLobbyById(lobbyId, connected);
-  if (updatedLobby) {
-    broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
-    announceHostChange(lobbyId, prevHost, updatedLobby);
+  if (hadSilentRemoval) {
+    const connected = getConnectedSet(lobbyId);
+    const updatedLobby = await getLobbyById(lobbyId, connected);
+    if (updatedLobby) {
+      broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
+    }
   }
 }
 
 /**
  * After a hand completes, send rebuy_available to any player who is still seated
- * but has 0 chips (busted). Players who already requested a cash-out will have been
- * processed by processPendingCashOuts and removed from the lobby before this runs.
+ * but has 0 chips (busted). Players with a pending cash-out confirm will be prompted
+ * and removed once they confirm (or auto-confirm on timeout).
  */
 async function notifyBustedPlayers(lobbyId: string): Promise<void> {
   const lobby = await getLobbyById(lobbyId);
@@ -1202,6 +1252,8 @@ async function finalizeFoldWin(
   if (updatedLobby?.status === 'playing') {
     scheduleIntermission(lobbyId, config);
   }
+  // Stacks were synced in handleHandComplete before promptShowCards was called
+  await promptPendingCashOuts(lobbyId);
   await broadcastTableState(lobbyId);
 }
 
@@ -1255,7 +1307,6 @@ async function promptShowCards(lobbyId: string, state: GameTableState, config: V
 async function handleHandComplete(lobbyId: string, state: GameTableState, config: VariantConfig): Promise<void> {
   cancelActionTimer(lobbyId);
   recordHandEnd(lobbyId, state, config);
-  await processPendingCashOuts(lobbyId);
 
   if (state.winnerPayouts.length > 0) {
     const payouts = state.winnerPayouts;
@@ -1287,6 +1338,7 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
   await notifyBustedPlayers(lobbyId);
 
   if (isFoldWin(state)) {
+    // show_cards prompt runs first; promptPendingCashOuts is called inside finalizeFoldWin
     await promptShowCards(lobbyId, state, config);
   } else {
     const histories = getHandHistories(lobbyId);
@@ -1296,6 +1348,8 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
     if (updatedLobby?.status === 'playing') {
       scheduleIntermission(lobbyId, config);
     }
+    // Prompt after stacks are synced so confirmed amount reflects post-hand chips
+    await promptPendingCashOuts(lobbyId);
     await broadcastTableState(lobbyId);
   }
 }
@@ -1434,6 +1488,12 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       // Remind player their cash-out request is still queued
       if (pendingCashOuts.has(session.userId)) {
         send(ws, { type: 'cash_out_queued' });
+      }
+
+      // Re-send confirm prompt if they reconnect during the confirmation window
+      const reconnConfirm = pendingCashOutConfirms.get(session.userId);
+      if (reconnConfirm) {
+        send(ws, { type: 'cash_out_confirm_prompt', amount: reconnConfirm.amount, deadline: reconnConfirm.deadline });
       }
 
       if (session.lobbyId) {
@@ -2011,17 +2071,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
       const game = await getActiveGame(lobbyId);
       if (game && game.street !== 'waiting' && game.street !== 'complete') {
-        const seat = game.seats.find((s) => s.userId === userId);
-        // Block if it's the player's turn and they still have actions to take
-        if (seat && game.actionSeatIndex === seat.seatIndex && !seat.allIn && !seat.folded) {
-          send(ws, {
-            type: 'error',
-            message: 'You must act before cashing out.',
-            code: 'CASH_OUT_NOT_ALLOWED',
-          });
-          return;
-        }
-        // Defer until hand ends
+        // Defer until hand ends regardless of whose turn it is
         pendingCashOuts.set(userId, { lobbyId, sessionId: st.sessionId });
         send(ws, { type: 'cash_out_queued' });
         return;
@@ -2032,10 +2082,28 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       return;
     }
 
+    case 'cash_out_confirm': {
+      if (!st.userId || !st.lobbyId) return;
+      const userId = st.userId;
+      const confirm = pendingCashOutConfirms.get(userId);
+      if (!confirm) return;
+      clearTimeout(confirm.confirmTimer);
+      pendingCashOutConfirms.delete(userId);
+      await processCashOut(ws, st);
+      return;
+    }
+
     case 'cash_out_cancel': {
       if (!st.userId) return;
-      if (pendingCashOuts.has(st.userId)) {
-        pendingCashOuts.delete(st.userId);
+      const userId = st.userId;
+      // Cancel confirmation timer if the hand already ended and prompt was sent
+      const confirm = pendingCashOutConfirms.get(userId);
+      if (confirm) {
+        clearTimeout(confirm.confirmTimer);
+        pendingCashOutConfirms.delete(userId);
+      }
+      if (pendingCashOuts.has(userId)) {
+        pendingCashOuts.delete(userId);
         send(ws, { type: 'cash_out_cancelled' });
       }
       return;

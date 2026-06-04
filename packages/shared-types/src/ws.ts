@@ -25,6 +25,7 @@ export type ClientMessage =
   | { type: 'game_action'; actionId: string; action: PlayerActionType; amount?: number }
   | { type: 'spectate' }
   | { type: 'cash_out' }
+  | { type: 'cash_out_confirm' }
   | { type: 'cash_out_cancel' }
   | { type: 'rebuy' }
   | { type: 'show_cards'; show: boolean }
@@ -44,6 +45,7 @@ export type ServerMessage =
   | { type: 'hand_history'; entry: import('./game.js').HandHistoryEntry }
   | { type: 'cash_out_queued' }
   | { type: 'cash_out_cancelled' }
+  | { type: 'cash_out_confirm_prompt'; amount: number; deadline: string }
   | { type: 'cashed_out'; summary: CashOutSummary }
   | { type: 'rebuy_available'; amount: number }
   | { type: 'rebuy_queued' }

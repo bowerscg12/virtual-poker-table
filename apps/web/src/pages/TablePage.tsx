@@ -43,6 +43,7 @@ export default function TablePage() {
     chat,
     error,
     cashOutQueued,
+    cashOutConfirmPending,
     cashOutSummary,
     handComplete,
     rebuyAvailable,
@@ -86,9 +87,10 @@ export default function TablePage() {
     if (chatOpen) setUnreadChat(0);
   }, [chatOpen]);
 
+  // Close the manual modal when queued or when the confirm prompt arrives
   useEffect(() => {
-    if (cashOutQueued) setCashOutOpen(true);
-  }, [cashOutQueued]);
+    if (cashOutQueued || cashOutConfirmPending) setCashOutOpen(false);
+  }, [cashOutQueued, cashOutConfirmPending]);
 
   useEffect(() => {
     if (!rebuyAvailable && !rebuyQueued) setRebuyClicked(false);
@@ -220,6 +222,7 @@ export default function TablePage() {
             rebuyClicked={rebuyClicked}
             rebuyDismissed={rebuyDismissed}
             onCashOutOpen={() => setCashOutOpen(true)}
+            onCancelQueue={handleCancelQueue}
             onRebuyClick={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
             onLeaveTable={() => send({ type: 'cash_out' })}
             onSitOutToggle={(enabled) => send({ type: 'sit_out_next_hand', enabled })}
@@ -291,13 +294,14 @@ export default function TablePage() {
         <HandHistoryPanel lobbyId={lobbyId} onClose={() => setHistoryOpen(false)} />
       )}
 
-      {cashOutOpen && !cashOutSummary && mySeat && (
+      {(cashOutOpen || cashOutConfirmPending) && !cashOutSummary && mySeat && (
         <CashOutModal
           currentStack={mySeat.stack}
-          queued={cashOutQueued}
+          confirmPending={cashOutConfirmPending}
           onConfirm={handleCashOutConfirm}
           onCancel={() => setCashOutOpen(false)}
-          onCancelQueue={handleCancelQueue}
+          onConfirmCashOut={() => send({ type: 'cash_out_confirm' })}
+          onCancelCashOut={() => send({ type: 'cash_out_cancel' })}
         />
       )}
 

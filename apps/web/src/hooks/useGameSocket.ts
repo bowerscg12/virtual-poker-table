@@ -30,6 +30,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cashOutQueued, setCashOutQueued] = useState(false);
+  const [cashOutConfirmPending, setCashOutConfirmPending] = useState<{ amount: number; deadline: string } | null>(null);
   const [cashOutSummary, setCashOutSummary] = useState<CashOutSummary | null>(null);
   const [handComplete, setHandComplete] = useState<{ seatIndex: number; amount: number; handDescription: string }[] | null>(null);
   const [rebuyAvailable, setRebuyAvailable] = useState<{ amount: number } | null>(null);
@@ -205,12 +206,18 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
 
           case 'cash_out_cancelled':
             setCashOutQueued(false);
+            setCashOutConfirmPending(null);
+            break;
+
+          case 'cash_out_confirm_prompt':
+            setCashOutConfirmPending({ amount: msg.amount, deadline: msg.deadline });
             break;
 
           case 'cashed_out':
             // Remove session so reconnect doesn't restore us to the cashed-out lobby
             localStorage.removeItem(SESSION_ID_KEY);
             setCashOutQueued(false);
+            setCashOutConfirmPending(null);
             setRebuyAvailable(null);
             setRebuyQueued(false);
             setCashOutSummary(msg.summary);
@@ -304,6 +311,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     chat,
     error,
     cashOutQueued,
+    cashOutConfirmPending,
     cashOutSummary,
     handComplete,
     rebuyAvailable,

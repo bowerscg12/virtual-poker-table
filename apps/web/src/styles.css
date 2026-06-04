@@ -1064,6 +1064,27 @@ select {
   font-size: 0.87rem;
 }
 
+.cash-out-queued-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  background: rgba(239, 183, 71, 0.15);
+  border: 1px solid rgba(239, 183, 71, 0.45);
+  font-size: 0.82rem;
+  color: var(--gold);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cash-out-queued-banner .btn {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+  opacity: 0.8;
+  border-color: rgba(239, 183, 71, 0.5);
+}
+
 /* ── Sit Out Next Hand toggle ─────────────────────────────────────────────── */
 .sit-out-toggle {
   flex-shrink: 0;

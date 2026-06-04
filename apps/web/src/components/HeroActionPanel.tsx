@@ -25,6 +25,7 @@ interface Props {
   rebuyClicked: boolean;
   rebuyDismissed: boolean;
   onCashOutOpen: () => void;
+  onCancelQueue: () => void;
   onRebuyClick: () => void;
   onLeaveTable: () => void;
   onSitOutToggle: (enabled: boolean) => void;
@@ -48,6 +49,7 @@ export function HeroActionPanel({
   rebuyClicked,
   rebuyDismissed,
   onCashOutOpen,
+  onCancelQueue,
   onRebuyClick,
   onLeaveTable,
   onSitOutToggle,
@@ -86,9 +88,16 @@ export function HeroActionPanel({
                 Leave Table
               </button>
             </div>
+          ) : cashOutQueued ? (
+            <div className="cash-out-queued-banner">
+              <span>Cashing out after this hand</span>
+              <button type="button" className="btn small" onClick={onCancelQueue}>
+                Cancel
+              </button>
+            </div>
           ) : (
             <button type="button" className="btn cash-out-btn" onClick={onCashOutOpen}>
-              {cashOutQueued ? 'Queued' : 'Cash Out'}
+              Cash Out
             </button>
           )}
           {gameStarted && !rebuyAvailable && !seat.waitingForReentryBlind && (
