@@ -7,6 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/poker-engine/package.json ./packages/poker-engine/
+COPY packages/blackjack-engine/package.json ./packages/blackjack-engine/
 COPY apps/game-server/package.json ./apps/game-server/
 
 RUN npm ci
@@ -20,6 +21,9 @@ RUN npm run build -w @vct/shared-types
 COPY packages/poker-engine/ ./packages/poker-engine/
 RUN npm run build -w @vct/poker-engine
 
+COPY packages/blackjack-engine/ ./packages/blackjack-engine/
+RUN npm run build -w @vct/blackjack-engine
+
 COPY apps/game-server/ ./apps/game-server/
 RUN npm run build -w @vct/game-server
 
@@ -32,6 +36,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/poker-engine/package.json ./packages/poker-engine/
+COPY packages/blackjack-engine/package.json ./packages/blackjack-engine/
 COPY apps/game-server/package.json ./apps/game-server/
 
 RUN npm ci --omit=dev
@@ -39,6 +44,7 @@ RUN npm ci --omit=dev
 # Copy compiled output from builder (workspace symlinks resolve via package.json exports)
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/packages/poker-engine/dist ./packages/poker-engine/dist
+COPY --from=builder /app/packages/blackjack-engine/dist ./packages/blackjack-engine/dist
 COPY --from=builder /app/apps/game-server/dist ./apps/game-server/dist
 
 # Run as non-root
