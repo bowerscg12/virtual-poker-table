@@ -7,6 +7,7 @@ import {
   approveRebuy,
   autoSeatPlayer,
   claimHostIfVacant,
+  consumeBlindHandFlags,
   donateChips,
   getActiveSeatForUser,
   getLobbyById,
@@ -17,6 +18,7 @@ import {
   setFlipAnte,
   setNextHandBombPot,
   clearNextHandBombPot,
+  setNextHandBlind,
   setSitOutNextHand,
   setTableBuyIn,
   setSittingOut,
@@ -30,15 +32,19 @@ import {
 import {
   cancelInterruptedHand,
   clearActionDeadline,
+  clearBlindHandSeats,
   clearGame,
   clearIntermissionDeadline,
   getActiveGame,
   getActionDeadline,
   getAutoAction,
+  getBlindHandSeats,
+  removeBlindHandSeat,
   getHandHistories,
   getIntermissionDeadline,
   processGameAction,
   setActionDeadline,
+  setBlindHandSeats,
   setIntermissionDeadline,
   setSeatShownCards,
   startBombPotHand,
@@ -219,6 +225,19 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
 }
 
 /**
+ * Consume nextHandBlind flags from the lobby and register which seats are playing blind
+ * for the just-started hand. Must be called after startHand/startBombPotHand succeeds.
+ */
+async function applyBlindHandFlags(lobbyId: string, state: GameTableState): Promise<void> {
+  const blindUserIds = await consumeBlindHandFlags(lobbyId);
+  if (blindUserIds.length === 0) return;
+  const blindSeatIndices = state.seats
+    .filter((s) => blindUserIds.includes(s.userId))
+    .map((s) => s.seatIndex);
+  setBlindHandSeats(lobbyId, blindSeatIndices);
+}
+
+/**
  * Attempt to start the next hand for a lobby that is waiting for enough active players.
  * Clears the flag before any await to prevent concurrent triggers; restores it if startHand
  * still fails. No-op when the lobby is not in the waiting state.
@@ -248,6 +267,7 @@ async function tryStartWaitingHand(lobbyId: string): Promise<void> {
     return;
   }
 
+  await applyBlindHandFlags(lobbyId, result);
   recordHandStart(lobbyId, result);
   scheduleActionTimer(lobbyId, lobby.settings, result);
   const connected = getConnectedSet(lobbyId);
@@ -507,6 +527,7 @@ async function startNormalHandFallback(lobbyId: string, settings: VariantConfig)
     await broadcastTableState(lobbyId);
     return;
   }
+  await applyBlindHandFlags(lobbyId, result);
   recordHandStart(lobbyId, result);
   scheduleActionTimer(lobbyId, settings, result);
   await broadcastTableState(lobbyId);
@@ -548,6 +569,7 @@ async function resolveBombPotOptIn(lobbyId: string): Promise<void> {
     return;
   }
 
+  await applyBlindHandFlags(lobbyId, result);
   recordHandStart(lobbyId, result);
   await startBombPotRunout(lobbyId, result, lobby.settings);
 }
@@ -898,6 +920,7 @@ async function onIntermissionExpired(lobbyId: string, _config: VariantConfig): P
     return;
   }
 
+  await applyBlindHandFlags(lobbyId, result);
   recordHandStart(lobbyId, result);
   scheduleActionTimer(lobbyId, lobby.settings, result);
   const connectedPlayers = getConnectedSet(lobbyId);
@@ -1324,7 +1347,9 @@ async function promptShowCards(lobbyId: string, state: GameTableState, config: V
  */
 async function handleHandComplete(lobbyId: string, state: GameTableState, config: VariantConfig): Promise<void> {
   cancelActionTimer(lobbyId);
-  recordHandEnd(lobbyId, state, config);
+  const blindSeats = getBlindHandSeats(lobbyId);
+  recordHandEnd(lobbyId, state, config, blindSeats);
+  clearBlindHandSeats(lobbyId);
 
   if (state.winnerPayouts.length > 0) {
     const payouts = state.winnerPayouts;
@@ -1765,6 +1790,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'error', message: result.error });
         return;
       }
+      await applyBlindHandFlags(st.lobbyId, result);
       recordHandStart(st.lobbyId, result);
       if (isFirstStart) await updateLobbyStatus(st.lobbyId, 'playing');
       scheduleActionTimer(st.lobbyId, lobby.settings, result);
@@ -2235,6 +2261,28 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!msg.enabled) {
         await tryStartWaitingHand(st.lobbyId);
       }
+      return;
+    }
+
+    case 'set_blind_hand': {
+      if (!st.userId || !st.lobbyId) return;
+      const blindResult = await setNextHandBlind(st.lobbyId, st.userId, msg.enabled);
+      if (blindResult) {
+        const connected = getConnectedSet(st.lobbyId);
+        const withConnected = await getLobbyById(st.lobbyId, connected);
+        if (withConnected) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
+      }
+      return;
+    }
+
+    case 'reveal_blind_cards': {
+      if (!st.userId || !st.lobbyId) return;
+      const game = await getActiveGame(st.lobbyId);
+      if (!game) return;
+      const seat = game.seats.find((s) => s.userId === st.userId);
+      if (!seat) return;
+      removeBlindHandSeat(st.lobbyId, seat.seatIndex);
+      await broadcastTableState(st.lobbyId);
       return;
     }
 

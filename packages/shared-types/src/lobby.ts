@@ -23,6 +23,8 @@ export interface TableSeat {
   sitOutBlindOwed: boolean;
   /** Player rebuyed after busting and must post a big blind before re-entering active play */
   waitingForReentryBlind: boolean;
+  /** Player has opted to play their next dealt hand without seeing their hole cards */
+  nextHandBlind: boolean;
 }
 
 export interface LobbySummary {

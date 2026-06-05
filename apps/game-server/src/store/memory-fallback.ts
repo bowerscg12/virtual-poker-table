@@ -24,6 +24,7 @@ export interface MemorySeat {
   sitOutNextHand: boolean;
   sitOutBlindOwed: boolean;
   waitingForReentryBlind: boolean;
+  nextHandBlind: boolean;
   /** ISO timestamp when the current occupant took this seat — null when empty. Drives host-succession join order. */
   seatedAt: string | null;
 }
@@ -86,6 +87,7 @@ export function memoryCreateLobby(hostUserId: string, settings: VariantConfig): 
       sitOutNextHand: false,
       sitOutBlindOwed: false,
       waitingForReentryBlind: false,
+      nextHandBlind: false,
       seatedAt: null,
     })),
     createdAt: new Date().toISOString(),

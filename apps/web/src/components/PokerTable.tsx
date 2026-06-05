@@ -21,6 +21,7 @@ const BADGE_ICON: Record<BadgeType, string> = {
   whale:           '🐋',
   maniac:          '💣',
   loose_cannon:    '🎯',
+  most_blind_wins: '🙈',
 };
 
 const BADGE_LABEL: Record<BadgeType, string> = {
@@ -32,6 +33,7 @@ const BADGE_LABEL: Record<BadgeType, string> = {
   whale:           'Whale — biggest chip loss this session',
   maniac:          'Maniac — raises the most this session',
   loose_cannon:    'Loose Cannon — plays the most hands (VPIP)',
+  most_blind_wins: 'Blind Baller — most hands won while playing blind',
 };
 
 function formatActionBadge(action: PlayerActionType, amount?: number): string {
@@ -62,6 +64,7 @@ interface Props {
   isHost?: boolean;
   handActive?: boolean;
   onMoveSeat?: (fromSeatIndex: number, toSeatIndex: number) => void;
+  myBlindRevealed?: boolean;
 }
 
 interface ChipFlight {
@@ -87,7 +90,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, handActive, onMoveSeat }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, handActive, onMoveSeat, myBlindRevealed }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 8;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
@@ -205,9 +208,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
     const now = Date.now();
 
     banner.winners.forEach((winner, streamIdx) => {
-      const loopIdx = seats.findIndex(s => s.seatIndex === winner.seatIndex);
-      if (loopIdx === -1) return;
-      const dest = computeSeatCenterPx(loopIdx, angleStep, feltRect);
+      if (!seats.some(s => s.seatIndex === winner.seatIndex)) return;
+      const dest = computeSeatCenterPx(winner.seatIndex, angleStep, feltRect);
       for (let chipIdx = 0; chipIdx < 2; chipIdx++) {
         chips.push({
           id: `cf-${winner.seatIndex}-${chipIdx}-${now}`,
@@ -329,7 +331,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
       </div>
 
       <ul className="seats">
-        {seats.map((seat, i) => {
+        {[...seats].sort((a, b) => a.seatIndex - b.seatIndex).map((seat) => {
           const gs = table?.seats.find((s) => s.seatIndex === seat.seatIndex);
           const stack = gs?.stack ?? seat.stack;
           const occupied = !!seat.userId;
@@ -339,9 +341,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
           const isBetting = anim.recentBetSeat === seat.seatIndex;
           const isAllIn = gs?.allIn === true;
 
-          // Seats pushed further toward the rail (46% x-radius, 42% y-radius)
-          const x = 50 + 46 * Math.cos(angleStep * i - Math.PI / 2);
-          const y = 50 + 42 * Math.sin(angleStep * i - Math.PI / 2);
+          // Position is always derived from the seat's own index, never the array position
+          const x = 50 + 46 * Math.cos(angleStep * seat.seatIndex - Math.PI / 2);
+          const y = 50 + 42 * Math.sin(angleStep * seat.seatIndex - Math.PI / 2);
 
           const isDraggable = !!(canDragSeats && occupied);
           const isDragTarget = !!(canDragSeats && dragFromSeat !== null && seat.seatIndex !== dragFromSeat);
@@ -429,6 +431,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
                   <span className="sit-out-badge">
                     {seat.sitOutBlindOwed ? 'Blind owed' : 'Sitting Out'}
                   </span>
+                )}
+                {occupied && gs?.isBlindThisHand && !(isMe && myBlindRevealed) && (
+                  <span className="blind-hand-badge">BLIND</span>
                 )}
                 {occupied && gs?.lastAction && (
                   <span className={`action-badge action-badge--${gs.lastAction.action}`}>

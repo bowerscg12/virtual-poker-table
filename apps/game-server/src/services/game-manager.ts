@@ -45,6 +45,29 @@ let dealerRotations = new Map<string, number>();
 /** Per-seat last action, keyed lobbyId → seatIndex. Cleared on street advance and new hand. */
 const seatLastActions = new Map<string, Map<number, { action: PlayerActionType; amount?: number }>>();
 
+/** Seat indices playing blind this hand, keyed by lobbyId. Set at hand start, cleared at hand end. */
+const blindHandSeats = new Map<string, Set<number>>();
+
+export function setBlindHandSeats(lobbyId: string, seatIndices: number[]): void {
+  if (seatIndices.length === 0) { blindHandSeats.delete(lobbyId); return; }
+  blindHandSeats.set(lobbyId, new Set(seatIndices));
+}
+
+export function getBlindHandSeats(lobbyId: string): Set<number> {
+  return blindHandSeats.get(lobbyId) ?? new Set();
+}
+
+export function clearBlindHandSeats(lobbyId: string): void {
+  blindHandSeats.delete(lobbyId);
+}
+
+export function removeBlindHandSeat(lobbyId: string, seatIndex: number): void {
+  const seats = blindHandSeats.get(lobbyId);
+  if (!seats) return;
+  seats.delete(seatIndex);
+  if (seats.size === 0) blindHandSeats.delete(lobbyId);
+}
+
 /** Consecutive hand wins, keyed lobbyId → userId → streak count. Persists across hands. */
 const consecutiveWins = new Map<string, Map<string, number>>();
 
@@ -508,6 +531,9 @@ function computeBadges(lobbyId: string, state: GameTableState): Map<number, Badg
   // loose_cannon: highest VPIP rate
   awardLeader((d) => d.vpipHands / d.handsPlayed, 0, 'loose_cannon', withHands);
 
+  // most_blind_wins: most hands won while playing blind (minimum 1 to qualify)
+  awardLeader((d) => d.handsWonBlind, 0, 'most_blind_wins');
+
   // whale: largest net chip loss (total invested − current stack)
   const withLoss = seated.map((d) => {
     const currentStack = state.seats.find((s) => s.userId === d.userId)?.stack ?? 0;
@@ -656,6 +682,7 @@ export function toPublicState(
       shownCards: revealHole ? s.shownCards : undefined,
       lastAction: lastActions?.get(s.seatIndex),
       badges: badges.get(s.seatIndex),
+      isBlindThisHand: blindHandSeats.get(lobbyId)?.has(s.seatIndex) || undefined,
     })),
     pots: displayPots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
     dealerSeatIndex: state.dealerSeatIndex,
@@ -758,6 +785,7 @@ export function clearGame(lobbyId: string): void {
   activeGames.delete(lobbyId);
   seatLastActions.delete(lobbyId);
   consecutiveWins.delete(lobbyId);
+  blindHandSeats.delete(lobbyId);
 }
 
 /** Streets that indicate a hand is actively in progress and has not yet completed. */
@@ -810,6 +838,7 @@ export async function cancelInterruptedHand(lobbyId: string): Promise<boolean> {
 
   activeGames.delete(lobbyId);
   seatLastActions.delete(lobbyId);
+  blindHandSeats.delete(lobbyId);
   await redisDel(keys.tableState(lobbyId));
 
   console.log(`[recovery] Lobby ${lobbyId} returned to waiting state`);

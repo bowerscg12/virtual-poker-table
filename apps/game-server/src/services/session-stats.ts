@@ -9,6 +9,7 @@ interface StatsAccumulator {
   startedAt: number;
   handsPlayed: number;
   handsWon: number;
+  handsWonBlind: number;
   biggestPotWon: number;
   biggestLoss: number;
   bestHand: EvaluatedHand | null;
@@ -36,6 +37,7 @@ export interface SessionBadgeData {
   vpipHands: number;
   totalRaises: number;
   totalChipsPurchased: number;
+  handsWonBlind: number;
 }
 
 /** lobbyId → userId → accumulator */
@@ -86,6 +88,7 @@ export function initSession(
     startedAt: Date.now(),
     handsPlayed: 0,
     handsWon: 0,
+    handsWonBlind: 0,
     biggestPotWon: 0,
     biggestLoss: 0,
     bestHand: null,
@@ -172,7 +175,8 @@ export function recordRebuy(lobbyId: string, userId: string, amount: number): vo
 export function recordHandEnd(
   lobbyId: string,
   state: GameTableState,
-  config: VariantConfig
+  config: VariantConfig,
+  blindSeatIndices?: Set<number>
 ): void {
   const lobbyMap = sessions.get(lobbyId);
   if (!lobbyMap) return;
@@ -195,6 +199,7 @@ export function recordHandEnd(
 
     if (winners.has(seat.seatIndex)) {
       acc.handsWon++;
+      if (blindSeatIndices?.has(seat.seatIndex)) acc.handsWonBlind++;
       if (delta > 0) {
         if (delta > acc.biggestPotWon) acc.biggestPotWon = delta;
         acc.totalPotsWon += delta;
@@ -248,6 +253,7 @@ export function finalizeCashOut(
   const totalChipsPurchased = acc?.totalChipsPurchased ?? startingStack;
   const foldWinsShown = acc?.foldWinsShown ?? 0;
   const foldWinsMucked = acc?.foldWinsMucked ?? 0;
+  const handsWonBlind = acc?.handsWonBlind ?? 0;
 
   let mostCommonStartingHand: CashOutSummary['mostCommonStartingHand'] = null;
   if (acc && acc.startingHandCounts.size > 0) {
@@ -290,6 +296,7 @@ export function finalizeCashOut(
     totalChipsPurchased,
     foldWinsShown,
     foldWinsMucked,
+    handsWonBlind,
   };
 
   // Clean up
@@ -311,6 +318,7 @@ export function getSessionBadgeData(lobbyId: string): SessionBadgeData[] {
     vpipHands: acc.vpipHands,
     totalRaises: acc.actionCounts.raise + acc.actionCounts.all_in,
     totalChipsPurchased: acc.totalChipsPurchased,
+    handsWonBlind: acc.handsWonBlind,
   }));
 }
 

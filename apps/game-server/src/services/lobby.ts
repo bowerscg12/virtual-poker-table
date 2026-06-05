@@ -1,6 +1,6 @@
 import type { ActiveSeatInfo, AvatarConfig, CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
 import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, TIMER_STEPS_SEC, getTableBuyIn } from '@vct/shared-types';
-import { and, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { lobbies, playerSessions, tableSeats, users } from '../db/schema.js';
 import {
@@ -59,6 +59,7 @@ async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_next_hand BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS sit_out_blind_owed BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS waiting_for_reentry_blind BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS next_hand_blind BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS seated_at TIMESTAMP;
     `);
   } catch (err) {
@@ -114,6 +115,7 @@ function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): Lobb
         sitOutNextHand: s.sitOutNextHand,
         sitOutBlindOwed: s.sitOutBlindOwed,
         waitingForReentryBlind: s.waitingForReentryBlind,
+        nextHandBlind: s.nextHandBlind,
       };
     }),
     createdAt: lobby.createdAt,
@@ -186,7 +188,7 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
   const [host] = lobby.hostUserId
     ? await db.select().from(users).where(eq(users.id, lobby.hostUserId)).limit(1)
     : [];
-  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId)).orderBy(asc(tableSeats.seatIndex));
   const seatSummaries: TableSeat[] = [];
   for (const s of seats) {
     let displayName: string | null = null;
@@ -207,6 +209,7 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
       sitOutNextHand: s.sitOutNextHand,
       sitOutBlindOwed: s.sitOutBlindOwed,
       waitingForReentryBlind: s.waitingForReentryBlind,
+      nextHandBlind: s.nextHandBlind ?? false,
     });
   }
   return {
@@ -537,6 +540,7 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
       seat.sitOutNextHand = false;
       seat.sitOutBlindOwed = false;
       seat.waitingForReentryBlind = false;
+      seat.nextHandBlind = false;
       seat.seatedAt = null;
     }
     if (kickedUserId) reassignMemoryHostIfLeft(lobby, kickedUserId);
@@ -547,7 +551,7 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
   const seat = seats.find((s) => s.seatIndex === seatIndex);
   const kickedUserId = seat?.userId ?? null;
   if (seat) {
-    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, seatedAt: null }).where(eq(tableSeats.id, seat.id));
+    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, nextHandBlind: false, seatedAt: null }).where(eq(tableSeats.id, seat.id));
     if (kickedUserId) {
       const [lobbyRow] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
       if (lobbyRow?.hostUserId === kickedUserId) {
@@ -573,9 +577,9 @@ export async function swapSeats(
     const sa = lobby.seats.find((s) => s.seatIndex === seatA);
     const sb = lobby.seats.find((s) => s.seatIndex === seatB);
     if (!sa || !sb) return { error: 'Invalid seat index' };
-    const tmp = { userId: sa.userId, stack: sa.stack, sittingOut: sa.sittingOut, sitOutNextHand: sa.sitOutNextHand, sitOutBlindOwed: sa.sitOutBlindOwed, waitingForReentryBlind: sa.waitingForReentryBlind, seatedAt: sa.seatedAt };
-    sa.userId = sb.userId; sa.stack = sb.stack; sa.sittingOut = sb.sittingOut; sa.sitOutNextHand = sb.sitOutNextHand; sa.sitOutBlindOwed = sb.sitOutBlindOwed; sa.waitingForReentryBlind = sb.waitingForReentryBlind; sa.seatedAt = sb.seatedAt;
-    sb.userId = tmp.userId; sb.stack = tmp.stack; sb.sittingOut = tmp.sittingOut; sb.sitOutNextHand = tmp.sitOutNextHand; sb.sitOutBlindOwed = tmp.sitOutBlindOwed; sb.waitingForReentryBlind = tmp.waitingForReentryBlind; sb.seatedAt = tmp.seatedAt;
+    const tmp = { userId: sa.userId, stack: sa.stack, sittingOut: sa.sittingOut, sitOutNextHand: sa.sitOutNextHand, sitOutBlindOwed: sa.sitOutBlindOwed, waitingForReentryBlind: sa.waitingForReentryBlind, nextHandBlind: sa.nextHandBlind, seatedAt: sa.seatedAt };
+    sa.userId = sb.userId; sa.stack = sb.stack; sa.sittingOut = sb.sittingOut; sa.sitOutNextHand = sb.sitOutNextHand; sa.sitOutBlindOwed = sb.sitOutBlindOwed; sa.waitingForReentryBlind = sb.waitingForReentryBlind; sa.nextHandBlind = sb.nextHandBlind; sa.seatedAt = sb.seatedAt;
+    sb.userId = tmp.userId; sb.stack = tmp.stack; sb.sittingOut = tmp.sittingOut; sb.sitOutNextHand = tmp.sitOutNextHand; sb.sitOutBlindOwed = tmp.sitOutBlindOwed; sb.waitingForReentryBlind = tmp.waitingForReentryBlind; sb.nextHandBlind = tmp.nextHandBlind; sb.seatedAt = tmp.seatedAt;
     return toSummary(lobby);
   }
 
@@ -586,8 +590,8 @@ export async function swapSeats(
   if (!rowA || !rowB) return { error: 'Invalid seat index' };
 
   await Promise.all([
-    db.update(tableSeats).set({ userId: rowB.userId, stack: rowB.stack, sittingOut: rowB.sittingOut, sitOutNextHand: rowB.sitOutNextHand, sitOutBlindOwed: rowB.sitOutBlindOwed, waitingForReentryBlind: rowB.waitingForReentryBlind, seatedAt: rowB.seatedAt }).where(eq(tableSeats.id, rowA.id)),
-    db.update(tableSeats).set({ userId: rowA.userId, stack: rowA.stack, sittingOut: rowA.sittingOut, sitOutNextHand: rowA.sitOutNextHand, sitOutBlindOwed: rowA.sitOutBlindOwed, waitingForReentryBlind: rowA.waitingForReentryBlind, seatedAt: rowA.seatedAt }).where(eq(tableSeats.id, rowB.id)),
+    db.update(tableSeats).set({ userId: rowB.userId, stack: rowB.stack, sittingOut: rowB.sittingOut, sitOutNextHand: rowB.sitOutNextHand, sitOutBlindOwed: rowB.sitOutBlindOwed, waitingForReentryBlind: rowB.waitingForReentryBlind, nextHandBlind: rowB.nextHandBlind, seatedAt: rowB.seatedAt }).where(eq(tableSeats.id, rowA.id)),
+    db.update(tableSeats).set({ userId: rowA.userId, stack: rowA.stack, sittingOut: rowA.sittingOut, sitOutNextHand: rowA.sitOutNextHand, sitOutBlindOwed: rowA.sitOutBlindOwed, waitingForReentryBlind: rowA.waitingForReentryBlind, nextHandBlind: rowA.nextHandBlind, seatedAt: rowA.seatedAt }).where(eq(tableSeats.id, rowB.id)),
   ]);
   return (await getLobbyById(lobbyId))!;
 }
@@ -760,6 +764,7 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
       seat.sitOutNextHand = false;
       seat.sitOutBlindOwed = false;
       seat.waitingForReentryBlind = false;
+      seat.nextHandBlind = false;
       seat.seatedAt = null;
     }
     reassignMemoryHostIfLeft(mem, userId);
@@ -771,7 +776,7 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
   if (seat) {
     await db
       .update(tableSeats)
-      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, seatedAt: null })
+      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, nextHandBlind: false, seatedAt: null })
       .where(eq(tableSeats.id, seat.id));
     const [lobbyRow] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
     if (lobbyRow?.hostUserId === userId) {
@@ -835,6 +840,58 @@ export async function setSitOutNextHand(
     .set({ sitOutNextHand: enabled, sitOutBlindOwed: enabled ? true : false })
     .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
   return getLobbyById(lobbyId);
+}
+
+export async function setNextHandBlind(
+  lobbyId: string,
+  userId: string,
+  enabled: boolean
+): Promise<LobbySummary | null> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return null;
+    const seat = mem.seats.find((s) => s.userId === userId);
+    if (seat) seat.nextHandBlind = enabled;
+    return toSummary(mem);
+  }
+  const db = getDb();
+  await db
+    .update(tableSeats)
+    .set({ nextHandBlind: enabled })
+    .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
+  return getLobbyById(lobbyId);
+}
+
+/**
+ * Returns the userIds of all seated players who have opted into blind mode,
+ * then clears the flag for all of them. Call once per hand start.
+ */
+export async function consumeBlindHandFlags(lobbyId: string): Promise<string[]> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return [];
+    const userIds: string[] = [];
+    for (const seat of mem.seats) {
+      if (seat.nextHandBlind && seat.userId) {
+        userIds.push(seat.userId);
+        seat.nextHandBlind = false;
+      }
+    }
+    return userIds;
+  }
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(tableSeats)
+    .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.nextHandBlind, true)));
+  const userIds = rows.map((r) => r.userId).filter((id): id is string => !!id);
+  if (userIds.length > 0) {
+    await db
+      .update(tableSeats)
+      .set({ nextHandBlind: false })
+      .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.nextHandBlind, true)));
+  }
+  return userIds;
 }
 
 /**

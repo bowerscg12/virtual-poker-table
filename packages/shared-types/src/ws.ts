@@ -31,6 +31,8 @@ export type ClientMessage =
   | { type: 'rebuy' }
   | { type: 'show_cards'; show: boolean }
   | { type: 'sit_out_next_hand'; enabled: boolean }
+  | { type: 'set_blind_hand'; enabled: boolean }
+  | { type: 'reveal_blind_cards' }
   | { type: 'donate_chips'; recipientSeatIndex: number; amount: number; donationId: string }
   | { type: 'ping' };
 

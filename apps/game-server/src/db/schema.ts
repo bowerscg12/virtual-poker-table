@@ -29,6 +29,7 @@ export const tableSeats = pgTable('table_seats', {
   sitOutNextHand: boolean('sit_out_next_hand').default(false).notNull(),
   sitOutBlindOwed: boolean('sit_out_blind_owed').default(false).notNull(),
   waitingForReentryBlind: boolean('waiting_for_reentry_blind').default(false).notNull(),
+  nextHandBlind: boolean('next_hand_blind').default(false).notNull(),
   seatedAt: timestamp('seated_at'),
 });
 

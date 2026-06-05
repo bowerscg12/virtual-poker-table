@@ -13,7 +13,8 @@ export type BadgeType =
   | 'charlie'         // highest preflop fold rate this session
   | 'whale'           // largest net chip loss this session
   | 'maniac'          // most raises this session
-  | 'loose_cannon';   // highest VPIP rate this session
+  | 'loose_cannon'    // highest VPIP rate this session
+  | 'most_blind_wins'; // most hands won while playing blind this session
 
 export interface PotInfo {
   amount: number;
@@ -40,6 +41,8 @@ export interface SeatGameState {
   lastAction?: { action: PlayerActionType; amount?: number };
   /** Active superlative badges — computed server-side each broadcast */
   badges?: BadgeType[];
+  /** True while this player is playing the current hand without seeing their hole cards */
+  isBlindThisHand?: boolean;
 }
 
 export interface PublicTableState {

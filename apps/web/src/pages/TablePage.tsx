@@ -36,6 +36,7 @@ export default function TablePage() {
   const [dismissedShowdownHandNum, setDismissedShowdownHandNum] = useState<number | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
   const [donationNotice, setDonationNotice] = useState<string | null>(null);
+  const [cardsRevealed, setCardsRevealed] = useState(false);
 
   const {
     connected,
@@ -105,6 +106,11 @@ export default function TablePage() {
     if (rebuyAvailable) setRebuyDismissed(false);
   }, [rebuyAvailable]);
 
+  // Reset blind reveal state each new hand
+  useEffect(() => {
+    if (table?.street === 'preflop') setCardsRevealed(false);
+  }, [table?.handNumber]);
+
   useEffect(() => {
     if (!donationReceived) return;
     const { donorDisplayName, amount } = donationReceived;
@@ -164,6 +170,8 @@ export default function TablePage() {
   }
 
   const holeCards = privateState?.holeCards ?? [];
+  const myGameSeat = table?.seats.find((s) => s.userId === user?.id);
+  const isBlindThisHand = myGameSeat?.isBlindThisHand ?? false;
 
   function copyInvite() {
     if (!headerLobby) return;
@@ -253,6 +261,10 @@ export default function TablePage() {
             onLeaveTable={() => send({ type: 'cash_out' })}
             onSitOutToggle={(enabled) => send({ type: 'sit_out_next_hand', enabled })}
             onDonateOpen={() => setDonateOpen(true)}
+            isBlindThisHand={isBlindThisHand}
+            cardsRevealed={cardsRevealed}
+            onRevealCards={() => { setCardsRevealed(true); send({ type: 'reveal_blind_cards' }); }}
+            onBlindHandToggle={(enabled) => send({ type: 'set_blind_hand', enabled })}
           />
         )}
         <div className="table-felt-wrapper">
@@ -278,6 +290,7 @@ export default function TablePage() {
               isHost={isHost}
               handActive={handActive}
               onMoveSeat={(from, to) => send({ type: 'host_move_player', fromSeatIndex: from, toSeatIndex: to })}
+              myBlindRevealed={cardsRevealed}
             />
           )}
 

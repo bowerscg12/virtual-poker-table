@@ -88,6 +88,9 @@ export function SessionResultsModal({ summary, onLeave }: Props) {
             <h3 className="results-section-title">Hands</h3>
             <StatRow label="Played" value={String(summary.handsPlayed)} />
             <StatRow label="Won" value={String(summary.handsWon)} />
+            {summary.handsWonBlind > 0 && (
+              <StatRow label="Won blind" value={String(summary.handsWonBlind)} />
+            )}
             <StatRow
               label="Win rate"
               value={summary.handsPlayed > 0 ? `${Math.round(summary.winPercentage * 100)}%` : '—'}

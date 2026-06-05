@@ -30,6 +30,12 @@ interface Props {
   onLeaveTable: () => void;
   onSitOutToggle: (enabled: boolean) => void;
   onDonateOpen?: () => void;
+
+  // Blind hand
+  isBlindThisHand: boolean;
+  cardsRevealed: boolean;
+  onRevealCards: () => void;
+  onBlindHandToggle: (enabled: boolean) => void;
 }
 
 export function HeroActionPanel({
@@ -54,25 +60,48 @@ export function HeroActionPanel({
   onLeaveTable,
   onSitOutToggle,
   onDonateOpen,
+  isBlindThisHand,
+  cardsRevealed,
+  onRevealCards,
+  onBlindHandToggle,
 }: Props) {
+  const showBlindCards = isBlindThisHand && !cardsRevealed;
+
   return (
     <div className="hero-action-panel">
       {/* Left column — YOUR CARDS */}
       <div className="hero-panel__cards">
-        <span className="hero-panel__label">Your Cards</span>
+        <span className="hero-panel__label">
+          {showBlindCards ? <span className="blind-hand-badge blind-hand-badge--inline">BLIND</span> : 'Your Cards'}
+        </span>
         <div className="hero-panel__cards-row">
-          {holeCards.map((card, index) => {
-            const delayClass = dealDelayClasses[index as 0 | 1] ?? '';
-            const dealClass = isDealingThisHand && delayClass ? `dealing ${delayClass}` : '';
-            return (
-              <div
-                key={index}
-                className={['card-anim-wrapper', dealClass].filter(Boolean).join(' ')}
-              >
-                <CardView card={card} faceUp />
-              </div>
-            );
-          })}
+          {showBlindCards ? (
+            holeCards.map((_, index) => {
+              const delayClass = dealDelayClasses[index as 0 | 1] ?? '';
+              const dealClass = isDealingThisHand && delayClass ? `dealing ${delayClass}` : '';
+              return (
+                <div
+                  key={index}
+                  className={['card-anim-wrapper', dealClass].filter(Boolean).join(' ')}
+                >
+                  <div className="playing-card back" />
+                </div>
+              );
+            })
+          ) : (
+            holeCards.map((card, index) => {
+              const delayClass = dealDelayClasses[index as 0 | 1] ?? '';
+              const dealClass = isDealingThisHand && delayClass ? `dealing ${delayClass}` : '';
+              return (
+                <div
+                  key={index}
+                  className={['card-anim-wrapper', dealClass].filter(Boolean).join(' ')}
+                >
+                  <CardView card={card} faceUp />
+                </div>
+              );
+            })
+          )}
         </div>
         <div className="hero-panel__meta">
           <span className="hero-panel__stack">{formatChips(seat.stack)}</span>
@@ -99,6 +128,24 @@ export function HeroActionPanel({
           ) : (
             <button type="button" className="btn cash-out-btn" onClick={onCashOutOpen}>
               Cash Out
+            </button>
+          )}
+          {showBlindCards && holeCards.length > 0 && (
+            <button
+              type="button"
+              className="btn blind-reveal-btn"
+              onClick={onRevealCards}
+            >
+              Reveal My Cards
+            </button>
+          )}
+          {gameStarted && !rebuyAvailable && !seat.waitingForReentryBlind && !isBlindThisHand && (
+            <button
+              type="button"
+              className={`btn sit-out-toggle${seat.nextHandBlind ? ' sit-out-toggle--active' : ''}`}
+              onClick={() => onBlindHandToggle(!seat.nextHandBlind)}
+            >
+              {seat.nextHandBlind ? 'Cancel Blind' : 'Play Next Hand Blind'}
             </button>
           )}
           {gameStarted && !rebuyAvailable && !seat.waitingForReentryBlind && (

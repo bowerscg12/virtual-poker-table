@@ -845,6 +845,9 @@ select {
 
 .seat.occupied .seat-info {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   background: rgba(0, 0, 0, 0.35);
   padding: 0.25rem 0.4rem;
   border-radius: 8px;
@@ -1103,6 +1106,21 @@ select {
   border-color: rgba(239, 183, 71, 0.5);
 }
 
+/* ── Reveal My Cards button (blind mode) ─────────────────────────────────── */
+.blind-reveal-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.15);
+  font-size: 0.87rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.blind-reveal-btn:hover {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: rgba(139, 92, 246, 0.7);
+}
+
 /* ── Sit Out Next Hand toggle ─────────────────────────────────────────────── */
 .sit-out-toggle {
   flex-shrink: 0;
@@ -1120,7 +1138,7 @@ select {
 
 /* ── Sit-out seat badge ────────────────────────────────────────────────────── */
 .sit-out-badge {
-  display: inline-block;
+  display: block;
   margin-top: 3px;
   padding: 1px 6px;
   border-radius: 4px;
@@ -1133,9 +1151,36 @@ select {
   border: 1px solid rgba(120, 120, 120, 0.25);
 }
 
+/* ── Blind hand seat badge ───────────────────────────────────────────────── */
+.blind-hand-badge {
+  display: block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.25);
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  animation: blind-pulse 2s ease-in-out infinite;
+}
+
+.blind-hand-badge--inline {
+  font-size: 0.7rem;
+  margin-top: 0;
+  vertical-align: middle;
+}
+
+@keyframes blind-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
 /* ── Out-of-chips seat badge ─────────────────────────────────────────────── */
 .out-of-chips-badge {
-  display: inline-block;
+  display: block;
   margin-top: 3px;
   padding: 1px 6px;
   border-radius: 4px;
@@ -1150,7 +1195,7 @@ select {
 
 /* ── Waiting-for-BB seat badge ───────────────────────────────────────────── */
 .waiting-bb-badge {
-  display: inline-block;
+  display: block;
   margin-top: 3px;
   padding: 1px 6px;
   border-radius: 4px;
@@ -1780,7 +1825,7 @@ select {
 /* ── Last-action badge — persists until next action ───────────────────────── */
 
 .action-badge {
-  display: inline-block;
+  display: block;
   margin-top: 3px;
   padding: 0.1rem 0.32rem;
   border-radius: 4px;
@@ -1868,6 +1913,7 @@ select {
 .seat-badge--whale           { background: rgba(25, 75, 155, 0.85); }
 .seat-badge--maniac          { background: rgba(175, 35, 55, 0.85); }
 .seat-badge--loose_cannon    { background: rgba(115, 50, 175, 0.85); }
+.seat-badge--most_blind_wins { background: rgba(109, 40, 217, 0.85); }
 
 /* Tooltip */
 .seat-badge-tip {
@@ -2158,6 +2204,11 @@ select {
   animation-duration: 0.35s;
   animation-timing-function: ease-out;
   animation-fill-mode: both;
+}
+
+/* Bet badge — own row in the seat capsule */
+.bet {
+  display: block;
 }
 
 /* Bet badge pulse */

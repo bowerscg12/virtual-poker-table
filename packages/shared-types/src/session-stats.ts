@@ -39,4 +39,5 @@ export interface CashOutSummary {
   totalChipsPurchased: number;
   foldWinsShown: number;
   foldWinsMucked: number;
+  handsWonBlind: number;
 }
