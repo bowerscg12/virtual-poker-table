@@ -19,6 +19,7 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/sensible": "^6.0.3",
     "@fastify/websocket": "^11.0.2",
+    "@vct/blackjack-engine": "*",
     "@vct/poker-engine": "*",
     "@vct/shared-types": "*",
     "bcryptjs": "^3.0.2",
