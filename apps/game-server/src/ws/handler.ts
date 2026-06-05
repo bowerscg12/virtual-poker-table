@@ -1093,9 +1093,9 @@ function cancelIntermissionTimer(lobbyId: string): void {
   intermissionTimerGenerations.set(lobbyId, (intermissionTimerGenerations.get(lobbyId) ?? 0) + 1);
 }
 
-const INTERMISSION_MS = 20_000;
+const INTERMISSION_MS = 15_000;
 
-/** Schedule the next hand to start after delayMs (default 20 s). */
+/** Schedule the next hand to start after delayMs (default 15 s). */
 function scheduleIntermission(lobbyId: string, config: VariantConfig, delayMs = INTERMISSION_MS): void {
   cancelIntermissionTimer(lobbyId);
   const gen = intermissionTimerGenerations.get(lobbyId) ?? 0;
