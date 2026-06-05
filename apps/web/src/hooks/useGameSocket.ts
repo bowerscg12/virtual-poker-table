@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ClientMessage, CashOutSummary, LobbySummary, PublicTableState, ServerMessage } from '@vct/shared-types';
 import type { Card, LegalAction } from '@vct/shared-types';
 import { getWsUrl } from '../api/client';
+import { useBlackjackState } from './useBlackjackState';
 
 const SESSION_ID_KEY = 'vct_session_id';
 
@@ -12,6 +13,7 @@ const RECONNECT_MAX_DELAY_MS = 30_000;
 const RECONNECT_MAX_ATTEMPTS = 12;
 
 export function useGameSocket(token: string | null, lobbyId: string | null) {
+  const bj = useBlackjackState();
   const wsRef = useRef<WebSocket | null>(null);
   const pendingMessagesRef = useRef<ClientMessage[]>([]);
   const readyToFlushRef = useRef(false);
@@ -295,6 +297,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             break;
 
           default:
+            bj.handleBjMessage(msg);
             break;
         }
       };
@@ -360,6 +363,11 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     donationConfirmed,
     rabbitHuntAvailable,
     rabbitCards,
+    // Blackjack state (non-null only when in a blackjack lobby)
+    bjState: bj.bjState,
+    bjLegalActions: bj.bjLegalActions,
+    bjRoundResults: bj.bjRoundResults,
+    clearBjRoundResults: bj.clearBjRoundResults,
     send,
   };
 }

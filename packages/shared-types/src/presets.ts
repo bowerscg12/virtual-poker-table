@@ -51,4 +51,22 @@ export const RULES_PRESETS: RulesPreset[] = [
       twelveCardFlipAnte: 500,
     },
   },
+  {
+    id: 'blackjack-standard',
+    name: 'Blackjack',
+    description: 'Work in progress...',
+    config: {
+      game: 'blackjack',
+      limit: 'no_limit',
+      maxPlayers: 6,
+      blinds: { small: 0, big: 0 },
+      buyIn: 1000,
+      minBuyIn: 100,
+      maxBuyIn: 5000,
+      blackjackNumDecks: 6,
+      blackjackMinBet: 5,
+      blackjackMaxBet: 500,
+      blackjackDealerSoftSeventeen: 'stand',
+    },
+  },
 ];

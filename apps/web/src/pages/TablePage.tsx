@@ -8,6 +8,7 @@ import { useGameSocket } from '../hooks/useGameSocket';
 import { useTableAnimations } from '../hooks/useTableAnimations';
 import { PokerTable } from '../components/PokerTable';
 import { TwelveCardFlip } from '../components/TwelveCardFlip';
+import { BlackjackTable } from '../components/BlackjackTable';
 import { TableHeader } from '../components/TableHeader';
 import { HeroActionPanel } from '../components/HeroActionPanel';
 import { ChatPanel } from '../components/ChatPanel';
@@ -64,6 +65,10 @@ export default function TablePage() {
     donationConfirmed,
     rabbitHuntAvailable,
     rabbitCards,
+    bjState,
+    bjLegalActions,
+    bjRoundResults,
+    clearBjRoundResults,
     send,
   } = useGameSocket(token, lobbyId ?? null);
 
@@ -188,11 +193,12 @@ export default function TablePage() {
   function handleLeaveTable() { clearCashOutSummary(); navigate('/'); }
 
   const isTcf = headerLobby?.settings.game === 'twelve_card_flip';
+  const isBlackjack = headerLobby?.settings.game === 'blackjack';
   const handActive = !!(table && table.street !== 'complete' && table.street !== 'waiting');
-  const showHeroPanel = !!(mySeat && !isTcf);
+  const showHeroPanel = !!(mySeat && !isTcf && !isBlackjack);
 
   return (
-    <div className={`table-layout${isTcf ? ' table-layout--tcf' : ''}${showHeroPanel ? ' table-layout--hero' : ''}`}>
+    <div className={`table-layout${isTcf ? ' table-layout--tcf' : ''}${isBlackjack ? ' table-layout--bj' : ''}${showHeroPanel ? ' table-layout--hero' : ''}`}>
       <div className="rotate-overlay">
         <span style={{ fontSize: '3rem' }}>⟳</span>
         <p>Rotate your device to play</p>
@@ -274,7 +280,19 @@ export default function TablePage() {
           />
         )}
         <div className="table-felt-wrapper">
-          {isTcf ? (
+          {isBlackjack && headerLobby ? (
+            <BlackjackTable
+              lobby={headerLobby}
+              bjState={bjState}
+              legalActions={bjLegalActions}
+              roundResults={bjRoundResults}
+              myUserId={user?.id ?? ''}
+              isHost={isHost}
+              messages={chat}
+              onClearRoundResults={clearBjRoundResults}
+              onSend={send}
+            />
+          ) : isTcf ? (
             <TwelveCardFlip
               lobby={headerLobby!}
               table={table}
@@ -300,7 +318,7 @@ export default function TablePage() {
             />
           )}
 
-          {!mySeat && headerLobby && token && connected && !isTcf && (
+          {!mySeat && headerLobby && token && connected && !isTcf && !isBlackjack && (
             <div className="sit-panel panel">
               {tableFull ? (
                 <p>Table is full. Wait for a seat to open.</p>
@@ -310,7 +328,7 @@ export default function TablePage() {
             </div>
           )}
 
-          {rabbitHuntAvailable && !isTcf && (
+          {rabbitHuntAvailable && !isTcf && !isBlackjack && (
             <div className="rabbit-hunt-widget">
               {rabbitCards ? (
                 <div className="rabbit-hunt-result">

@@ -1,4 +1,4 @@
-export type GameVariant = 'holdem' | 'omaha' | 'plo8' | 'stud' | 'twelve_card_flip';
+export type GameVariant = 'holdem' | 'omaha' | 'plo8' | 'stud' | 'twelve_card_flip' | 'blackjack';
 export type BettingLimit = 'no_limit' | 'pot_limit' | 'fixed';
 export type MaxPlayers = 2 | 6 | 8;
 
@@ -50,6 +50,16 @@ export interface VariantConfig {
   extraFlopCards?: number;
   /** Bomb pot ante per player for twelve_card_flip (defaults to buyIn) */
   twelveCardFlipAnte?: number;
+
+  // ── Blackjack-specific settings ──────────────────────────────────────────
+  /** Number of 52-card decks in the shoe. Default: 6. */
+  blackjackNumDecks?: 1 | 4 | 6 | 8;
+  /** Minimum bet allowed per hand. Default: 5. */
+  blackjackMinBet?: number;
+  /** Maximum bet allowed per hand. Default: 500. */
+  blackjackMaxBet?: number;
+  /** Whether dealer hits (h17) or stands (s17) on soft 17. Default: 'stand'. */
+  blackjackDealerSoftSeventeen?: 'hit' | 'stand';
 }
 
 /** Stack chips granted when a player sits (host-configured). */

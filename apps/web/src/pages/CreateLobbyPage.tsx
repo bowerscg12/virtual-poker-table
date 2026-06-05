@@ -49,9 +49,15 @@ export default function CreateLobbyPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const [bjMinBet, setBjMinBet] = useState('5');
+  const [bjMaxBet, setBjMaxBet] = useState('500');
+  const [bjNumDecks, setBjNumDecks] = useState<1 | 4 | 6 | 8>(6);
+  const [bjSoftSeventeen, setBjSoftSeventeen] = useState<'hit' | 'stand'>('stand');
+
   const selectedPreset = presets.find((preset) => preset.id === presetId) ?? presets[0];
   const isHoldem = selectedPreset?.config.game === 'holdem';
   const isTwelveCardFlip = selectedPreset?.config.game === 'twelve_card_flip';
+  const isBlackjack = selectedPreset?.config.game === 'blackjack';
   const hasPreset = !!selectedPreset;
 
   const parsedBuyIn = parsePositiveInt(buyIn);
@@ -61,7 +67,7 @@ export default function CreateLobbyPage() {
 
   const isValidBuyIn =
     parsedBuyIn !== null && parsedBuyIn >= 10 && parsedBuyIn <= 10000 && parsedBuyIn % 5 === 0;
-  const isValidBlinds = isTwelveCardFlip || (parsedSmallBlind !== null && parsedBigBlind !== null);
+  const isValidBlinds = isTwelveCardFlip || isBlackjack || (parsedSmallBlind !== null && parsedBigBlind !== null);
   const isValidStraddle =
     !isHoldem ||
     !straddleEnabled ||
@@ -114,6 +120,28 @@ export default function CreateLobbyPage() {
         minBuyIn: parsedBuyIn,
         maxBuyIn: parsedBuyIn,
         twelveCardFlipAnte: parsedBuyIn,
+        actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
+      };
+      navigate('/name', { state: { mode: 'create', presetId, settings } });
+      return;
+    }
+
+    if (isBlackjack) {
+      const parsedMinBet = parsePositiveInt(bjMinBet);
+      const parsedMaxBet = parsePositiveInt(bjMaxBet);
+      if (!parsedMinBet || !parsedMaxBet || parsedMinBet > parsedMaxBet) {
+        setError('Bet limits must be valid positive numbers with min ≤ max.');
+        return;
+      }
+      const settings: VariantConfig = {
+        ...base,
+        buyIn: parsedBuyIn,
+        minBuyIn: parsedBuyIn,
+        maxBuyIn: Math.max(parsedBuyIn, base.maxBuyIn),
+        blackjackNumDecks: bjNumDecks,
+        blackjackMinBet: parsedMinBet,
+        blackjackMaxBet: parsedMaxBet,
+        blackjackDealerSoftSeventeen: bjSoftSeventeen,
         actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
       };
       navigate('/name', { state: { mode: 'create', presetId, settings } });
@@ -182,7 +210,49 @@ export default function CreateLobbyPage() {
           </p>
         )}
 
-        {!isTwelveCardFlip && (
+        {isBlackjack && (
+          <fieldset className="settings-group">
+            <legend>Blackjack options</legend>
+            <label>
+              Number of decks
+              <select value={bjNumDecks} onChange={(e) => setBjNumDecks(Number(e.target.value) as 1 | 4 | 6 | 8)}>
+                {([1, 4, 6, 8] as const).map((d) => (
+                  <option key={d} value={d}>{d} deck{d > 1 ? 's' : ''}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Minimum bet per hand
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={bjMinBet}
+                onChange={(e) => setBjMinBet(digitsOnly(e.target.value))}
+              />
+            </label>
+            <label>
+              Maximum bet per hand
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={bjMaxBet}
+                onChange={(e) => setBjMaxBet(digitsOnly(e.target.value))}
+              />
+            </label>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={bjSoftSeventeen === 'hit'}
+                onChange={(e) => setBjSoftSeventeen(e.target.checked ? 'hit' : 'stand')}
+              />
+              Dealer hits soft 17 (H17 — harder for players)
+            </label>
+          </fieldset>
+        )}
+
+        {!isTwelveCardFlip && !isBlackjack && (
         <fieldset className="settings-group">
           <legend>Blinds</legend>
           <label>

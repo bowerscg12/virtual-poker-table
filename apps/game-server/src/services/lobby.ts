@@ -252,8 +252,8 @@ function validateSettings(settings: VariantConfig): void {
   if (!isValidBuyIn(buyIn)) {
     throw new Error('Buy-in must be between 10 and 10000 in increments of 5');
   }
-  // twelve_card_flip uses a bomb pot ante instead of blinds; skip blind validation
-  if (settings.game !== 'twelve_card_flip') {
+  // twelve_card_flip and blackjack don't use blinds; skip blind validation
+  if (settings.game !== 'twelve_card_flip' && settings.game !== 'blackjack') {
     if (!isPositiveInteger(settings.blinds.small) || !isPositiveInteger(settings.blinds.big)) {
       throw new Error('Blind amounts must be positive integers');
     }

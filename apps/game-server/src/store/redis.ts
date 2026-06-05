@@ -63,4 +63,5 @@ export const keys = {
   tableState: (lobbyId: string) => `table:${lobbyId}:state`,
   presence: (lobbyId: string) => `table:${lobbyId}:presence`,
   chat: (lobbyId: string) => `chat:${lobbyId}:messages`,
+  bjState: (lobbyId: string) => `blackjack:${lobbyId}:state`,
 };

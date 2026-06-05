@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @vct/shared-types && npm run build -w @vct/poker-engine && npm run build -w @vct/game-server && npm run build -w @vct/web",
+    "build": "npm run build -w @vct/shared-types && npm run build -w @vct/poker-engine && npm run build -w @vct/blackjack-engine && npm run build -w @vct/game-server && npm run build -w @vct/web",
     "dev": "concurrently -n server,web -c blue,green \"npm run dev -w @vct/game-server\" \"npm run dev -w @vct/web\"",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",

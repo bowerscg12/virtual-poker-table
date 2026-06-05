@@ -2,6 +2,13 @@ import type { WebSocket } from 'ws';
 import type { Card, ClientMessage, ServerMessage, VariantConfig } from '@vct/shared-types';
 import { getTableBuyIn } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
+import {
+  cancelAllBjTimers,
+  handleBjMessage,
+  sendBjStateToClient,
+  startBjBettingPhase,
+  teardownBjLobby,
+} from './blackjack-handler.js';
 import { getUserById } from '../services/auth.js';
 import {
   approveRebuy,
@@ -221,9 +228,11 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelRunout(lobbyId);
   cancelBombPotOptIn(lobbyId);
   cancelRunItOut(lobbyId);
+  cancelAllBjTimers(lobbyId);
   waitingForPlayers.delete(lobbyId);
 
   clearGame(lobbyId);
+  await teardownBjLobby(lobbyId);
   lobbyClients.delete(lobbyId);
 
   await deleteLobby(lobbyId);
@@ -796,6 +805,11 @@ function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(msg));
   }
+}
+
+/** Build the dependency bag for the blackjack handler (captures module-level maps). */
+function bjDeps() {
+  return { send, broadcastLobby, getConnectedSet };
 }
 
 /** Returns the set of userIds currently connected to a lobby. */
@@ -1769,7 +1783,12 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         for (const m of getChatHistory(session.lobbyId)) {
           send(ws, { type: 'chat', message: m });
         }
-        await broadcastTableState(session.lobbyId);
+        const reconnLobbyForType = await getLobbyById(session.lobbyId);
+        if (reconnLobbyForType?.settings.game === 'blackjack') {
+          await sendBjStateToClient(ws, session.lobbyId, session.userId, bjDeps());
+        } else {
+          await broadcastTableState(session.lobbyId);
+        }
 
         // Safety net: if the startup scan missed a hand from a prior server instance (e.g.,
         // Redis was briefly unavailable at boot), cancel it now before any timer is rescheduled.
@@ -1922,11 +1941,16 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       for (const m of getChatHistory(msg.lobbyId)) {
         send(ws, { type: 'chat', message: m });
       }
-      await broadcastTableState(msg.lobbyId);
-      // Recover any stuck hand lifecycle (orphaned game, lost intermission/grace timers).
-      await recoverHandLifecycle(msg.lobbyId);
-      // A new seated player may satisfy the active-player threshold.
-      await tryStartWaitingHand(msg.lobbyId);
+      // Send the right table state based on game type
+      if (lobbyState?.settings.game === 'blackjack') {
+        await sendBjStateToClient(ws, msg.lobbyId, st.userId, bjDeps());
+      } else {
+        await broadcastTableState(msg.lobbyId);
+        // Recover any stuck hand lifecycle (orphaned game, lost intermission/grace timers).
+        await recoverHandLifecycle(msg.lobbyId);
+        // A new seated player may satisfy the active-player threshold.
+        await tryStartWaitingHand(msg.lobbyId);
+      }
       return;
     }
 
@@ -2028,6 +2052,17 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         return;
       }
 
+      // ── Blackjack ────────────────────────────────────────────────────────
+      if (lobby.settings.game === 'blackjack') {
+        if (isFirstStart) await updateLobbyStatus(st.lobbyId, 'playing');
+        const bjLobby = await getLobbyById(st.lobbyId);
+        if (bjLobby) {
+          broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: bjLobby }));
+          await startBjBettingPhase(st.lobbyId, lobby.settings, bjLobby, bjDeps(), false);
+        }
+        return;
+      }
+      // ── Poker ────────────────────────────────────────────────────────────
       const result = await startHand(st.lobbyId, lobby.settings);
       if ('error' in result) {
         send(ws, { type: 'error', message: result.error });
@@ -2563,6 +2598,19 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!seat) return;
       removeBlindHandSeat(st.lobbyId, seat.seatIndex);
       await broadcastTableState(st.lobbyId);
+      return;
+    }
+
+    case 'bj_place_bet':
+    case 'bj_clear_bet':
+    case 'bj_hit':
+    case 'bj_stand':
+    case 'bj_double_down':
+    case 'bj_split': {
+      if (!st.userId || !st.lobbyId) return;
+      const bjLobby = await getLobbyById(st.lobbyId);
+      if (!bjLobby) return;
+      await handleBjMessage(ws, msg, st.userId, st.lobbyId, bjLobby.settings, bjDeps());
       return;
     }
 

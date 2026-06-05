@@ -2,6 +2,7 @@ import type { Card } from './cards.js';
 import type { LegalAction, PlayerActionType, PublicTableState } from './game.js';
 import type { LobbySummary } from './lobby.js';
 import type { CashOutSummary } from './session-stats.js';
+import type { BlackjackLegalAction, BlackjackRoundPlayerResult, PublicBlackjackState } from './blackjack.js';
 
 /** Client -> Server */
 export type ClientMessage =
@@ -37,7 +38,14 @@ export type ClientMessage =
   | { type: 'reveal_blind_cards' }
   | { type: 'donate_chips'; recipientSeatIndex: number; amount: number; donationId: string }
   | { type: 'rabbit_hunt' }
-  | { type: 'ping' };
+  | { type: 'ping' }
+  // ── Blackjack client messages ─────────────────────────────────────────────
+  | { type: 'bj_place_bet'; amount: number }
+  | { type: 'bj_clear_bet' }
+  | { type: 'bj_hit'; handId: string }
+  | { type: 'bj_stand'; handId: string }
+  | { type: 'bj_double_down'; handId: string }
+  | { type: 'bj_split'; handId: string };
 
 /** Server -> Client */
 export type ServerMessage =
@@ -66,7 +74,20 @@ export type ServerMessage =
   | { type: 'donation_confirmed'; recipientDisplayName: string; amount: number }
   | { type: 'rabbit_hunt_available' }
   | { type: 'rabbit_hunt_result'; cards: Card[] }
-  | { type: 'pong' };
+  | { type: 'pong' }
+  // ── Blackjack server messages ─────────────────────────────────────────────
+  /** Full state sync — sent on join, reconnect, and after every state change. */
+  | { type: 'bj_state'; state: PublicBlackjackState; legalActions?: BlackjackLegalAction[] }
+  /** Betting phase opened. */
+  | { type: 'bj_round_started'; deadline: number }
+  /** A player placed or adjusted a bet. */
+  | { type: 'bj_bet_placed'; seatIndex: number; amount: number }
+  /** A player acted (hit, stand, double, split). */
+  | { type: 'bj_player_acted'; seatIndex: number; action: string; state: PublicBlackjackState; legalActions?: BlackjackLegalAction[] }
+  /** Dealer took an action (one card drawn). */
+  | { type: 'bj_dealer_acted'; state: PublicBlackjackState }
+  /** Round settled — includes per-player results. */
+  | { type: 'bj_round_settled'; state: PublicBlackjackState; results: BlackjackRoundPlayerResult[] };
 
 export interface ChatMessage {
   id: string;

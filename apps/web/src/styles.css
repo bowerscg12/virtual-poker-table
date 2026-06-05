@@ -3728,3 +3728,535 @@ select {
     font-size: 0.72rem;
   }
 }
+
+/* ── Blackjack layout chain ──────────────────────────────────────────────── */
+
+.table-layout--bj .table-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-layout--bj .table-felt-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Blackjack table: dark casino floor ──────────────────────────────────── */
+
+.bj-table {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  background: #050e05;
+  overflow: hidden;
+}
+
+/* Centers the oval + player rail on the dark floor */
+.bj-felt-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem 0;
+}
+
+/* The oval casino felt */
+.bj-felt {
+  width: min(95vw, 900px);
+  aspect-ratio: 2.2;
+  max-height: min(420px, 44vh);
+  background: radial-gradient(ellipse at 50% 40%, #1e8b4a 0%, #145e33 55%, #0a3820 100%);
+  border-radius: 50%;
+  border: 10px solid #5c3d0e;
+  box-shadow:
+    0 0 0 4px #8a5a1e,
+    0 0 0 16px #2c1608,
+    inset 0 0 90px rgba(0,0,0,0.55),
+    0 15px 60px rgba(0,0,0,0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  overflow: hidden;
+  padding: 4% 22% 6%;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Faint dividing arc between dealer and inscription */
+.bj-felt::after {
+  content: '';
+  position: absolute;
+  top: 55%;
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+  pointer-events: none;
+}
+
+/* Dealer zone — top half of the oval */
+.bj-dealer-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bj-dealer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bj-dealer-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.bj-dealer-cards {
+  justify-content: center;
+}
+
+.bj-dealer-cards .bj-card {
+  width: 44px;
+  height: 64px;
+  font-size: 0.9rem;
+}
+
+.bj-card--placeholder {
+  opacity: 0.18;
+}
+
+/* Casino inscription — bottom half of the oval */
+.bj-inscription {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  pointer-events: none;
+}
+
+.bj-inscription-line {
+  font-size: clamp(0.5rem, 0.9vw, 0.7rem);
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  opacity: 0.18;
+  white-space: nowrap;
+}
+
+/* Player rail — wooden strip below the oval */
+.bj-player-row {
+  width: min(95vw, 900px);
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.5rem 0.8rem;
+  background: linear-gradient(180deg, #3a2208 0%, #1e1004 100%);
+  border-radius: 0 0 16px 16px;
+  border: 2px solid #5c3d0e;
+  border-top: none;
+  flex-shrink: 0;
+}
+
+.bj-seat {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  min-width: 110px;
+  max-width: 180px;
+  flex: 1 1 110px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.bj-seat--active {
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(212,175,55,0.4);
+}
+
+.bj-seat--me {
+  border-color: rgba(255,255,255,0.35);
+}
+
+.bj-seat--out {
+  opacity: 0.45;
+}
+
+.bj-seat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.bj-seat-avatar {
+  flex-shrink: 0;
+}
+
+.bj-seat-avatar-fallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.bj-seat-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bj-seat-stack {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.bj-status {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.1);
+  margin-bottom: 0.35rem;
+}
+
+.bj-status--acting {
+  background: var(--gold);
+  color: #111;
+}
+
+.bj-status--waiting {
+  background: rgba(255,255,255,0.15);
+}
+
+.bj-status--out {
+  background: rgba(255,255,255,0.07);
+  opacity: 0.6;
+}
+
+.bj-pending-bet {
+  font-size: 0.75rem;
+  color: var(--gold);
+  margin-bottom: 0.3rem;
+}
+
+.bj-hand {
+  position: relative;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  padding: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.bj-hand--active {
+  background: rgba(212,175,55,0.1);
+}
+
+.bj-hand-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 0.25rem;
+}
+
+.bj-card {
+  width: 30px;
+  height: 44px;
+  font-size: 0.72rem;
+  border-radius: 4px;
+}
+
+.bj-hand-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bj-hand-wager {
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+
+.bj-total {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.12);
+}
+
+.bj-total--21 { background: var(--gold); color: #111; }
+.bj-total--bj { background: #c8a000; color: #111; }
+.bj-total--bust { background: var(--danger); }
+.bj-total--good { background: rgba(26,122,82,0.5); }
+
+.bj-hand-result {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(2px);
+}
+
+.bj-hand-result--win    { background: rgba(26,122,82,0.85); }
+.bj-hand-result--loss   { background: rgba(180,40,40,0.85); }
+.bj-hand-result--push   { background: rgba(100,100,100,0.85); }
+.bj-hand-result--blackjack { background: rgba(200,160,0,0.9); color: #111; }
+
+.bj-hand-payout {
+  font-size: 0.75rem;
+  margin-top: 0.1rem;
+}
+
+/* ── Blackjack waiting / lobby screen ─────────────────────────────────────── */
+
+.bj-table--waiting {
+  align-items: center;
+  justify-content: center;
+}
+
+.bj-waiting-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 2rem 1.5rem;
+  max-width: 360px;
+  width: 100%;
+}
+
+.bj-waiting-felt-label {
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: var(--gold);
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.bj-waiting-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+  border-radius: 12px;
+  padding: 1rem;
+  min-height: 80px;
+}
+
+.bj-waiting-player {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.bj-waiting-stack {
+  margin-left: auto;
+  opacity: 0.65;
+  font-size: 0.8rem;
+}
+
+.bj-start-btn {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 1rem;
+}
+
+.bj-waiting-hint {
+  opacity: 0.55;
+  font-size: 0.85rem;
+  text-align: center;
+  margin: 0;
+}
+
+/* ── Blackjack action bar ──────────────────────────────────────────────────── */
+
+.bj-action-bar {
+  background: rgba(0,0,0,0.45);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding: 0.75rem;
+  flex-shrink: 0;
+}
+
+.bj-action-bar--waiting {
+  text-align: center;
+  opacity: 0.7;
+  font-size: 0.9rem;
+  padding: 1rem;
+}
+
+.bj-bet-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bj-chip-buttons {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.bj-chip-btn {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.bj-chip-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.22);
+}
+
+.bj-chip-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.bj-bet-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bj-bet-display {
+  font-size: 0.9rem;
+}
+
+.bj-confirmed-bet {
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+.bj-bet-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.bj-limits {
+  font-size: 0.7rem;
+  opacity: 0.55;
+  text-align: right;
+}
+
+.bj-play-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.bj-btn-hit    { background: var(--check) !important; }
+.bj-btn-stand  { background: var(--raise-red) !important; }
+.bj-btn-double { background: var(--call) !important; }
+.bj-btn-split  { background: #7a3d9e !important; }
+.bj-btn-disabled { opacity: 0.35 !important; cursor: not-allowed !important; }
+
+/* ── Blackjack shoe notice ─────────────────────────────────────────────────── */
+
+.bj-shoe-notice {
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  padding: 0.25rem;
+  background: rgba(212,175,55,0.1);
+  border-radius: 6px;
+}
+
+/* ── Round results overlay ────────────────────────────────────────────────── */
+
+.bj-results-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.bj-results-panel {
+  background: var(--felt-dark);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  padding: 1.5rem;
+  min-width: 260px;
+  max-width: 360px;
+  width: 90%;
+}
+
+.bj-results-panel h3 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.bj-result-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.bj-result-name {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.bj-result-delta {
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 60px;
+  text-align: right;
+}
+
+.bj-result-delta.positive { color: #4caf84; }
+.bj-result-delta.negative { color: var(--danger); }
+
+.bj-result-stack {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  min-width: 80px;
+  text-align: right;
+}

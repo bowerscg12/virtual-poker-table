@@ -21,6 +21,7 @@ interface Props {
 
 export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot, onSetRunItOut }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
+  const isBlackjack = lobby.settings.game === 'blackjack';
   const currentBuyIn = getTableBuyIn(lobby.settings);
   const [buyIn, setBuyIn] = useState(String(currentBuyIn));
   const parsedBuyIn = Number.parseInt(buyIn, 10);
@@ -143,7 +144,7 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
       </label>
       <p className="field-hint">Takes effect on the next action. Changing to "No Timer" cancels any running countdown.</p>
 
-      {!isTcf && onSetBombPot && (
+      {!isTcf && !isBlackjack && onSetBombPot && (
         <fieldset className="settings-group bomb-pot-controls">
           <legend>Bomb Pot (next hand)</legend>
           <label className="checkbox-row">
@@ -271,8 +272,9 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
         </ul>
       </details>
       <p className="rules-summary">
-        {lobby.settings.game} · {lobby.settings.limit} · Blinds {lobby.settings.blinds.small}/
-        {lobby.settings.blinds.big}
+        {isBlackjack
+          ? `blackjack · ${lobby.settings.blackjackNumDecks ?? 6} decks · min ${lobby.settings.blackjackMinBet ?? 5} / max ${lobby.settings.blackjackMaxBet ?? 500}`
+          : `${lobby.settings.game} · ${lobby.settings.limit} · Blinds ${lobby.settings.blinds.small}/${lobby.settings.blinds.big}`}
       </p>
     </div>
   );
