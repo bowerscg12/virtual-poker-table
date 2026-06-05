@@ -36,6 +36,7 @@ export type ClientMessage =
   | { type: 'set_blind_hand'; enabled: boolean }
   | { type: 'reveal_blind_cards' }
   | { type: 'donate_chips'; recipientSeatIndex: number; amount: number; donationId: string }
+  | { type: 'rabbit_hunt' }
   | { type: 'ping' };
 
 /** Server -> Client */
@@ -63,6 +64,8 @@ export type ServerMessage =
   | { type: 'run_it_out_prompt'; chooserSeatIndex: number; deadline: string; maxRuns: number }
   | { type: 'donation_received'; donorDisplayName: string; amount: number }
   | { type: 'donation_confirmed'; recipientDisplayName: string; amount: number }
+  | { type: 'rabbit_hunt_available' }
+  | { type: 'rabbit_hunt_result'; cards: Card[] }
   | { type: 'pong' };
 
 export interface ChatMessage {

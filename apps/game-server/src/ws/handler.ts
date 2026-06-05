@@ -169,6 +169,9 @@ const showCardsGenerations = new Map<string, number>();
 /** How long the winner has to decide before cards are auto-mucked */
 const SHOW_CARDS_TIMEOUT_MS = 5_000;
 
+/** lobbyId → rabbit-hunt cards available for anyone at the table to peek at */
+const rabbitHuntPending = new Map<string, Card[]>();
+
 /** lobbyId → timer that fires after 1 hour of no connected clients */
 const emptyLobbyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -1117,6 +1120,7 @@ async function onIntermissionExpired(lobbyId: string, _config: VariantConfig): P
     return;
   }
 
+  rabbitHuntPending.delete(lobbyId);
   await applyBlindHandFlags(lobbyId, result);
   recordHandStart(lobbyId, result);
   scheduleActionTimer(lobbyId, lobby.settings, result);
@@ -1428,6 +1432,21 @@ function isFoldWin(state: GameTableState): boolean {
   return state.winnerPayouts.length === 1 && state.winnerPayouts[0].handDescription === '';
 }
 
+/**
+ * Peek at the next community cards that would have been dealt from the remaining deck.
+ * Returns the turn+river for a flop fold, or the river for a turn fold. Empty otherwise.
+ * Deck layout: each street burns 1 then deals, so the real cards are at odd indices.
+ */
+function peekRabbitCards(state: GameTableState): Card[] {
+  if (state.board.length === 3 && state.deck.length >= 4) {
+    return [state.deck[1], state.deck[3]]; // turn then river
+  }
+  if (state.board.length === 4 && state.deck.length >= 2) {
+    return [state.deck[1]]; // river
+  }
+  return [];
+}
+
 /** Cancel any running show-cards timer. Increments generation to invalidate stale callbacks. */
 function cancelShowCardsTimer(lobbyId: string): void {
   const t = showCardsTimers.get(lobbyId);
@@ -1582,6 +1601,12 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
   await notifyBustedPlayers(lobbyId);
 
   if (isFoldWin(state)) {
+    // Store rabbit cards (turn/river that would have been dealt) for anyone to peek at
+    const rabbitCards = peekRabbitCards(state);
+    if (rabbitCards.length > 0) {
+      rabbitHuntPending.set(lobbyId, rabbitCards);
+      broadcastLobby(lobbyId, () => ({ type: 'rabbit_hunt_available' }));
+    }
     // show_cards prompt runs first; promptPendingCashOuts is called inside finalizeFoldWin
     await promptShowCards(lobbyId, state, config);
   } else {
@@ -1779,6 +1804,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         const reconnPending = showCardsPending.get(session.lobbyId);
         if (reconnPending && reconnPending.winnerId === session.userId) {
           send(ws, { type: 'show_cards_prompt', deadline: reconnPending.deadline });
+        }
+
+        // Re-send rabbit hunt availability if anyone reconnects before next hand starts
+        if (rabbitHuntPending.has(session.lobbyId)) {
+          send(ws, { type: 'rabbit_hunt_available' });
         }
 
         // Re-send the Bomb Pot opt-in prompt if a window is active when the player reconnects
@@ -2441,6 +2471,14 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!pending || pending.winnerId !== st.userId) return;
       showCardsPending.delete(lobbyId);
       await finalizeFoldWin(lobbyId, msg.show, pending, pending.config);
+      return;
+    }
+
+    case 'rabbit_hunt': {
+      if (!st.lobbyId) return;
+      const rabbitCards = rabbitHuntPending.get(st.lobbyId);
+      if (!rabbitCards) return;
+      broadcastLobby(st.lobbyId, () => ({ type: 'rabbit_hunt_result', cards: rabbitCards }));
       return;
     }
 

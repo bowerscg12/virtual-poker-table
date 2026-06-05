@@ -41,6 +41,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [runItOutPrompt, setRunItOutPrompt] = useState<{ chooserSeatIndex: number; deadline: string; maxRuns: number } | null>(null);
   const [donationReceived, setDonationReceived] = useState<{ donorDisplayName: string; amount: number } | null>(null);
   const [donationConfirmed, setDonationConfirmed] = useState<{ recipientDisplayName: string; amount: number } | null>(null);
+  const [rabbitHuntAvailable, setRabbitHuntAvailable] = useState(false);
+  const [rabbitCards, setRabbitCards] = useState<Card[] | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -186,6 +188,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
               handNumberRef.current = msg.public.handNumber;
               setHandComplete(null);
               setShowCardsPrompt(null);
+              setRabbitHuntAvailable(false);
+              setRabbitCards(null);
             }
             // The opt-in prompt resolves once the Bomb Pot hand starts (or a normal hand replaces it).
             if (msg.public.bombPot || msg.public.street === 'preflop') {
@@ -278,6 +282,14 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             setDonationConfirmed({ recipientDisplayName: msg.recipientDisplayName, amount: msg.amount });
             break;
 
+          case 'rabbit_hunt_available':
+            setRabbitHuntAvailable(true);
+            break;
+
+          case 'rabbit_hunt_result':
+            setRabbitCards(msg.cards);
+            break;
+
           case 'error':
             setError(msg.message);
             break;
@@ -346,6 +358,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     clearCashOutSummary,
     donationReceived,
     donationConfirmed,
+    rabbitHuntAvailable,
+    rabbitCards,
     send,
   };
 }

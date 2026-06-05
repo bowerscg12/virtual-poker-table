@@ -21,6 +21,7 @@ import { BombPotPrompt } from '../components/BombPotPrompt';
 import { RunItOutPrompt } from '../components/RunItOutPrompt';
 import { SessionResultsModal } from '../components/SessionResultsModal';
 import { ShowdownResultsModal } from '../components/ShowdownResultsModal';
+import { CardView } from '../components/CardView';
 
 export default function TablePage() {
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -61,6 +62,8 @@ export default function TablePage() {
     clearCashOutSummary,
     donationReceived,
     donationConfirmed,
+    rabbitHuntAvailable,
+    rabbitCards,
     send,
   } = useGameSocket(token, lobbyId ?? null);
 
@@ -302,6 +305,27 @@ export default function TablePage() {
                 <p>Table is full. Wait for a seat to open.</p>
               ) : (
                 <p>Joining table... you will be seated automatically with {formatChips(buyIn)} chips.</p>
+              )}
+            </div>
+          )}
+
+          {rabbitHuntAvailable && !isTcf && (
+            <div className="rabbit-hunt-widget">
+              {rabbitCards ? (
+                <div className="rabbit-hunt-result">
+                  <span className="rabbit-hunt-label">Rabbit:</span>
+                  {rabbitCards.map((c, i) => (
+                    <CardView key={i} card={c} faceUp />
+                  ))}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn small rabbit-hunt-btn"
+                  onClick={() => send({ type: 'rabbit_hunt' })}
+                >
+                  Rabbit Hunt
+                </button>
               )}
             </div>
           )}

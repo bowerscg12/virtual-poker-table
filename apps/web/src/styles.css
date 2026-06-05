@@ -491,6 +491,7 @@ select {
 .table-felt-wrapper {
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 
 .status.on {
@@ -1625,6 +1626,60 @@ select {
 
 .show-cards-actions { justify-content: center; flex-direction: column; align-items: center; gap: 0.5rem; }
 .show-cards-show-btn { width: 100%; padding: 0.85rem 1rem; font-size: 1.05rem; }
+
+/* ── Rabbit Hunt ─────────────────────────────────────────── */
+
+.rabbit-hunt-widget {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rabbit-hunt-btn {
+  background: rgba(30, 40, 30, 0.85);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  color: rgba(212, 175, 55, 0.85);
+  font-size: 0.78rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: 4px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.rabbit-hunt-btn:hover {
+  background: rgba(40, 55, 40, 0.92);
+  border-color: rgba(212, 175, 55, 0.65);
+  color: var(--gold);
+}
+
+.rabbit-hunt-result {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(20, 30, 20, 0.88);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 6px;
+  padding: 5px 8px;
+  backdrop-filter: blur(4px);
+}
+
+.rabbit-hunt-label {
+  font-size: 0.7rem;
+  color: rgba(212, 175, 55, 0.7);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.rabbit-hunt-result .playing-card {
+  width: 32px;
+  height: 44px;
+  font-size: 0.72rem;
+}
 
 /* ── Session results modal ───────────────────────────────── */
 
