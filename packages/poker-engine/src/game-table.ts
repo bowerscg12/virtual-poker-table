@@ -26,8 +26,9 @@ export interface GameTableState {
   lastAggressorSeat: number | null;
   lastWinningSeatIndices: number[];
   /** `board` tags which board a payout came from in a Double Board Bomb Pot ('A'/'B'); absent otherwise.
+   *  `runIndex` (0-based) tags which run a payout came from in a multi-runout hand; absent otherwise.
    *  `isContested` is true when 2+ players were eligible for the pot (false = uncalled chips returned uncontested). */
-  winnerPayouts: { seatIndex: number; amount: number; handDescription: string; board?: 'A' | 'B'; isContested: boolean }[];
+  winnerPayouts: { seatIndex: number; amount: number; handDescription: string; board?: 'A' | 'B'; runIndex?: number; isContested: boolean }[];
   processedActionIds: Set<string>;
   bombPotActive: boolean;
   /** True when this hand is a per-hand Bomb Pot (forced ante, no betting, auto runout). */
@@ -45,6 +46,12 @@ export interface GameTableState {
   secondShowdownHands?: { seatIndex: number; handDescription: string; bestFive: Card[] }[];
   /** Revealed cards per seat (keyed by seatIndex) — only used for twelve_card_flip */
   revealedCards?: Record<number, Card[]>;
+  /** Set when all players are all-in and config.runItOut > 1; engine paused before dealing runout cards. */
+  pendingMultiRunout?: boolean;
+  /** All dealt boards for a run-it-out hand (2 or 3 runs). Board 0 is also stored in `board`. */
+  runoutBoards?: Card[][];
+  /** Per-run showdown hands for a run-it-out hand, parallel to runoutBoards. */
+  runoutShowdownHands?: { board: Card[]; hands: { seatIndex: number; handDescription: string; bestFive: Card[] }[] }[];
 }
 
 export function createInitialTable(
@@ -286,6 +293,20 @@ function advanceStreet(
     s.betThisStreet = 0;
   }
 
+  // Multi-runout: stop before dealing any runout cards so the server can orchestrate N boards.
+  // Only applies for holdem/omaha when runItOut > 1, and only before the river is already dealt.
+  if (
+    (config.runItOut ?? 1) > 1 &&
+    (config.game === 'holdem' || config.game === 'omaha') &&
+    state.street !== 'river' &&
+    state.seats.filter(isLiveSeat).length < 2
+  ) {
+    return {
+      ok: true,
+      state: { ...state, actionSeatIndex: null, pendingActionSeatIndices: [], pendingMultiRunout: true },
+    };
+  }
+
   const stillIn = state.seats.filter((s) => !s.folded);
   if (stillIn.length === 1) {
     return { ok: true, state: awardToWinner(state, stillIn[0].seatIndex) };
@@ -518,6 +539,158 @@ function runDoubleBoardShowdown(
       pendingActionSeatIndices: [],
     },
   };
+}
+
+/**
+ * Showdown for a multi-runout hand (2 or 3 runs). Each side pot is split into numRuns equal
+ * parts; each share is awarded to the best hand on its respective board. Remainder chip goes
+ * to the first run's winner (lowest runIndex).
+ */
+function runMultiBoardShowdown(
+  state: GameTableState,
+  config: VariantConfig,
+  boards: Card[][],
+): GameTableState {
+  const module = getVariantModule(config);
+  const numRuns = boards.length;
+  const pots = buildSidePots(state.seats.map((s) => ({ seatIndex: s.seatIndex, amount: s.totalBet })));
+  const chipsBefore = state.seats.reduce((s, seat) => s + seat.stack + seat.totalBet, 0);
+
+  for (const seat of state.seats) {
+    if (!seat.folded) seat.shownCards = [...seat.holeCards];
+  }
+
+  const boardEvals = boards.map((board) => {
+    const map = new Map<number, EvaluatedHand>();
+    for (const seat of state.seats) {
+      if (!seat.folded) {
+        map.set(seat.seatIndex, module.evaluateHand(seat.holeCards, board));
+      }
+    }
+    return map;
+  });
+
+  const winnerPayouts: GameTableState['winnerPayouts'] = [];
+
+  for (const pot of pots) {
+    const share = Math.floor(pot.amount / numRuns);
+    const remainder = pot.amount - share * numRuns;
+
+    for (let runIdx = 0; runIdx < numRuns; runIdx++) {
+      const runAmount = share + (runIdx === 0 ? remainder : 0);
+      if (runAmount === 0) continue;
+
+      const eligible = state.seats.filter(
+        (s) => pot.eligibleSeatIndices.includes(s.seatIndex) && !s.folded && boardEvals[runIdx].has(s.seatIndex),
+      );
+      if (eligible.length === 0) continue;
+
+      let best: EvaluatedHand | null = null;
+      const bestSeats: number[] = [];
+      for (const s of eligible) {
+        const hand = boardEvals[runIdx].get(s.seatIndex)!;
+        if (!best || compareHands(hand, best) > 0) {
+          best = hand;
+          bestSeats.length = 0;
+          bestSeats.push(s.seatIndex);
+        } else if (best && compareHands(hand, best) === 0) {
+          bestSeats.push(s.seatIndex);
+        }
+      }
+
+      const runShare = Math.floor(runAmount / bestSeats.length);
+      const runRemainder = runAmount - runShare * bestSeats.length;
+      bestSeats.forEach((idx, i) => {
+        const amount = runShare + (i === 0 ? runRemainder : 0);
+        getSeat(state.seats, idx)!.stack += amount;
+        winnerPayouts.push({ seatIndex: idx, amount, handDescription: best!.description, isContested: eligible.length > 1, runIndex: runIdx });
+      });
+    }
+  }
+
+  const chipsAfter = state.seats.reduce((s, seat) => s + seat.stack, 0);
+  if (chipsBefore !== chipsAfter) {
+    console.error(`[chip-conservation] VIOLATION in multi-runout showdown: before=${chipsBefore} after=${chipsAfter}`);
+  }
+
+  const runoutShowdownHands = boards.map((board, i) => ({
+    board,
+    hands: [...boardEvals[i].entries()].map(([seatIndex, hand]) => ({
+      seatIndex,
+      handDescription: hand.description,
+      bestFive: hand.bestFive,
+    })),
+  }));
+
+  return {
+    ...state,
+    street: 'complete',
+    board: boards[0],
+    pots,
+    actionSeatIndex: null,
+    lastWinningSeatIndices: [...new Set(winnerPayouts.map((p) => p.seatIndex))],
+    winnerPayouts,
+    showdownHands: runoutShowdownHands[0].hands,
+    pendingMultiRunout: false,
+    runoutBoards: boards,
+    runoutShowdownHands,
+    pendingActionSeatIndices: [],
+  };
+}
+
+/**
+ * Deal numRuns boards from the deck in `state` (each run consumes cards from where the previous
+ * left off) and resolve the showdown, splitting pots equally across runs.
+ * For numRuns === 1 deals a single board and runs the normal showdown (no runoutBoards set).
+ * Called by the server after the player chooses how many times to run it out.
+ */
+export function dealMultipleRunouts(
+  state: GameTableState,
+  config: VariantConfig,
+  numRuns: number,
+): GameTableState {
+  const module = getVariantModule(config);
+  const resolvedRuns = Math.max(1, numRuns);
+
+  // Helper: deal remaining community cards onto a partial board from the given deck.
+  const dealBoard = (partialBoard: Card[], deck: Card[]): { board: Card[]; deck: Card[] } => {
+    let remaining = deck;
+    let board = [...partialBoard];
+
+    if (board.length < 3) {
+      const burn1 = drawCards(remaining, 1); remaining = burn1.remaining;
+      const flopCount = module.flopCardCount(config);
+      const flop = drawCards(remaining, flopCount); remaining = flop.remaining;
+      board = [...board, ...flop.drawn];
+    }
+    if (board.length < 4) {
+      const burn = drawCards(remaining, 1); remaining = burn.remaining;
+      const turn = drawCards(remaining, 1); remaining = turn.remaining;
+      board = [...board, ...turn.drawn];
+    }
+    if (board.length < 5) {
+      const burn = drawCards(remaining, 1); remaining = burn.remaining;
+      const river = drawCards(remaining, 1); remaining = river.remaining;
+      board = [...board, ...river.drawn];
+    }
+
+    return { board, deck: remaining };
+  };
+
+  if (resolvedRuns === 1) {
+    const { board, deck } = dealBoard(state.board, state.deck);
+    return runShowdown({ ...state, board, deck, street: 'showdown', pendingMultiRunout: false }, config).state;
+  }
+
+  let remaining = state.deck;
+  const boards: Card[][] = [];
+  for (let i = 0; i < resolvedRuns; i++) {
+    const result = dealBoard(state.board, remaining);
+    boards.push(result.board);
+    remaining = result.deck;
+  }
+
+  return runMultiBoardShowdown({ ...state, pendingMultiRunout: false }, config, boards);
 }
 
 /**

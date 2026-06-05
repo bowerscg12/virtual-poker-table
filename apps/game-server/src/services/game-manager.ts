@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import type { BadgeType, Card, HandHistoryEntry, PlayerActionType, PublicTableState, ShowdownResult, VariantConfig } from '@vct/shared-types';
+import type { BadgeType, Card, HandHistoryEntry, PlayerActionType, PublicTableState, ShowdownHandEntry, ShowdownResult, VariantConfig } from '@vct/shared-types';
 import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
@@ -8,6 +8,7 @@ import {
   createBombPotTable,
   createInitialTable,
   createTwelveCardFlipState,
+  dealMultipleRunouts,
   getLegalActionsForSeat,
   getTwelveCardFlipLegalActions,
   getTwelveCardFlipRevealInfo,
@@ -563,6 +564,8 @@ export function toPublicState(
   runoutVisibleBoardCount?: number,
   runoutActive?: boolean,
   revealAllHoleCards?: boolean,
+  runoutCurrentRun?: number,
+  runoutTotalRuns?: number,
 ): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
@@ -580,13 +583,13 @@ export function toPublicState(
   let showdownResult: ShowdownResult | undefined;
   if (state.street === 'complete' && state.showdownHands && state.showdownHands.length > 0) {
     const isDoubleBoard = state.isDoubleBoardBombPot && !!state.secondShowdownHands;
+    const isMultiRunout = !!state.runoutBoards && state.runoutBoards.length > 1;
 
-    // For a double board, winners/pots are tracked per board via the payout's `board` tag.
-    const buildHands = (
+    // Build ShowdownHandEntry[] from raw hands + a filtered payout set.
+    const buildHandsFromPayouts = (
       hands: { seatIndex: number; handDescription: string; bestFive: Card[] }[],
-      board: 'A' | 'B' | null
-    ) => {
-      const payouts = board ? state.winnerPayouts.filter((p) => p.board === board) : state.winnerPayouts;
+      payouts: GameTableState['winnerPayouts'],
+    ): ShowdownHandEntry[] => {
       const contestedBySeat = new Map<number, number>();
       const returnedBySeat = new Map<number, number>();
       for (const payout of payouts) {
@@ -607,25 +610,58 @@ export function toPublicState(
       }));
     };
 
-    // Only count winners of contested pots (2+ eligible players) to distinguish a true split
-    // from an uncalled-chip return in a short-stack all-in scenario.
-    const contestedWinnerIndices = new Set(
-      state.winnerPayouts.filter((p) => p.isContested).map((p) => p.seatIndex)
-    );
-    const isSplit = contestedWinnerIndices.size > 1;
-    const soloWinner =
-      !isDoubleBoard && contestedWinnerIndices.size === 1
-        ? displayNameFor([...contestedWinnerIndices][0])
-        : undefined;
+    if (isMultiRunout) {
+      // Multi-runout: build per-run board sections + combined summary hands.
+      const runoutBoards = state.runoutBoards!.map((board, runIdx) => {
+        const runData = state.runoutShowdownHands?.[runIdx];
+        const runPayouts = state.winnerPayouts.filter((p) => p.runIndex === runIdx);
+        return {
+          board,
+          hands: buildHandsFromPayouts(runData?.hands ?? [], runPayouts),
+        };
+      });
 
-    showdownResult = {
-      hands: buildHands(state.showdownHands, isDoubleBoard ? 'A' : null),
-      isSplit,
-      soloWinner,
-      ...(isDoubleBoard
-        ? { board: state.board, secondBoard: state.secondBoard, secondHands: buildHands(state.secondShowdownHands!, 'B') }
-        : {}),
-    };
+      // Combined summary: total pots won across all runs.
+      const contestedWinners = new Set(state.winnerPayouts.filter((p) => p.isContested).map((p) => p.seatIndex));
+      const isSplit = contestedWinners.size > 1;
+      const soloWinner = contestedWinners.size === 1 ? displayNameFor([...contestedWinners][0]) : undefined;
+
+      showdownResult = {
+        hands: buildHandsFromPayouts(state.showdownHands, state.winnerPayouts),
+        isSplit,
+        soloWinner: isSplit ? undefined : soloWinner,
+        runoutBoards,
+      };
+    } else {
+      // For a double board, winners/pots are tracked per board via the payout's `board` tag.
+      const buildHands = (
+        hands: { seatIndex: number; handDescription: string; bestFive: Card[] }[],
+        board: 'A' | 'B' | null,
+      ) => {
+        const payouts = board ? state.winnerPayouts.filter((p) => p.board === board) : state.winnerPayouts;
+        return buildHandsFromPayouts(hands, payouts);
+      };
+
+      // Only count winners of contested pots (2+ eligible players) to distinguish a true split
+      // from an uncalled-chip return in a short-stack all-in scenario.
+      const contestedWinnerIndices = new Set(
+        state.winnerPayouts.filter((p) => p.isContested).map((p) => p.seatIndex)
+      );
+      const isSplit = contestedWinnerIndices.size > 1;
+      const soloWinner =
+        !isDoubleBoard && contestedWinnerIndices.size === 1
+          ? displayNameFor([...contestedWinnerIndices][0])
+          : undefined;
+
+      showdownResult = {
+        hands: buildHands(state.showdownHands, isDoubleBoard ? 'A' : null),
+        isSplit,
+        soloWinner,
+        ...(isDoubleBoard
+          ? { board: state.board, secondBoard: state.secondBoard, secondHands: buildHands(state.secondShowdownHands!, 'B') }
+          : {}),
+      };
+    }
   }
 
   // Compute pots for display. state.pots is only populated at showdown; during an active hand
@@ -693,7 +729,7 @@ export function toPublicState(
     intermissionDeadline: intermissionDeadline ?? undefined,
     paused: paused ?? false,
     showdownResult: effectiveShowdownResult,
-    runout: runoutActive ? { active: true } : undefined,
+    runout: runoutActive ? { active: true, currentRun: runoutCurrentRun, totalRuns: runoutTotalRuns } : undefined,
     flipReveal: isTwelveCardFlip && state.street !== 'waiting'
       ? getTwelveCardFlipRevealInfo(state)
       : undefined,
@@ -786,6 +822,29 @@ export function clearGame(lobbyId: string): void {
   seatLastActions.delete(lobbyId);
   consecutiveWins.delete(lobbyId);
   blindHandSeats.delete(lobbyId);
+}
+
+/**
+ * Deal N run-out boards on the paused multi-runout state, resolve the showdown, persist
+ * the result, and return the completed GameTableState. `state` must have `pendingMultiRunout`.
+ */
+export async function applyMultipleRunouts(
+  lobbyId: string,
+  config: VariantConfig,
+  state: GameTableState,
+  numRuns: number,
+): Promise<GameTableState> {
+  const finalState = dealMultipleRunouts(state, config, numRuns);
+  if (finalState.street === 'complete') {
+    updateConsecutiveWins(lobbyId, finalState);
+    const sevenDeuceState = applySevenDeuceRule(finalState, config);
+    await persistGame(lobbyId, sevenDeuceState);
+    syncStacksToLobby(lobbyId, sevenDeuceState);
+    await recordHandHistory(lobbyId, sevenDeuceState);
+    return sevenDeuceState;
+  }
+  await persistGame(lobbyId, finalState);
+  return finalState;
 }
 
 /** Streets that indicate a hand is actively in progress and has not yet completed. */

@@ -19,6 +19,7 @@ import {
   setNextHandBombPot,
   clearNextHandBombPot,
   setNextHandBlind,
+  setRunItOut,
   setSitOutNextHand,
   setTableBuyIn,
   setSittingOut,
@@ -30,6 +31,7 @@ import {
   updateLobbyStatus,
 } from '../services/lobby.js';
 import {
+  applyMultipleRunouts,
   cancelInterruptedHand,
   clearActionDeadline,
   clearBlindHandSeats,
@@ -215,6 +217,7 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelShowCardsTimer(lobbyId);
   cancelRunout(lobbyId);
   cancelBombPotOptIn(lobbyId);
+  cancelRunItOut(lobbyId);
   waitingForPlayers.delete(lobbyId);
 
   clearGame(lobbyId);
@@ -291,6 +294,10 @@ interface RunoutState {
    * with these values so chips appear to remain in the center pot until the reveal is done.
    */
   prePayoutStacks: Map<number, number>;
+  /** Set for multi-runout reveals; undefined for single-board runouts. */
+  numRuns?: number;
+  currentRunIndex?: number;
+  currentRunVisibleCount?: number;
 }
 
 /**
@@ -580,6 +587,182 @@ async function maybeStartBombPot(lobbyId: string, settings: VariantConfig): Prom
   return startBombPotOptIn(lobbyId, settings);
 }
 
+// ── Run-It-Out prompt orchestration ──────────────────────────
+
+const RUN_IT_OUT_TIMEOUT_MS = 10_000;
+
+interface RunItOutPendingState {
+  preRunoutState: GameTableState;
+  chooserSeatIndex: number;
+  sharedBoardCount: number;
+  deadline: string;
+  gen: number;
+  config: VariantConfig;
+}
+
+/** lobbyId → active run-it-out choice window */
+const runItOutPending = new Map<string, RunItOutPendingState>();
+const runItOutTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const runItOutGenerations = new Map<string, number>();
+
+function cancelRunItOut(lobbyId: string): void {
+  const t = runItOutTimers.get(lobbyId);
+  if (t) { clearTimeout(t); runItOutTimers.delete(lobbyId); }
+  runItOutPending.delete(lobbyId);
+  runItOutGenerations.set(lobbyId, (runItOutGenerations.get(lobbyId) ?? 0) + 1);
+}
+
+/**
+ * Begin the run-it-out prompt: pick a random all-in player as the chooser, broadcast the
+ * prompt to all clients, and start the 10-second countdown. Defaults to 1 run on expiry.
+ */
+async function startRunItOutPrompt(
+  lobbyId: string,
+  state: GameTableState,
+  config: VariantConfig,
+): Promise<void> {
+  const allInSeats = state.seats.filter((s) => s.allIn && !s.folded);
+  if (allInSeats.length === 0) {
+    // No eligible chooser — resolve immediately with 1 run (safety fallback)
+    const finalState = await applyMultipleRunouts(lobbyId, config, state, 1);
+    await startAllInRunout(lobbyId, finalState, config, state.board.length);
+    return;
+  }
+
+  cancelRunItOut(lobbyId);
+  const gen = runItOutGenerations.get(lobbyId) ?? 0;
+  const chooser = allInSeats[Math.floor(Math.random() * allInSeats.length)];
+  const sharedBoardCount = state.board.length;
+  const deadline = new Date(Date.now() + RUN_IT_OUT_TIMEOUT_MS).toISOString();
+  const maxRuns = config.runItOut ?? 1;
+
+  runItOutPending.set(lobbyId, {
+    preRunoutState: state,
+    chooserSeatIndex: chooser.seatIndex,
+    sharedBoardCount,
+    deadline,
+    gen,
+    config,
+  });
+
+  broadcastLobby(lobbyId, () => ({
+    type: 'run_it_out_prompt' as const,
+    chooserSeatIndex: chooser.seatIndex,
+    deadline,
+    maxRuns,
+  }));
+  await broadcastTableState(lobbyId);
+
+  runItOutTimers.set(lobbyId, setTimeout(() => {
+    if ((runItOutGenerations.get(lobbyId) ?? 0) !== gen) return;
+    resolveRunItOut(lobbyId, 1).catch(() => {});
+  }, RUN_IT_OUT_TIMEOUT_MS));
+}
+
+/**
+ * Resolve the run-it-out choice: deal numRuns boards, run the showdown, and start the
+ * sequential board-reveal sequence.
+ */
+async function resolveRunItOut(lobbyId: string, numRuns: number): Promise<void> {
+  const pending = runItOutPending.get(lobbyId);
+  cancelRunItOut(lobbyId);
+  if (!pending) return;
+
+  const finalState = await applyMultipleRunouts(lobbyId, pending.config, pending.preRunoutState, numRuns);
+
+  if (numRuns <= 1) {
+    await startAllInRunout(lobbyId, finalState, pending.config, pending.sharedBoardCount);
+  } else {
+    await startMultiRunoutReveal(lobbyId, finalState, pending.config, pending.sharedBoardCount, numRuns);
+  }
+}
+
+/**
+ * Orchestrate a multi-runout reveal: reveal each run's board cards progressively (2.5s initial
+ * pause, 2s between streets), then pause 4s between runs. After all runs, call handleHandComplete.
+ */
+async function startMultiRunoutReveal(
+  lobbyId: string,
+  finalState: GameTableState,
+  config: VariantConfig,
+  sharedBoardCount: number,
+  numRuns: number,
+): Promise<void> {
+  cancelRunout(lobbyId);
+  const gen = runoutGenerations.get(lobbyId) ?? 0;
+
+  activeRunouts.set(lobbyId, {
+    finalEngineState: finalState,
+    config,
+    startBoardCount: sharedBoardCount,
+    visibleBoardCount: sharedBoardCount,
+    gen,
+    revealHoleCards: true,
+    prePayoutStacks: computePrePayoutStacks(finalState),
+    numRuns,
+    currentRunIndex: 0,
+    currentRunVisibleCount: sharedBoardCount,
+  });
+
+  await broadcastTableState(lobbyId);
+
+  let cumDelay = 0;
+
+  for (let runIdx = 0; runIdx < numRuns; runIdx++) {
+    const capturedRunIdx = runIdx;
+    const runBoard = finalState.runoutBoards?.[runIdx] ?? finalState.board;
+    const runTotal = runBoard.length;
+
+    // For runs after the first, broadcast the "start of this run" (shared cards, new run label)
+    if (runIdx > 0) {
+      const startAt = cumDelay;
+      setTimeout(async () => {
+        if ((runoutGenerations.get(lobbyId) ?? 0) !== gen) return;
+        const r = activeRunouts.get(lobbyId);
+        if (!r) return;
+        r.currentRunIndex = capturedRunIdx;
+        r.currentRunVisibleCount = sharedBoardCount;
+        await broadcastTableState(lobbyId);
+      }, startAt);
+    }
+
+    cumDelay += 2500;
+
+    // Build the reveal steps for this run (street by street)
+    const stepCounts: number[] = [];
+    if (sharedBoardCount < 3 && runTotal >= 3) stepCounts.push(3);
+    if (sharedBoardCount < 4 && runTotal >= 4) stepCounts.push(4);
+    if (sharedBoardCount < runTotal) stepCounts.push(runTotal);
+    const reveals = [...new Set(stepCounts)].filter((n) => n > sharedBoardCount).sort((a, b) => a - b);
+
+    for (let i = 0; i < reveals.length; i++) {
+      const targetCount = reveals[i];
+      const isLast = i === reveals.length - 1;
+      const revealAt = cumDelay;
+      cumDelay += isLast ? 2500 : 2000;
+
+      setTimeout(async () => {
+        if ((runoutGenerations.get(lobbyId) ?? 0) !== gen) return;
+        const r = activeRunouts.get(lobbyId);
+        if (!r) return;
+        r.currentRunIndex = capturedRunIdx;
+        r.currentRunVisibleCount = targetCount;
+        await broadcastTableState(lobbyId);
+      }, revealAt);
+    }
+
+    if (runIdx < numRuns - 1) {
+      cumDelay += 4000;
+    }
+  }
+
+  setTimeout(async () => {
+    if ((runoutGenerations.get(lobbyId) ?? 0) !== gen) return;
+    cancelRunout(lobbyId);
+    await handleHandComplete(lobbyId, finalState, config);
+  }, cumDelay);
+}
+
 /** userId set to prevent duplicate cash-out processing */
 const cashOutInProgress = new Set<string>();
 
@@ -667,16 +850,29 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   // pot until the board has been fully revealed and handleHandComplete fires.
   const runout = activeRunouts.get(lobbyId);
   const rawGame = runout ? runout.finalEngineState : await getActiveGame(lobbyId);
+
+  // For multi-runout: override the board to show the current run's cards at the current reveal depth.
+  let boardOverride: import('@vct/shared-types').Card[] | undefined;
+  let runoutCurrentRun: number | undefined;
+  let runoutTotalRuns: number | undefined;
+  if (runout?.numRuns !== undefined && runout.currentRunIndex !== undefined && rawGame?.runoutBoards) {
+    boardOverride = rawGame.runoutBoards[runout.currentRunIndex].slice(0, runout.currentRunVisibleCount ?? 0);
+    runoutCurrentRun = runout.currentRunIndex + 1;
+    runoutTotalRuns = runout.numRuns;
+  }
+
   const game = runout && rawGame
     ? {
         ...rawGame,
+        board: boardOverride ?? rawGame.board,
         seats: rawGame.seats.map((s) => ({
           ...s,
           stack: runout.prePayoutStacks.get(s.seatIndex) ?? s.stack,
         })),
       }
     : rawGame;
-  const visibleBoardCount = runout ? runout.visibleBoardCount : undefined;
+  // For single runout pass visibleBoardCount; for multi-runout the board is already sliced above.
+  const visibleBoardCount = (runout && !boardOverride) ? runout.visibleBoardCount : undefined;
   const runoutActive = runout !== undefined;
   const revealHoleCards = runout ? runout.revealHoleCards : undefined;
 
@@ -687,6 +883,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
     const { public: pub, private: priv } = toPublicState(
       lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline,
       visibleBoardCount, runoutActive, revealHoleCards,
+      runoutCurrentRun, runoutTotalRuns,
     );
     return {
       type: 'table_state',
@@ -954,7 +1151,9 @@ async function onActionTimerExpired(
 
   recordAction(lobbyId, userId, action, preActionStreet);
 
-  if (result.state.street === 'complete') {
+  if (result.state.pendingMultiRunout) {
+    await startRunItOutPrompt(lobbyId, result.state, config);
+  } else if (result.state.street === 'complete') {
     if (isAllInRunoutTrigger(result.state, preBoardCount)) {
       await startAllInRunout(lobbyId, result.state, config, preBoardCount);
     } else {
@@ -1006,7 +1205,9 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
         if (!('error' in result)) {
           recordAction(lobbyId, userId, autoAction, game.street);
 
-          if (result.state.street === 'complete') {
+          if (result.state.pendingMultiRunout) {
+            await startRunItOutPrompt(lobbyId, result.state, lobby.settings);
+          } else if (result.state.street === 'complete') {
             if (isAllInRunoutTrigger(result.state, preBoardCount)) {
               await startAllInRunout(lobbyId, result.state, lobby.settings, preBoardCount);
             } else {
@@ -1590,6 +1791,18 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
             doubleBoard: reconnBombPot.doubleBoard,
           });
         }
+
+        // Re-send the run-it-out prompt if it's still pending and this player is the chooser
+        const reconnRunItOut = runItOutPending.get(session.lobbyId);
+        if (reconnRunItOut) {
+          const reconnLobbyForRio = await getLobbyById(session.lobbyId);
+          send(ws, {
+            type: 'run_it_out_prompt',
+            chooserSeatIndex: reconnRunItOut.chooserSeatIndex,
+            deadline: reconnRunItOut.deadline,
+            maxRuns: reconnLobbyForRio?.settings.runItOut ?? 1,
+          });
+        }
       }
       return;
     }
@@ -2000,7 +2213,9 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
       recordAction(st.lobbyId, st.userId, msg.action, preActionStreet);
 
-      if (result.state.street === 'complete') {
+      if (result.state.pendingMultiRunout) {
+        await startRunItOutPrompt(st.lobbyId, result.state, lobby.settings);
+      } else if (result.state.street === 'complete') {
         if (isAllInRunoutTrigger(result.state, preBoardCount)) {
           await startAllInRunout(st.lobbyId, result.state, lobby.settings, preBoardCount);
         } else {
@@ -2010,6 +2225,33 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         scheduleActionTimer(st.lobbyId, lobby.settings, result.state);
         await broadcastTableState(st.lobbyId);
       }
+      return;
+    }
+
+    case 'run_it_out_choice': {
+      if (!st.userId || !st.lobbyId) return;
+      const pending = runItOutPending.get(st.lobbyId);
+      if (!pending) return;
+      // Only the designated chooser may respond
+      const game = await getActiveGame(st.lobbyId);
+      const seat = game?.seats.find((s) => s.userId === st.userId);
+      if (!seat || seat.seatIndex !== pending.chooserSeatIndex) return;
+      const lobby = await getLobbyById(st.lobbyId);
+      if (!lobby) return;
+      const maxRuns = lobby.settings.runItOut ?? 1;
+      const times = Math.min(Math.max(1, Math.round(msg.times)), maxRuns);
+      await resolveRunItOut(st.lobbyId, times);
+      return;
+    }
+
+    case 'host_set_run_it_out': {
+      if (!st.userId || !st.lobbyId) return;
+      const result = await setRunItOut(st.lobbyId, st.userId, msg.times);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
       return;
     }
 

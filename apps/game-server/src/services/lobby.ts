@@ -412,6 +412,34 @@ export async function setNextHandBombPot(
   return (await getLobbyById(lobbyId))!;
 }
 
+/** Set how many times the board runs out when all players are all-in (1, 2, or 3). Host only. */
+export async function setRunItOut(
+  lobbyId: string,
+  hostUserId: string,
+  times: number,
+): Promise<LobbySummary | { error: string }> {
+  if (![1, 2, 3].includes(times)) return { error: 'Run-it-out times must be 1, 2, or 3' };
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only host can change run-it-out setting' };
+  if (lobby.settings.game !== 'holdem' && lobby.settings.game !== 'omaha') {
+    return { error: 'Run-it-out is only available for Hold\'em and Omaha' };
+  }
+
+  const settings: VariantConfig = { ...lobby.settings, runItOut: times === 1 ? undefined : times };
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
+}
+
 /** Clear the pending next-hand Bomb Pot without a host check (one-shot reset after a hand resolves). */
 export async function clearNextHandBombPot(lobbyId: string): Promise<void> {
   const lobby = await getLobbyById(lobbyId);

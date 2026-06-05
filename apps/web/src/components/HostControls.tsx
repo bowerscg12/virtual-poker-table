@@ -16,9 +16,10 @@ interface Props {
   onSetActionTimer: (seconds: number) => void;
   onSetFlipAnte?: (ante: number) => void;
   onSetBombPot?: (value: { enabled: boolean; amount?: number; doubleBoard?: boolean }) => void;
+  onSetRunItOut?: (times: number) => void;
 }
 
-export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot }: Props) {
+export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot, onSetRunItOut }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
   const currentBuyIn = getTableBuyIn(lobby.settings);
   const [buyIn, setBuyIn] = useState(String(currentBuyIn));
@@ -191,6 +192,26 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
             {bombPotEnabled
               ? `Next hand: ${bombPotDoubleBoard ? 'Double Board ' : ''}Bomb Pot (${formatChips(pendingBombPot?.amount ?? 0)}). Players opt in before it starts.`
               : 'Run the next hand as a Bomb Pot — forced ante, no betting, board runs out automatically.'}
+          </p>
+        </fieldset>
+      )}
+
+      {!isTcf && onSetRunItOut && (lobby.settings.game === 'holdem' || lobby.settings.game === 'omaha') && (
+        <fieldset className="settings-group run-it-out-controls">
+          <legend>Run It Out</legend>
+          <label className="host-timer">
+            Times to run the board
+            <select
+              value={lobby.settings.runItOut ?? 1}
+              onChange={(e) => onSetRunItOut(Number(e.target.value))}
+            >
+              <option value={1}>Once (standard)</option>
+              <option value={2}>Twice</option>
+              <option value={3}>Three times</option>
+            </select>
+          </label>
+          <p className="field-hint">
+            When all players are all-in, a randomly chosen player decides how many times to run out the board (up to this limit).
           </p>
         </fieldset>
       )}

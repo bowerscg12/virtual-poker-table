@@ -3049,6 +3049,29 @@ select {
 .bomb-pot-choice--joined { color: var(--success, #6bd98a); }
 .bomb-pot-choice--out { color: rgba(255, 255, 255, 0.7); }
 
+/* ── Run-It-Out prompt ─────────────────────────────────── */
+.run-it-out-modal .modal-title {
+  color: #4dd9ff;
+}
+
+.run-it-out-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.run-it-out-chosen {
+  text-align: center;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  color: var(--success, #6bd98a);
+}
+
+/* Host controls: run-it-out fieldset */
+.run-it-out-controls {
+  margin: 0.75rem 0;
+}
+
 .showdown-modal__boards {
   display: flex;
   flex-direction: column;

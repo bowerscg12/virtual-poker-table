@@ -18,6 +18,7 @@ import { RebuyModal } from '../components/RebuyModal';
 import { DonateModal } from '../components/DonateModal';
 import { ShowCardsModal } from '../components/ShowCardsModal';
 import { BombPotPrompt } from '../components/BombPotPrompt';
+import { RunItOutPrompt } from '../components/RunItOutPrompt';
 import { SessionResultsModal } from '../components/SessionResultsModal';
 import { ShowdownResultsModal } from '../components/ShowdownResultsModal';
 
@@ -56,6 +57,7 @@ export default function TablePage() {
     bombPotPrompt,
     bombPotNotice,
     clearBombPotNotice,
+    runItOutPrompt,
     clearCashOutSummary,
     donationReceived,
     donationConfirmed,
@@ -321,6 +323,7 @@ export default function TablePage() {
             onSetActionTimer={(seconds) => send({ type: 'host_set_action_timer', seconds })}
             onSetFlipAnte={(ante) => send({ type: 'host_set_flip_ante', ante })}
             onSetBombPot={(value) => send({ type: 'host_set_bomb_pot', ...value })}
+            onSetRunItOut={(times) => send({ type: 'host_set_run_it_out', times })}
           />
         </section>
       )}
@@ -366,6 +369,22 @@ export default function TablePage() {
           onSitOut={() => { setBombPotChoice(false); send({ type: 'bomb_pot_join', join: false }); }}
         />
       )}
+
+      {runItOutPrompt && !cashOutSummary && (() => {
+        const chooserSeat = table?.seats.find((s) => s.seatIndex === runItOutPrompt.chooserSeatIndex);
+        const isChooser = mySeat?.seatIndex === runItOutPrompt.chooserSeatIndex;
+        return (
+          <RunItOutPrompt
+            deadline={runItOutPrompt.deadline}
+            maxRuns={runItOutPrompt.maxRuns}
+            isChooser={isChooser}
+            chooserName={chooserSeat?.displayName ?? 'A player'}
+            onChoice={(times) => {
+              if (isChooser) send({ type: 'run_it_out_choice', times });
+            }}
+          />
+        );
+      })()}
 
       {rebuyAvailable && !rebuyClicked && !rebuyDismissed && !cashOutSummary && (
         <RebuyModal

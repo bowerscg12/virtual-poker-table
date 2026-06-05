@@ -83,22 +83,23 @@ function BoardSection({
 }
 
 export function ShowdownResultsModal({ result, onClose }: Props) {
-  const { hands, isSplit, soloWinner, secondBoard, secondHands } = result;
+  const { hands, isSplit, soloWinner, secondBoard, secondHands, runoutBoards } = result;
   const isDoubleBoard = !!secondHands;
+  const isMultiRunout = !!runoutBoards && runoutBoards.length > 1;
+  const autoClose = isDoubleBoard || isMultiRunout;
   const [countdown, setCountdown] = useState(AUTO_CLOSE_SEC);
 
-  // Auto-dismiss after AUTO_CLOSE_SEC seconds for double board only.
   useEffect(() => {
-    if (!isDoubleBoard) return;
+    if (!autoClose) return;
     const id = setTimeout(onClose, AUTO_CLOSE_SEC * 1000);
     return () => clearTimeout(id);
-  }, [isDoubleBoard, onClose]);
+  }, [autoClose, onClose]);
 
   useEffect(() => {
-    if (!isDoubleBoard || countdown <= 0) return;
+    if (!autoClose || countdown <= 0) return;
     const id = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(id);
-  }, [isDoubleBoard, countdown]);
+  }, [autoClose, countdown]);
 
   const aWinners = hands.filter((h) => h.isWinner);
   const bWinners = secondHands?.filter((h) => h.isWinner) ?? [];
@@ -108,7 +109,16 @@ export function ShowdownResultsModal({ result, onClose }: Props) {
     bWinners.length === 1 &&
     aWinners[0].seatIndex === bWinners[0].seatIndex;
 
-  const title = isDoubleBoard
+  const numRuns = runoutBoards?.length ?? 0;
+  const multiRunoutLabel = numRuns === 2 ? 'Run Twice' : numRuns === 3 ? 'Run Three Times' : 'Multi-Runout';
+
+  const title = isMultiRunout
+    ? isSplit
+      ? `Split Pot — ${multiRunoutLabel}`
+      : soloWinner
+      ? `${soloWinner} Wins!`
+      : multiRunoutLabel
+    : isDoubleBoard
     ? isScooped
       ? `${aWinners[0].displayName} Scooped Both Boards!`
       : 'Double Board Bomb Pot'
@@ -124,7 +134,19 @@ export function ShowdownResultsModal({ result, onClose }: Props) {
         <h2 className="modal-title showdown-modal__title">{title}</h2>
 
         <div className="showdown-modal__scroll-body">
-          {isDoubleBoard ? (
+          {isMultiRunout ? (
+            <div className="showdown-modal__boards">
+              {runoutBoards!.map((rb, i) => (
+                <BoardSection
+                  key={i}
+                  label={`Run ${i + 1}`}
+                  board={rb.board}
+                  hands={rb.hands}
+                  winnersOnly
+                />
+              ))}
+            </div>
+          ) : isDoubleBoard ? (
             <div className="showdown-modal__boards">
               <BoardSection label="Board A" board={result.board} hands={hands} winnersOnly />
               <BoardSection label="Board B" board={secondBoard} hands={secondHands!} winnersOnly />
@@ -135,7 +157,7 @@ export function ShowdownResultsModal({ result, onClose }: Props) {
         </div>
 
         <div className="showdown-modal__footer">
-          {isDoubleBoard && (
+          {autoClose && (
             <span className="showdown-modal__countdown">Closing in {countdown}s…</span>
           )}
           <button type="button" className="btn primary" onClick={onClose}>

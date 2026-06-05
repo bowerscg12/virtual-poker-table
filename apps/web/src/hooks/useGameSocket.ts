@@ -38,6 +38,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [showCardsPrompt, setShowCardsPrompt] = useState<{ deadline: string } | null>(null);
   const [bombPotPrompt, setBombPotPrompt] = useState<{ deadline: string; amount: number; doubleBoard: boolean } | null>(null);
   const [bombPotNotice, setBombPotNotice] = useState<string | null>(null);
+  const [runItOutPrompt, setRunItOutPrompt] = useState<{ chooserSeatIndex: number; deadline: string; maxRuns: number } | null>(null);
   const [donationReceived, setDonationReceived] = useState<{ donorDisplayName: string; amount: number } | null>(null);
   const [donationConfirmed, setDonationConfirmed] = useState<{ recipientDisplayName: string; amount: number } | null>(null);
 
@@ -190,6 +191,10 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             if (msg.public.bombPot || msg.public.street === 'preflop') {
               setBombPotPrompt(null);
             }
+            // Run-it-out prompt resolves once the board reveal starts.
+            if (msg.public.runout?.active) {
+              setRunItOutPrompt(null);
+            }
             readyToFlushRef.current = true;
             flushPending(ws);
             break;
@@ -241,6 +246,10 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
           case 'bomb_pot_cancelled':
             setBombPotPrompt(null);
             setBombPotNotice(msg.reason);
+            break;
+
+          case 'run_it_out_prompt':
+            setRunItOutPrompt({ chooserSeatIndex: msg.chooserSeatIndex, deadline: msg.deadline, maxRuns: msg.maxRuns });
             break;
 
           case 'rebuy_available':
@@ -333,6 +342,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     bombPotPrompt,
     bombPotNotice,
     clearBombPotNotice,
+    runItOutPrompt,
     clearCashOutSummary,
     donationReceived,
     donationConfirmed,

@@ -79,7 +79,7 @@ export interface PublicTableState {
     leadingSeatIndex: number | null;
   };
   /** Present while community cards are being progressively revealed in an all-in runout */
-  runout?: { active: boolean };
+  runout?: { active: boolean; currentRun?: number; totalRuns?: number };
 }
 
 export interface PrivateTableState {
@@ -117,6 +117,8 @@ export interface ShowdownResult {
   secondBoard?: Card[];
   /** Per-seat results evaluated on Board B — present only for a Double Board Bomb Pot showdown. */
   secondHands?: ShowdownHandEntry[];
+  /** Per-run boards and hand results — present only for a run-it-out (2 or 3 times) showdown. */
+  runoutBoards?: { board: Card[]; hands: ShowdownHandEntry[] }[];
 }
 
 export interface HandHistoryEntry {

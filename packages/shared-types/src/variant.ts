@@ -36,7 +36,8 @@ export interface VariantConfig {
   blinds: BlindsConfig;
   /** Set by the host to run the next hand as a Bomb Pot. Cleared once that hand resolves. */
   nextHandBombPot?: NextHandBombPot;
-  runItTwice?: boolean;
+  /** Number of times to run out the board when all players are all-in (1 = once, 2 = twice, 3 = three times). Only for holdem/omaha. */
+  runItOut?: number;
   straddle?: boolean;
   straddleAmount?: number;
   sevenDeuceRule?: boolean;

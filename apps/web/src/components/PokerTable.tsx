@@ -10,7 +10,7 @@ import { formatChips } from '../utils/formatChips';
 import { PotDisplay } from './PotDisplay';
 
 /** How far (as fraction of seat orbit radius) the felt buttons sit from center. */
-const BTN_RADIUS_FACTOR = 0.80;
+const BTN_RADIUS_FACTOR = 0.62;
 
 const BADGE_ICON: Record<BadgeType, string> = {
   big_stack:       '👑',
@@ -262,7 +262,12 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
         <div className="pause-overlay"><span>Game Paused</span></div>
       )}
       {isRunoutActive && (
-        <div className="runout-overlay" aria-live="polite"><span>All-In Showdown</span></div>
+        <div className="runout-overlay" aria-live="polite">
+          {table?.runout?.totalRuns && table.runout.totalRuns > 1
+            ? <span>Run {table.runout.currentRun ?? 1} of {table.runout.totalRuns}</span>
+            : <span>All-In Showdown</span>
+          }
+        </div>
       )}
 
       {anim.winnerBanner && <WinnerBanner data={anim.winnerBanner} />}
