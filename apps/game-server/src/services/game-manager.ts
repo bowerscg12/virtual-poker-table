@@ -711,6 +711,25 @@ export async function updateSeatStackAfterRebuy(lobbyId: string, userId: string,
   await persistGame(lobbyId, state);
 }
 
+/**
+ * Apply a chip donation to the active engine state so the next broadcastTableState
+ * reflects the updated stacks immediately. No-op when no hand is in progress.
+ */
+export async function transferChipsBetweenSeats(
+  lobbyId: string,
+  donorUserId: string,
+  recipientUserId: string,
+  amount: number,
+): Promise<void> {
+  const state = activeGames.get(lobbyId);
+  if (!state) return;
+  const donorSeat = state.seats.find((s) => s.userId === donorUserId);
+  const recipientSeat = state.seats.find((s) => s.userId === recipientUserId);
+  if (donorSeat) donorSeat.stack = Math.max(0, donorSeat.stack - amount);
+  if (recipientSeat) recipientSeat.stack += amount;
+  await persistGame(lobbyId, state);
+}
+
 /** Set shownCards on a seat so the next broadcastTableState reveals them. */
 export async function setSeatShownCards(lobbyId: string, seatIndex: number, cards: Card[]): Promise<void> {
   const state = activeGames.get(lobbyId);

@@ -15,6 +15,7 @@ import { HostControls } from '../components/HostControls';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
 import { CashOutModal } from '../components/CashOutModal';
 import { RebuyModal } from '../components/RebuyModal';
+import { DonateModal } from '../components/DonateModal';
 import { ShowCardsModal } from '../components/ShowCardsModal';
 import { BombPotPrompt } from '../components/BombPotPrompt';
 import { SessionResultsModal } from '../components/SessionResultsModal';
@@ -33,6 +34,8 @@ export default function TablePage() {
   const [rebuyClicked, setRebuyClicked] = useState(false);
   const [rebuyDismissed, setRebuyDismissed] = useState(false);
   const [dismissedShowdownHandNum, setDismissedShowdownHandNum] = useState<number | null>(null);
+  const [donateOpen, setDonateOpen] = useState(false);
+  const [donationNotice, setDonationNotice] = useState<string | null>(null);
 
   const {
     connected,
@@ -53,6 +56,8 @@ export default function TablePage() {
     bombPotNotice,
     clearBombPotNotice,
     clearCashOutSummary,
+    donationReceived,
+    donationConfirmed,
     send,
   } = useGameSocket(token, lobbyId ?? null);
 
@@ -99,6 +104,22 @@ export default function TablePage() {
   useEffect(() => {
     if (rebuyAvailable) setRebuyDismissed(false);
   }, [rebuyAvailable]);
+
+  useEffect(() => {
+    if (!donationReceived) return;
+    const { donorDisplayName, amount } = donationReceived;
+    setDonationNotice(`${donorDisplayName} donated ${formatChips(amount)} chips to you!`);
+    const t = setTimeout(() => setDonationNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [donationReceived]);
+
+  useEffect(() => {
+    if (!donationConfirmed) return;
+    const { recipientDisplayName, amount } = donationConfirmed;
+    setDonationNotice(`Donated ${formatChips(amount)} chips to ${recipientDisplayName}.`);
+    const t = setTimeout(() => setDonationNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [donationConfirmed]);
 
   // Escape → open/focus chat
   useEffect(() => {
@@ -200,6 +221,11 @@ export default function TablePage() {
           {bombPotNotice}
         </div>
       )}
+      {donationNotice && (
+        <div className="banner info" role="status" onClick={() => setDonationNotice(null)}>
+          {donationNotice}
+        </div>
+      )}
 
       <main className="table-main">
         {showHeroPanel && (
@@ -226,6 +252,7 @@ export default function TablePage() {
             onRebuyClick={() => { setRebuyClicked(true); send({ type: 'rebuy' }); }}
             onLeaveTable={() => send({ type: 'cash_out' })}
             onSitOutToggle={(enabled) => send({ type: 'sit_out_next_hand', enabled })}
+            onDonateOpen={() => setDonateOpen(true)}
           />
         )}
         <div className="table-felt-wrapper">
@@ -334,6 +361,21 @@ export default function TablePage() {
           onSitOut={() => setRebuyDismissed(true)}
           onLeave={() => send({ type: 'cash_out' })}
           onDismiss={() => setRebuyDismissed(true)}
+        />
+      )}
+
+      {donateOpen && mySeat && headerLobby && (
+        <DonateModal
+          myStack={mySeat.stack}
+          recipients={headerLobby.seats.filter((s) => s.userId && s.userId !== user?.id).map((s) => ({
+            seatIndex: s.seatIndex,
+            displayName: s.displayName,
+            stack: s.stack,
+          }))}
+          onDonate={(recipientSeatIndex, amount) =>
+            send({ type: 'donate_chips', recipientSeatIndex, amount, donationId: crypto.randomUUID() })
+          }
+          onClose={() => setDonateOpen(false)}
         />
       )}
 

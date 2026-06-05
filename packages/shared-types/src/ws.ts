@@ -31,6 +31,7 @@ export type ClientMessage =
   | { type: 'rebuy' }
   | { type: 'show_cards'; show: boolean }
   | { type: 'sit_out_next_hand'; enabled: boolean }
+  | { type: 'donate_chips'; recipientSeatIndex: number; amount: number; donationId: string }
   | { type: 'ping' };
 
 /** Server -> Client */
@@ -55,6 +56,8 @@ export type ServerMessage =
   | { type: 'show_cards_result'; seatIndex: number; cards?: Card[] }
   | { type: 'bomb_pot_prompt'; deadline: string; amount: number; doubleBoard: boolean }
   | { type: 'bomb_pot_cancelled'; reason: string }
+  | { type: 'donation_received'; donorDisplayName: string; amount: number }
+  | { type: 'donation_confirmed'; recipientDisplayName: string; amount: number }
   | { type: 'pong' };
 
 export interface ChatMessage {

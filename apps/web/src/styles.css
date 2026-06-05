@@ -1311,6 +1311,96 @@ select {
   white-space: nowrap;
 }
 
+/* ── Donate button (hero panel) ─────────────────────────────────────────────── */
+.donate-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(100, 200, 150, 0.35);
+  color: rgba(100, 220, 150, 0.9);
+  padding: 0.42rem 0.85rem;
+  font-size: 0.87rem;
+  opacity: 0.85;
+}
+
+.donate-btn:hover {
+  border-color: rgba(100, 200, 150, 0.7);
+  opacity: 1;
+}
+
+/* ── Donate modal ────────────────────────────────────────────────────────────── */
+.donate-modal {
+  min-width: 300px;
+  max-width: 420px;
+}
+
+.donate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.donate-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.65;
+}
+
+.donate-recipient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.donate-recipient-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.donate-recipient-btn--selected {
+  border-color: rgba(100, 200, 150, 0.6);
+  background: rgba(100, 200, 150, 0.1);
+  color: rgba(100, 220, 150, 1);
+}
+
+.donate-recipient-name {
+  font-weight: 600;
+}
+
+.donate-recipient-stack {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.donate-amount-input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: inherit;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.donate-amount-input:focus {
+  outline: none;
+  border-color: rgba(100, 200, 150, 0.6);
+}
+
+.donate-amount-error {
+  font-size: 0.78rem;
+  color: var(--danger, #e05252);
+}
+
 /* ── Showdown results modal ──────────────────────────────── */
 
 .showdown-overlay { z-index: 55; align-items: center; }

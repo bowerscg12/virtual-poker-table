@@ -29,7 +29,7 @@ interface Props {
   onRebuyClick: () => void;
   onLeaveTable: () => void;
   onSitOutToggle: (enabled: boolean) => void;
-
+  onDonateOpen?: () => void;
 }
 
 export function HeroActionPanel({
@@ -53,6 +53,7 @@ export function HeroActionPanel({
   onRebuyClick,
   onLeaveTable,
   onSitOutToggle,
+  onDonateOpen,
 }: Props) {
   return (
     <div className="hero-action-panel">
@@ -109,6 +110,11 @@ export function HeroActionPanel({
               {seat.sitOutNextHand
                 ? seat.sitOutBlindOwed ? 'Cancel Sit Out' : 'Resume Play'
                 : 'Sit Out'}
+            </button>
+          )}
+          {onDonateOpen && seat.stack > 0 && !rebuyAvailable && (
+            <button type="button" className="btn donate-btn" onClick={onDonateOpen}>
+              Donate Chips
             </button>
           )}
         </div>

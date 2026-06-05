@@ -38,6 +38,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [showCardsPrompt, setShowCardsPrompt] = useState<{ deadline: string } | null>(null);
   const [bombPotPrompt, setBombPotPrompt] = useState<{ deadline: string; amount: number; doubleBoard: boolean } | null>(null);
   const [bombPotNotice, setBombPotNotice] = useState<string | null>(null);
+  const [donationReceived, setDonationReceived] = useState<{ donorDisplayName: string; amount: number } | null>(null);
+  const [donationConfirmed, setDonationConfirmed] = useState<{ recipientDisplayName: string; amount: number } | null>(null);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -256,6 +258,17 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             setRebuyQueued(false);
             break;
 
+          case 'donation_received':
+            // Dismiss any active rebuy modal — player now has chips via donation
+            setRebuyAvailable(null);
+            setRebuyQueued(false);
+            setDonationReceived({ donorDisplayName: msg.donorDisplayName, amount: msg.amount });
+            break;
+
+          case 'donation_confirmed':
+            setDonationConfirmed({ recipientDisplayName: msg.recipientDisplayName, amount: msg.amount });
+            break;
+
           case 'error':
             setError(msg.message);
             break;
@@ -321,6 +334,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     bombPotNotice,
     clearBombPotNotice,
     clearCashOutSummary,
+    donationReceived,
+    donationConfirmed,
     send,
   };
 }

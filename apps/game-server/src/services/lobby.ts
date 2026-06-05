@@ -711,6 +711,43 @@ export async function rebuyPlayer(lobbyId: string, userId: string, amount: numbe
   return getLobbyById(lobbyId);
 }
 
+/**
+ * Transfer chips from donor to recipient in the lobby seat store.
+ * Validation (donor has sufficient chips, both are seated) must be done by the caller
+ * before invoking this — lobby stacks may lag behind the engine in Postgres mode.
+ */
+export async function donateChips(
+  lobbyId: string,
+  donorUserId: string,
+  recipientUserId: string,
+  amount: number,
+): Promise<LobbySummary | null> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return null;
+    const donorSeat = mem.seats.find((s) => s.userId === donorUserId);
+    const recipientSeat = mem.seats.find((s) => s.userId === recipientUserId);
+    if (donorSeat) donorSeat.stack = Math.max(0, donorSeat.stack - amount);
+    if (recipientSeat) recipientSeat.stack += amount;
+    return toSummary(mem);
+  }
+  const db = getDb();
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const donorRow = seats.find((s) => s.userId === donorUserId);
+  const recipientRow = seats.find((s) => s.userId === recipientUserId);
+  if (donorRow) {
+    await db.update(tableSeats)
+      .set({ stack: Math.max(0, donorRow.stack - amount) })
+      .where(eq(tableSeats.id, donorRow.id));
+  }
+  if (recipientRow) {
+    await db.update(tableSeats)
+      .set({ stack: recipientRow.stack + amount })
+      .where(eq(tableSeats.id, recipientRow.id));
+  }
+  return getLobbyById(lobbyId);
+}
+
 export async function removeSeat(lobbyId: string, userId: string): Promise<LobbySummary | null> {
   if (useMemory) {
     const mem = memoryStore.lobbies.get(lobbyId);

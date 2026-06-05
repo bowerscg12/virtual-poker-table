@@ -7,6 +7,7 @@ import {
   approveRebuy,
   autoSeatPlayer,
   claimHostIfVacant,
+  donateChips,
   getActiveSeatForUser,
   getLobbyById,
   kickSeat,
@@ -43,6 +44,7 @@ import {
   startBombPotHand,
   startHand,
   toPublicState,
+  transferChipsBetweenSeats,
   updateLastHandHistoryFoldWin,
   updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
@@ -558,6 +560,21 @@ async function maybeStartBombPot(lobbyId: string, settings: VariantConfig): Prom
 
 /** userId set to prevent duplicate cash-out processing */
 const cashOutInProgress = new Set<string>();
+
+/**
+ * Recently-processed donation IDs. Capped at MAX_DONATION_IDS entries (FIFO eviction) to
+ * prevent a reconnect-retry from crediting a donation twice.
+ */
+const processedDonationIds = new Set<string>();
+const MAX_DONATION_IDS = 10_000;
+
+function trackDonationId(id: string): void {
+  if (processedDonationIds.size >= MAX_DONATION_IDS) {
+    const first = processedDonationIds.values().next().value as string;
+    processedDonationIds.delete(first);
+  }
+  processedDonationIds.add(id);
+}
 
 export type TokenVerifier = (token: string) => Promise<{ sub: string }>;
 
@@ -2069,6 +2086,82 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const updatedLobby = await getLobbyById(lobbyId, connected);
       if (updatedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
       await broadcastTableState(lobbyId);
+      await tryStartWaitingHand(lobbyId);
+      return;
+    }
+
+    case 'donate_chips': {
+      if (!st.userId || !st.lobbyId) return;
+      const userId = st.userId;
+      const lobbyId = st.lobbyId;
+      const { recipientSeatIndex, amount, donationId } = msg;
+
+      // Duplicate-send guard (reconnect retry with same donationId)
+      if (processedDonationIds.has(donationId)) return;
+
+      if (!Number.isInteger(amount) || amount <= 0) {
+        send(ws, { type: 'error', message: 'Donation amount must be a positive integer' });
+        return;
+      }
+
+      const lobby = await getLobbyById(lobbyId);
+      if (!lobby) return;
+
+      const donorSeat = lobby.seats.find((s) => s.userId === userId);
+      if (!donorSeat) { send(ws, { type: 'error', message: 'You are not seated' }); return; }
+
+      const recipientSeat = lobby.seats.find((s) => s.seatIndex === recipientSeatIndex);
+      if (!recipientSeat?.userId) {
+        send(ws, { type: 'error', message: 'No player in that seat' });
+        return;
+      }
+
+      if (recipientSeat.userId === userId) {
+        send(ws, { type: 'error', message: 'Cannot donate chips to yourself' });
+        return;
+      }
+
+      // Use engine stack as the authoritative chip count (lobby may lag in Postgres mode)
+      const game = await getActiveGame(lobbyId);
+      const donorGameSeat = game?.seats.find((s) => s.userId === userId);
+      const effectiveDonorStack = donorGameSeat?.stack ?? donorSeat.stack;
+
+      if (effectiveDonorStack < amount) {
+        send(ws, { type: 'error', message: 'Insufficient chips' });
+        return;
+      }
+
+      // Mark processed before the async updates to prevent races on fast duplicate sends
+      trackDonationId(donationId);
+
+      // Update lobby seat stacks (both paths: memory and Postgres)
+      await donateChips(lobbyId, userId, recipientSeat.userId, amount);
+
+      // Update live engine state so the next broadcast shows correct stacks immediately
+      await transferChipsBetweenSeats(lobbyId, userId, recipientSeat.userId, amount);
+
+      // If recipient had a rebuy queued (was at 0 chips), cancel it — donated chips restore them
+      pendingRebuys.delete(recipientSeat.userId);
+
+      const donorDisplayName = donorSeat.displayName ?? 'Player';
+      const recipientDisplayName = recipientSeat.displayName ?? 'Player';
+
+      // Notify recipient (dismisses rebuy screen if showing)
+      const recipientWs = connectedUserSockets.get(recipientSeat.userId);
+      if (recipientWs) {
+        send(recipientWs, { type: 'donation_received', donorDisplayName, amount });
+      }
+
+      // Confirm to donor
+      send(ws, { type: 'donation_confirmed', recipientDisplayName, amount });
+
+      // Broadcast updated state to all clients
+      const connected = getConnectedSet(lobbyId);
+      const updatedLobby = await getLobbyById(lobbyId, connected);
+      if (updatedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
+      await broadcastTableState(lobbyId);
+
+      // Recipient now has chips — they may unblock a hand waiting for players
       await tryStartWaitingHand(lobbyId);
       return;
     }
