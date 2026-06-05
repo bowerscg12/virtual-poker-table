@@ -61,8 +61,8 @@ export default function LoginPage() {
   return (
     <div className="page home">
       <header className="hero">
-        <h1>Virtual Card Table</h1>
-        <p>Host home games online — shuffle, deal, and chips handled in-app. Settle up with friends IRL.</p>
+        <h1>Home Game</h1>
+        <p>Your home game, online.</p>
       </header>
 
       <div className="panel login-panel">

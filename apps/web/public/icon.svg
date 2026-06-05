@@ -1,4 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" rx="64" fill="#0d5c2e"/>
-  <text x="256" y="300" font-size="200" text-anchor="middle" fill="#d4af37">`</text>
+  <!-- House silhouette: roof overhang + walls -->
+  <path d="M 256 72 L 432 244 L 392 244 L 392 432 L 120 432 L 120 244 L 80 244 Z" fill="#d4af37"/>
+  <!-- Spade centered in house body -->
+  <text x="256" y="400" font-size="148" text-anchor="middle" fill="#0a3d1f">♠</text>
 </svg>

@@ -4,7 +4,7 @@ export default function PrivacyPolicyPage() {
   return (
     <div className="page privacy-policy">
       <header className="hero">
-        <h1>Virtual Card Table</h1>
+        <h1>Home Game</h1>
         <p className="hero-sub">Privacy Policy</p>
       </header>
 
@@ -12,7 +12,7 @@ export default function PrivacyPolicyPage() {
         <p className="policy-effective">Effective: June 4, 2026</p>
 
         <p>
-          Virtual Card Table ("the App," "we," "us") is a browser-based, play-money card game
+          Home Game ("the App," "we," "us") is a browser-based, play-money card game
           operated by an individual developer. This policy explains what personal data we collect,
           how we use it, and your rights.
         </p>

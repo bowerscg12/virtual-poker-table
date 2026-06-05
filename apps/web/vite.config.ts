@@ -10,9 +10,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Virtual Card Table',
-        short_name: 'VCT',
-        description: 'Play poker and card games with friends online',
+        name: 'Home Game',
+        short_name: 'Home Game',
+        description: 'Poker night with friends — chips, deals, and settling up, handled.',
         theme_color: '#0d5c2e',
         background_color: '#0a3d1f',
         display: 'standalone',
