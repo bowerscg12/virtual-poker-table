@@ -80,6 +80,12 @@ export interface PublicTableState {
   };
   /** Present while community cards are being progressively revealed in an all-in runout */
   runout?: { active: boolean; currentRun?: number; totalRuns?: number };
+  /**
+   * SHA-256 hex digest of the RNG seed bytes used to shuffle the deck for the last completed hand.
+   * Published only once the hand is complete so players can verify card dealing was fair (provably fair).
+   * Cleared when the next hand begins.
+   */
+  lastHandSeed?: string;
 }
 
 export interface PrivateTableState {

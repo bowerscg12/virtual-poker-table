@@ -10,6 +10,8 @@ interface Props {
   onCopyInvite: () => void;
   onChatToggle: () => void;
   onHistoryToggle: () => void;
+  /** SHA-256 hex digest of the RNG seed for the last completed hand — provably fair. */
+  lastHandSeed?: string;
 }
 
 export function TableHeader({
@@ -22,6 +24,7 @@ export function TableHeader({
   onCopyInvite,
   onChatToggle,
   onHistoryToggle,
+  lastHandSeed,
 }: Props) {
   const statusClass = connected ? 'on' : reconnecting ? 'reconnecting' : 'off';
   const statusTitle = connected ? 'Connected' : reconnecting ? 'Reconnecting...' : 'Disconnected';
@@ -53,6 +56,17 @@ export function TableHeader({
           >
             {lobby.inviteCode}
             <span className="table-header__copy-icon" aria-hidden="true">⎘</span>
+          </button>
+        )}
+        {lastHandSeed && (
+          <button
+            type="button"
+            className="table-header__seed"
+            title={`SHA-256 seed for last hand: ${lastHandSeed}`}
+            onClick={() => navigator.clipboard.writeText(lastHandSeed).catch(() => {})}
+            aria-label="Seed verification — click to copy full hash"
+          >
+            🔒 seed: {lastHandSeed.slice(0, 16)}…
           </button>
         )}
       </div>

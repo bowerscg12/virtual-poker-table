@@ -3261,6 +3261,37 @@ select {
   font-size: 0.85rem;
 }
 
+/* Provably-fair seed chip — shown between hands */
+.table-header__seed {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6rem;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Mono', monospace;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(100, 220, 180, 0.75);
+  background: rgba(100, 220, 180, 0.07);
+  border: 1px solid rgba(100, 220, 180, 0.2);
+  border-radius: 4px;
+  padding: 2px 7px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+  animation: seed-fadein 0.4s ease;
+}
+
+.table-header__seed:hover {
+  background: rgba(100, 220, 180, 0.15);
+  color: rgba(100, 220, 180, 1);
+}
+
+@keyframes seed-fadein {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .table-header__right {
   display: flex;
   align-items: center;
@@ -3432,6 +3463,10 @@ select {
     font-size: 0.65rem;
     padding: 2px 6px;
     letter-spacing: 0.1em;
+  }
+
+  .table-header__seed {
+    display: none;
   }
 
   .hero-action-panel {

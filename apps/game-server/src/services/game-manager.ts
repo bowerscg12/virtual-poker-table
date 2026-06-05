@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import type { BadgeType, Card, HandHistoryEntry, PlayerActionType, PublicTableState, ShowdownHandEntry, ShowdownResult, VariantConfig } from '@vct/shared-types';
 import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
@@ -42,6 +42,18 @@ interface SerializedGame extends Omit<GameTableState, 'processedActionIds' | 'se
 const activeGames = new Map<string, GameTableState>();
 const handHistories = new Map<string, HandHistoryEntry[]>();
 let dealerRotations = new Map<string, number>();
+
+/**
+ * SHA-256 hex digest of the deck-shuffle seed for the most recently *completed* hand.
+ * Published once the hand is over so players can verify card dealing was fair.
+ */
+const lastHandSeeds = new Map<string, string>();
+
+/**
+ * In-flight seed hash for the currently running hand.
+ * Promoted to lastHandSeeds once the hand reaches 'complete'.
+ */
+const pendingHandSeeds = new Map<string, string>();
 
 /** Per-seat last action, keyed lobbyId → seatIndex. Cleared on street advance and new hand. */
 const seatLastActions = new Map<string, Map<number, { action: PlayerActionType; amount?: number }>>();
@@ -264,7 +276,21 @@ export async function startHand(lobbyId: string, config: VariantConfig): Promise
   if (players.length < 2) return { error: 'Need at least 2 players' };
 
   const handNumber = (activeGames.get(lobbyId)?.handNumber ?? 0) + 1;
-  const rng = () => randomBytes(4).readUInt32BE(0) / 0xffffffff;
+  // Generate a fixed seed buffer and derive all random draws from it so we can
+  // publish its hash after the hand for provably-fair verification.
+  // Generate a fixed 32-byte seed, hash it, and derive all RNG draws from it so we
+  // can publish the hash after the hand ends for provably-fair verification.
+  const seedBuf = randomBytes(32);
+  const seedHash = createHash('sha256').update(seedBuf).digest('hex');
+  // Clear last hand's published seed for this lobby while the new hand runs.
+  lastHandSeeds.delete(lobbyId);
+  pendingHandSeeds.set(lobbyId, seedHash);
+  let seedOffset = 0;
+  const rng = () => {
+    const val = seedBuf.readUInt32BE(seedOffset % 28) / 0xffffffff;
+    seedOffset = (seedOffset + 4) % 32;
+    return val;
+  };
 
   const state =
     config.game === 'twelve_card_flip'
@@ -310,7 +336,16 @@ export async function startBombPotHand(
   dealerRotations.set(lobbyId, nextDealerIdx);
 
   const handNumber = (activeGames.get(lobbyId)?.handNumber ?? 0) + 1;
-  const rng = () => randomBytes(4).readUInt32BE(0) / 0xffffffff;
+  const seedBuf = randomBytes(32);
+  const seedHash = createHash('sha256').update(seedBuf).digest('hex');
+  lastHandSeeds.delete(lobbyId);
+  pendingHandSeeds.set(lobbyId, seedHash);
+  let seedOffset = 0;
+  const rng = () => {
+    const val = seedBuf.readUInt32BE(seedOffset % 28) / 0xffffffff;
+    seedOffset = (seedOffset + 4) % 32;
+    return val;
+  };
 
   const state = createBombPotTable(participants, config, handNumber, nextDealerIdx, amount, doubleBoard, rng);
 
@@ -403,6 +438,12 @@ export async function processGameAction(
   syncStacksToLobby(lobbyId, state);
 
   if (state.street === 'complete') {
+    // Promote the in-flight seed hash to the published map so clients can verify fairness.
+    const seedHash = pendingHandSeeds.get(lobbyId);
+    if (seedHash) {
+      lastHandSeeds.set(lobbyId, seedHash);
+      pendingHandSeeds.delete(lobbyId);
+    }
     await recordHandHistory(lobbyId, state);
   }
 
@@ -733,6 +774,8 @@ export function toPublicState(
     flipReveal: isTwelveCardFlip && state.street !== 'waiting'
       ? getTwelveCardFlipRevealInfo(state)
       : undefined,
+    // Publish the seed hash only once the hand is over so players can verify fairness.
+    lastHandSeed: state.street === 'complete' ? lastHandSeeds.get(lobbyId) : undefined,
   };
 
   if (isSpectator || !viewerSeat) {

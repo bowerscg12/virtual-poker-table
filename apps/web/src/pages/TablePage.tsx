@@ -207,6 +207,7 @@ export default function TablePage() {
         onCopyInvite={copyInvite}
         onChatToggle={() => setChatOpen((o) => !o)}
         onHistoryToggle={() => setHistoryOpen((o) => !o)}
+        lastHandSeed={table?.lastHandSeed}
       />
 
       {reconnecting && !connected && (
