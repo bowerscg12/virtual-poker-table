@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Multiplayer browser poker app. Guest-only identity (display name at join/create). Variants: Texas Hold'em, Omaha, 12-Card-Flip. Real-time WebSocket sync, no real money.
+Multiplayer browser card game app. Guest-first identity (display name at join/create; optional account registration). Variants: Texas Hold'em, Omaha, PLO8, 12-Card-Flip, Blackjack. Real-time WebSocket sync, no real money.
 
 ---
 
@@ -10,14 +10,23 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 
 | Layer | Path | Purpose |
 | --- | --- | --- |
-| Server entry | `apps/game-server/src/ws/handler.ts` | All WS message routing |
+| Server entry | `apps/game-server/src/ws/handler.ts` | Poker WS message routing |
+| Blackjack handler | `apps/game-server/src/ws/blackjack-handler.ts` | Blackjack WS routing, betting/action/intermission timers |
 | Game state | `apps/game-server/src/services/game-manager.ts` | `GameTableState` lifecycle, `toPublicState` |
+| Blackjack state | `apps/game-server/src/services/blackjack-manager.ts` | Blackjack round lifecycle, state persistence |
 | Lobby/seats | `apps/game-server/src/services/lobby.ts` | CRUD, `autoSeatPlayer`, `isMemoryMode()` |
 | Session | `apps/game-server/src/services/session.ts` | Reconnect session CRUD |
-| Engine | `packages/poker-engine/src/game-table.ts` | `createInitialTable`, `applyAction` |
-| Shared types | `packages/shared-types/src/` | `ws.ts`, `game.ts`, `lobby.ts`, `variant.ts` |
+| Chat | `apps/game-server/src/services/chat.ts` | In-memory chat (max 100 msgs/lobby), system announcements |
+| Cleanup | `apps/game-server/src/services/guest-cleanup.ts` | Purges guest accounts >48h old |
+| Cleanup | `apps/game-server/src/services/lobby-cleanup.ts` | Purges abandoned lobbies >20 min |
+| Poker engine | `packages/poker-engine/src/game-table.ts` | `createInitialTable`, `applyAction` |
+| Blackjack engine | `packages/blackjack-engine/src/game.ts` | Round lifecycle, `game.ts`, `hand.ts`, `shoe.ts`, `dealer.ts`, `settlement.ts` |
+| Shared types | `packages/shared-types/src/` | `ws.ts`, `game.ts`, `lobby.ts`, `variant.ts`, `blackjack.ts`, `avatar.ts` |
 | Table UI | `apps/web/src/components/PokerTable.tsx` | Felt, seats, cards, badges |
+| Blackjack UI | `apps/web/src/components/BlackjackTable.tsx` | Blackjack table display |
+| Blackjack bets | `apps/web/src/components/BlackjackActionBar.tsx` | Chip denominations, bet/action UI |
 | WS client | `apps/web/src/hooks/useGameSocket.ts` | WS lifecycle, reconnect, state sync |
+| Blackjack state | `apps/web/src/hooks/useBlackjackState.ts` | Blackjack-specific state management |
 | REST | `apps/game-server/src/routes/api.ts` | Auth, lobbies, hand-history |
 
 ---
@@ -27,6 +36,18 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 - **Server**: Fastify + raw `ws`. Drizzle ORM on Postgres (in-memory fallback). Redis stores `GameTableState` at `table:{lobbyId}:state` (in-memory fallback).
 - **Client**: React + Vite PWA. `useGameSocket` owns WS lifecycle. `AuthContext` holds JWT + guest user.
 - **Shared types**: Must rebuild (`npm run build -w @vct/shared-types`) after any edit.
+- **Blackjack**: Separate `packages/blackjack-engine/` package; separate `blackjack-handler.ts` and `blackjack-manager.ts` on the server — does not go through the poker engine.
+- **Cleanup services**: `guest-cleanup.ts` and `lobby-cleanup.ts` started at server boot from `apps/game-server/src/index.ts`.
+
+---
+
+## Authentication
+
+- **Guest flow (primary)**: `POST /lobbies` or `POST /lobbies/join` — creates user + returns token in one call; no pre-auth needed.
+- **Account registration**: `POST /api/auth/register { displayName, username, password }`
+- **Account login**: `POST /api/auth/login { username, password }`
+- **Guest creation**: `POST /api/auth/guest { displayName }`
+- Display names filtered for profanity at registration (`apps/game-server/src/utils/profanity.ts` — leet-speak normalization + blocklist).
 
 ---
 
@@ -36,7 +57,6 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 
 - Create: `POST /lobbies { displayName, settings }` → `{ user, token, sessionId, lobby }`
 - Join: `POST /lobbies/join { displayName, inviteCode }` → same shape
-- No JWT needed upfront — endpoint is unauthenticated, returns fresh token.
 
 ---
 
@@ -54,7 +74,7 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 
 ## WebSocket Protocol
 
-### Client → Server
+### Client → Server (Poker)
 
 | type | payload |
 |---|---|
@@ -65,16 +85,31 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 | `chat` | `{ text }` |
 | `sit` | `{ seatIndex?, buyIn? }` |
 | `stand` / `spectate` | — |
+| `sit_out_next_hand` | — |
+| `set_blind_hand` | — (play next hand without seeing hole cards) |
+| `rabbit_hunt` | — (reveal unseen burn cards after hand) |
 | `host_start` / `host_pause` | `{ paused: boolean }` for pause |
 | `host_kick` | `{ seatIndex }` |
 | `host_approve_rebuy` | `{ seatIndex, amount }` |
 | `host_adjust_blinds` | `{ small, big }` |
 | `host_set_action_timer` | `{ seconds }` |
+| `host_set_bomb_pot` | `{ amount, doubleBoard }` |
+| `host_set_run_it_out` | `{ times }` (1/2/3) |
 | `cash_out` / `cash_out_cancel` / `rebuy` | — |
 | `show_cards` | `{ show: boolean }` |
+| `donate_chips` | `{ donationId, toDonateStack }` |
+| `run_it_out_choice` | `{ times }` |
+| `bomb_pot_join` | — |
 | `ping` | — |
 
-### Server → Client
+### Client → Server (Blackjack)
+
+| type | payload |
+|---|---|
+| `bj_place_bet` | `{ amount }` |
+| `bj_action` | `{ action }` (hit/stand/double/split) |
+
+### Server → Client (Poker)
 
 | type | payload |
 |---|---|
@@ -87,22 +122,47 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 | `cashed_out` | `{ summary: CashOutSummary }` |
 | `rebuy_available` / `rebuy_confirmed` | `{ amount }` / `{ newStack }` |
 | `show_cards_prompt` / `show_cards_result` | `{ deadline }` / `{ seatIndex, cards? }` |
+| `run_it_out_prompt` | `{ chooserSeatIndex, deadline, maxRuns }` |
+| `bomb_pot_prompt` | `{ amount, doubleBoard, deadline }` |
+| `bomb_pot_cancelled` | — |
+| `chat` | `{ text, displayName, isHost, isSystem }` |
 | `error` | `{ message, code? }` |
 | `pong` | — |
+
+### Server → Client (Blackjack)
+
+| type | payload |
+|---|---|
+| `bj_state` | `PublicBlackjackState` |
+| `bj_round_started` | `{ handId }` |
+| `bj_bet_placed` | `{ seatIndex, amount }` |
+| `bj_player_acted` | `{ seatIndex, action, handIndex }` |
+| `bj_dealer_acted` | `{ action }` |
+| `bj_round_settled` | `{ results[] }` |
 
 ---
 
 ## Game Variants (`packages/shared-types/src/variant.ts`)
 
-`holdem`, `omaha`, `plo8`, `stud`, `twelve_card_flip`. Notable `VariantConfig` fields: `nextHandBombPot`, `runItTwice`, `straddle`, `sevenDeuceRule`, `extraFlopCards`, `twelveCardFlipAnte`. Presets in `presets.ts`.
+Supported: `holdem`, `omaha`, `plo8`, `twelve_card_flip`, `blackjack`. **`stud` is declared in the enum but has no engine implementation — do not use.**
 
-**Bomb Pot (per-hand modifier, holdem/omaha)**: Host sets `settings.nextHandBombPot = { amount, doubleBoard }` via `host_set_bomb_pot`. At the next hand boundary the server runs a 10s opt-in (`bomb_pot_prompt` → `bomb_pot_join`); ≥2 joining builds the hand with `createBombPotTable` (forced ante, no betting, full board(s) pre-dealt + showdown resolved), then `startBombPotRunout` reveals the board(s) (5s view delay → flop + all cards face-up → turn → river → showdown). Double board splits each side pot 50/50 via `runDoubleBoardShowdown` (`winnerPayouts[].board` tags 'A'/'B'). One-shot: cleared at `resolveBombPotOptIn`; <2 join → `bomb_pot_cancelled` + normal hand. Hand-level `GameTableState` fields: `isBombPot`, `bombPotAmount`, `isDoubleBoardBombPot`, `secondBoard`, `secondShowdownHands`.
+Notable `VariantConfig` fields: `nextHandBombPot`, `runItOut` (1/2/3 runs), `straddle`, `sevenDeuceRule`, `extraFlopCards`, `twelveCardFlipAnte`. Presets in `presets.ts` (4 presets: NLHE, PLO, 12-Card-Flip, Blackjack).
+
+> **PLO8 note**: `plo8` is declared but hi-lo evaluation is not implemented — it runs as standard Omaha.
+
+**Bomb Pot (holdem/omaha)**: Host sets `settings.nextHandBombPot = { amount, doubleBoard }` via `host_set_bomb_pot`. At the next hand boundary the server runs a 10s opt-in (`bomb_pot_prompt` → `bomb_pot_join`); ≥2 joining builds the hand with `createBombPotTable` (forced ante, no betting, full board(s) pre-dealt + showdown resolved), then `startBombPotRunout` reveals the board(s) (5s view delay → flop + all cards face-up → turn → river → showdown). Double board splits each side pot 50/50 via `runDoubleBoardShowdown` (`winnerPayouts[].board` tags 'A'/'B'). One-shot: cleared at `resolveBombPotOptIn`; <2 join → `bomb_pot_cancelled` + normal hand. Hand-level `GameTableState` fields: `isBombPot`, `bombPotAmount`, `isDoubleBoardBombPot`, `secondBoard`, `secondShowdownHands`.
+
+**Run It Out**: When all players are all-in, the `runItOut` config (1–3) allows the board to be run multiple times. Triggered via `run_it_out_prompt`; the designated chooser replies with `run_it_out_choice`. `applyMultipleRunouts()` in `game-manager.ts` handles the multi-run logic. UI: `RunItOutPrompt.tsx` (countdown modal, auto-selects "run once" if no choice).
+
+**Blackjack**: Casino rules — 1/4/6/8 decks, configurable min/max bets, hit/stand on soft 17. Players hit/stand/double/split. `BlackjackPhase`: `betting → dealing → player_turns → dealer_turn → settled → intermission`. Dealer AI in `packages/blackjack-engine/src/dealer.ts`. Payout in `settlement.ts`. Config: `blackjackNumDecks`, `blackjackMinBet`, `blackjackMaxBet`, `blackjackDealerSoftSeventeen`.
 
 ---
 
 ## Key Systems
 
 **Action Badges**: `seatLastActions: Map<lobbyId, Map<seatIndex, {action,amount?}>>` in `game-manager.ts`. Cleared on street advance, new hand, table clear. `toPublicState` populates `SeatGameState.lastAction`.
+
+**Player Badges**: `session-stats.ts` tracks per-player stats (VPIP, biggest pot, best hand, action counts). Badge types in `shared-types/src/game.ts`: `big_stack`, `short_stack`, `hot_streak`, `calling_station`, `charlie`, `whale`, `maniac`, `loose_cannon`, `most_blind_wins`. Displayed in `PokerTable.tsx`.
 
 **Position Markers**: `SeatGameState.isDealer/isSmallBlind/isBigBlind` populated in `toPublicState`. Heads-up: dealer = SB. Rendered as disk badges in `PokerTable.tsx`.
 
@@ -112,9 +172,16 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 
 **Session Stats**: `session-stats.ts` accumulates per-player stats. `computeCashOut` → `CashOutSummary` sent via `cashed_out` at hand end.
 
-**Avatars**: `AvatarConfig` in localStorage → REST body → DB → `TableSeat.avatar`. `coerceAvatar()` repairs stale configs. `AvatarSvg` renders inline SVG.
+**Chat**: `chat.ts` stores up to 100 messages per lobby in memory. System messages used for host migration announcements. Not profanity-filtered (hosts moderate). `ChatPanel.tsx` on client.
+
+**Avatars**: `AvatarConfig` in localStorage → REST body → DB → `TableSeat.avatar`. `coerceAvatar()` repairs stale configs. `AvatarSvg` renders inline SVG. Config options: gender, 9 skin tones, 10 hair styles, 5 hair colors, 5 eye colors.
 
 **Animations**: `useTableAnimations` returns `{ dealingHandNum, boardDealFromIndex, recentBetSeat, winningSeats, winnerBanner }`. Chip flights driven in `PokerTable.tsx` via ref callbacks + CSS custom properties.
+
+**Cleanup Services** (started at boot):
+
+- `guest-cleanup.ts`: deletes guest accounts older than `GUEST_EXPIRY_HOURS` (default 48h) with no active sessions.
+- `lobby-cleanup.ts`: deletes abandoned lobbies where all players have been disconnected >10 min and the lobby is >20 min old.
 
 ---
 
@@ -123,16 +190,21 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 | Task | File(s) |
 |---|---|
 | Poker rule | `packages/poker-engine/src/game-table.ts`, variant file |
+| Blackjack rule | `packages/blackjack-engine/src/`, `blackjack-manager.ts`, `blackjack-handler.ts` |
 | New WS message | `shared-types/ws.ts` → rebuild → `handler.ts` + `useGameSocket.ts` |
 | Session/reconnect | `services/session.ts`, `ws/handler.ts` |
 | Action timer | `scheduleActionTimer`/`cancelActionTimer` in `handler.ts`; `getAutoAction` in `game-manager.ts` |
 | Action badges | `seatLastActions` in `game-manager.ts`; CSS in `styles.css` |
+| Player badges | `session-stats.ts`, badge types in `shared-types/src/game.ts` |
+| Chat | `services/chat.ts`, `components/ChatPanel.tsx` |
+| Run It Out | `game-manager.ts` (`applyMultipleRunouts`), `RunItOutPrompt.tsx` |
 | DB schema | `db/schema.ts` + `migrate.ts` |
 | Betting UI | `components/ActionBar.tsx` |
 | Table UI | `components/PokerTable.tsx` |
 | Avatar | `shared-types/avatar.ts`, `AvatarSvg.tsx`, `AvatarCreator.tsx` |
 | 12-Card-Flip | `poker-engine/twelve-card-flip.ts`, `TwelveCardFlip.tsx` |
 | Table presets | `shared-types/presets.ts` |
+| Profanity filter | `apps/game-server/src/utils/profanity.ts` |
 
 ---
 
@@ -140,7 +212,8 @@ Multiplayer browser poker app. Guest-only identity (display name at join/create)
 
 ```bash
 npm install
-npm run build -w @vct/shared-types   # required after editing shared types
+npm run build -w @vct/shared-types       # required after editing shared types
+npm run build -w @vct/blackjack-engine   # required after editing blackjack engine
 npm run dev -w @vct/game-server
 npm run dev -w @vct/web
 npm test
@@ -159,8 +232,23 @@ npm run migrate -w @vct/game-server
 | `JWT_SECRET` | — | Auth token signing secret |
 | `DISCONNECT_GRACE_PERIOD_MS` | `180000` | Seat hold duration on disconnect (ms) |
 | `PORT` | `3001` | HTTP/WS port |
+| `WEB_ORIGIN` | — | CORS origin for the web client |
+| `GUEST_EXPIRY_HOURS` | `48` | Hours before stale guest accounts are purged |
 
 No Docker needed — server falls back to in-memory when Postgres/Redis are unreachable.
+
+---
+
+## Deployment
+
+- **Local infra**: `infra/docker-compose.yml` — PostgreSQL 16 + Redis 7 for local dev.
+- **Dockerfile**: Multi-stage build (builder + runner), exposes port 3001, targets Google Cloud Run.
+- **CI/CD**: `.github/workflows/ci.yml` — on push to `main`:
+  1. Runs tests against PostgreSQL 16 + Redis 7 containers.
+  2. Builds and pushes Docker image to GCP Artifact Registry.
+  3. Deploys game-server to Google Cloud Run (secrets via Secret Manager).
+  4. Deploys web frontend to Firebase Hosting.
+  5. Runs database migrations during deploy.
 
 ---
 
