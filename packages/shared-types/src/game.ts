@@ -1,4 +1,5 @@
 import type { Card } from './cards.js';
+import type { LiveSessionStats } from './session-stats.js';
 
 export type Street = 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'complete' | 'reveal';
 
@@ -43,6 +44,8 @@ export interface SeatGameState {
   badges?: BadgeType[];
   /** True while this player is playing the current hand without seeing their hole cards */
   isBlindThisHand?: boolean;
+  /** Live session stats for the avatar hover overlay — computed server-side each broadcast */
+  sessionStats?: LiveSessionStats;
 }
 
 export interface PublicTableState {

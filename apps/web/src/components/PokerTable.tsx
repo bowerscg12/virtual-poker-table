@@ -108,6 +108,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
   const isUrgent = remaining !== null && remaining <= 10;
 
   const [activeBadgeTip, setActiveBadgeTip] = useState<string | null>(null);
+  const [activeStatsTip, setActiveStatsTip] = useState<number | null>(null);
   const [dragFromSeat, setDragFromSeat] = useState<number | null>(null);
   const [dragOverSeat, setDragOverSeat] = useState<number | null>(null);
 
@@ -256,7 +257,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
       ref={feltRef}
       role="region"
       aria-label="Poker table"
-      onPointerDown={() => setActiveBadgeTip(null)}
+      onPointerDown={() => { setActiveBadgeTip(null); setActiveStatsTip(null); }}
     >
       {table?.paused && (
         <div className="pause-overlay"><span>Game Paused</span></div>
@@ -410,8 +411,33 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
               <div className="seat-info">
                 <span className="seat-number" aria-hidden="true">{seat.seatIndex + 1}</span>
                 {occupied && seat.avatar && (
-                  <div className="seat-avatar">
+                  <div
+                    className="seat-avatar"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      setActiveStatsTip(activeStatsTip === seat.seatIndex ? null : seat.seatIndex);
+                      setActiveBadgeTip(null);
+                    }}
+                  >
                     <AvatarSvg config={seat.avatar} size={32} />
+                    {activeStatsTip === seat.seatIndex && gs?.sessionStats && (
+                      <div className="seat-stats-overlay">
+                        <div className="seat-stats-title">Player Stats</div>
+                        <div className="seat-stats-row"><span>VPIP</span><span>{gs.sessionStats.vpip}%</span></div>
+                        <div className="seat-stats-row"><span>PFR</span><span>{gs.sessionStats.pfr}%</span></div>
+                        <div className="seat-stats-row"><span>Hands</span><span>{gs.sessionStats.handsPlayed}</span></div>
+                        <div className="seat-stats-row"><span>Won</span><span>{gs.sessionStats.handsWon}</span></div>
+                        <div className="seat-stats-row">
+                          <span>Net</span>
+                          <span className={gs.sessionStats.netGainLoss >= 0 ? 'stat-net-positive' : 'stat-net-negative'}>
+                            {gs.sessionStats.netGainLoss >= 0 ? '+' : ''}{gs.sessionStats.netGainLoss.toLocaleString()}
+                          </span>
+                        </div>
+                        {gs.sessionStats.bestHandDescription && (
+                          <div className="seat-stats-row"><span>Best</span><span>{gs.sessionStats.bestHandDescription}</span></div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

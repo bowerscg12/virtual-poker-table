@@ -41,3 +41,16 @@ export interface CashOutSummary {
   foldWinsMucked: number;
   handsWonBlind: number;
 }
+
+/** Live per-player stats sent in every table_state broadcast for the hover overlay. */
+export interface LiveSessionStats {
+  handsPlayed: number;
+  handsWon: number;
+  /** Voluntarily Put Money In Pot %, 0–100 integer */
+  vpip: number;
+  /** Pre-Flop Raise %, 0–100 integer */
+  pfr: number;
+  /** currentStack - totalChipsPurchased (signed) */
+  netGainLoss: number;
+  bestHandDescription: string | null;
+}

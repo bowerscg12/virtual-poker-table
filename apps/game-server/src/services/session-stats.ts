@@ -1,4 +1,4 @@
-import type { Card, CashOutSummary, PlayerActionType, VariantConfig } from '@vct/shared-types';
+import type { Card, CashOutSummary, LiveSessionStats, PlayerActionType, VariantConfig } from '@vct/shared-types';
 import type { EvaluatedHand, GameTableState } from '@vct/poker-engine';
 import { compareHands, getVariantModule, parseCard, rankValue } from '@vct/poker-engine';
 
@@ -320,6 +320,28 @@ export function getSessionBadgeData(lobbyId: string): SessionBadgeData[] {
     totalChipsPurchased: acc.totalChipsPurchased,
     handsWonBlind: acc.handsWonBlind,
   }));
+}
+
+/** Returns live session stats for all players in a lobby — used for the avatar hover overlay. */
+export function getLiveSessionStats(
+  lobbyId: string,
+  currentStacks: Map<string, number>,
+): Map<string, LiveSessionStats> {
+  const result = new Map<string, LiveSessionStats>();
+  const lobbyMap = sessions.get(lobbyId);
+  if (!lobbyMap) return result;
+  for (const [userId, acc] of lobbyMap) {
+    const currentStack = currentStacks.get(userId) ?? acc.startingStack;
+    result.set(userId, {
+      handsPlayed: acc.handsPlayed,
+      handsWon: acc.handsWon,
+      vpip: acc.handsPlayed > 0 ? Math.round((acc.vpipHands / acc.handsPlayed) * 100) : 0,
+      pfr: acc.handsPlayed > 0 ? Math.round((acc.pfrHandsRaised / acc.handsPlayed) * 100) : 0,
+      netGainLoss: currentStack - acc.totalChipsPurchased,
+      bestHandDescription: acc.bestHand?.description ?? null,
+    });
+  }
+  return result;
 }
 
 /** Remove all stats for a lobby (e.g., lobby closed). */

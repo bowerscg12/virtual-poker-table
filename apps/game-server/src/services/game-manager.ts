@@ -20,7 +20,7 @@ import { tableSeats, users } from '../db/schema.js';
 import { keys, redisDel, redisGet, redisSet } from '../store/redis.js';
 import { clearSitOutBlindOwed, getActiveLobbyIds, getMemoryLobby, isMemoryMode, restorePreHandStacks, setWaitingForReentryBlind } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
-import { getSessionBadgeData } from './session-stats.js';
+import { getSessionBadgeData, getLiveSessionStats } from './session-stats.js';
 
 interface SerializedGame extends Omit<GameTableState, 'processedActionIds' | 'seats' | 'revealedCards'> {
   processedActionIds: string[];
@@ -617,6 +617,8 @@ export function toPublicState(
   const revealHole = runoutActive ? !!revealAllHoleCards : showCards;
   const lastActions = seatLastActions.get(lobbyId);
   const badges = computeBadges(lobbyId, state);
+  const currentStacks = new Map(state.seats.map((s) => [s.userId, s.stack]));
+  const liveStats = getLiveSessionStats(lobbyId, currentStacks);
 
   const displayNameFor = (seatIndex: number) =>
     state.seats.find((s) => s.seatIndex === seatIndex)?.displayName ?? `Seat ${seatIndex + 1}`;
@@ -760,6 +762,7 @@ export function toPublicState(
       lastAction: lastActions?.get(s.seatIndex),
       badges: badges.get(s.seatIndex),
       isBlindThisHand: blindHandSeats.get(lobbyId)?.has(s.seatIndex) || undefined,
+      sessionStats: liveStats.get(s.userId),
     })),
     pots: displayPots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
     dealerSeatIndex: state.dealerSeatIndex,

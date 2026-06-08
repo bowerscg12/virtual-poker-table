@@ -2746,15 +2746,75 @@ select {
 /* ── Seat avatar on the felt ──────────────────────────────────────────────── */
 
 .seat-avatar {
+  position: relative;
   display: flex;
   justify-content: center;
   margin-bottom: 2px;
+  cursor: pointer;
 }
 
 .seat-avatar svg {
   border-radius: 50%;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
+}
+
+/* ── Session stats hover overlay ────────────────────────────────────────── */
+
+.seat-stats-overlay {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(12, 12, 12, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  padding: 6px 9px;
+  min-width: 130px;
+  z-index: 200;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.seat-stats-overlay::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.18);
+}
+
+.seat-stats-title {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.seat-stats-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #e8e8e8;
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+.seat-stats-row span:first-child {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.stat-net-positive {
+  color: #4ade80;
+}
+
+.stat-net-negative {
+  color: #f87171;
 }
 
 /* ── 12 Card Flip ────────────────────────────────────────────────────────── */
