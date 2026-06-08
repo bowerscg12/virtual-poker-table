@@ -1,4 +1,6 @@
 import type { LobbySummary } from '@vct/shared-types';
+import type { AppSettings } from '../hooks/useSettings';
+import { SettingsMenu } from './SettingsMenu';
 
 interface Props {
   lobby: LobbySummary | null;
@@ -7,9 +9,10 @@ interface Props {
   reconnecting: boolean;
   unreadChat: number;
   chatOpen: boolean;
+  settings: AppSettings;
   onCopyInvite: () => void;
   onChatToggle: () => void;
-  onHistoryToggle: () => void;
+  onSettingChange: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   /** SHA-256 hex digest of the RNG seed for the last completed hand — provably fair. */
   lastHandSeed?: string;
 }
@@ -21,9 +24,10 @@ export function TableHeader({
   reconnecting,
   unreadChat,
   chatOpen,
+  settings,
   onCopyInvite,
   onChatToggle,
-  onHistoryToggle,
+  onSettingChange,
   lastHandSeed,
 }: Props) {
   const statusClass = connected ? 'on' : reconnecting ? 'reconnecting' : 'off';
@@ -71,9 +75,6 @@ export function TableHeader({
         )}
       </div>
       <div className="table-header__right">
-        <button type="button" className="btn small" onClick={onHistoryToggle}>
-          History
-        </button>
         <button
           type="button"
           className={`btn small header-chat-btn${chatOpen ? ' active' : ''}`}
@@ -87,6 +88,7 @@ export function TableHeader({
             </span>
           )}
         </button>
+        <SettingsMenu settings={settings} onChange={onSettingChange} />
       </div>
     </header>
   );

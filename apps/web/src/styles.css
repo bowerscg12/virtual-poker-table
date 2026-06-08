@@ -478,6 +478,8 @@ select {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
   gap: 0.5rem;
+  position: relative;
+  z-index: 1000;
 }
 
 .table-main {
@@ -3326,6 +3328,149 @@ select {
   align-items: center;
   justify-content: center;
   padding: 0 2px;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS MENU
+   ═══════════════════════════════════════════════════════════ */
+
+.settings-menu {
+  position: relative;
+}
+
+.settings-menu__trigger {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.settings-menu__dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  width: 250px;
+  background: #18222e;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.35rem;
+  z-index: 200;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+.settings-menu__heading {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 0.3rem 0.5rem 0.45rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  margin-bottom: 0.2rem;
+}
+
+.settings-menu__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 0.25rem 0.5rem;
+}
+
+.settings-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.settings-menu__row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settings-menu__row--disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.settings-menu__row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.settings-menu__row-label {
+  font-size: 0.82rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.settings-menu__row-desc {
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1.3;
+}
+
+/* Toggle pill */
+.settings-toggle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  position: relative;
+  transition: background 0.18s;
+}
+
+.settings-toggle--on {
+  background: var(--gold);
+}
+
+.settings-toggle__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: left 0.18s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.settings-toggle--on .settings-toggle__knob {
+  left: 18px;
+}
+
+/* ── Hand strength label ──────────────────────────────────── */
+
+.hand-strength-label {
+  display: block;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  margin-top: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Pot odds label (below Call button) ───────────────────── */
+
+.call-btn-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.pot-odds-label {
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1;
   pointer-events: none;
 }
 

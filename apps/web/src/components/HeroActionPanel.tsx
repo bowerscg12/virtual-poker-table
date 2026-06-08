@@ -2,6 +2,7 @@ import type { Card, LegalAction, PlayerActionType, TableSeat } from '@vct/shared
 import { CardView } from './CardView';
 import { ActionBar } from './ActionBar';
 import { formatChips } from '../utils/formatChips';
+import { getHandStrengthLabel } from '../utils/handStrength';
 
 interface Props {
   // Cards
@@ -36,6 +37,15 @@ interface Props {
   cardsRevealed: boolean;
   onRevealCards: () => void;
   onBlindHandToggle: (enabled: boolean) => void;
+
+  // Hand strength indicator
+  showHandStrength: boolean;
+  board: Card[];
+  variant: string;
+  isFolded: boolean;
+
+  // Settings pass-through
+  showPotOdds: boolean;
 }
 
 export function HeroActionPanel({
@@ -64,8 +74,22 @@ export function HeroActionPanel({
   cardsRevealed,
   onRevealCards,
   onBlindHandToggle,
+  showHandStrength,
+  board,
+  variant,
+  isFolded,
+  showPotOdds,
 }: Props) {
   const showBlindCards = isBlindThisHand && !cardsRevealed;
+
+  const handLabel =
+    showHandStrength &&
+    !isDealingThisHand &&
+    !isBlindThisHand &&
+    !isFolded &&
+    holeCards.length >= 2
+      ? getHandStrengthLabel(holeCards, board, variant)
+      : '';
 
   return (
     <div className="hero-action-panel">
@@ -103,6 +127,11 @@ export function HeroActionPanel({
             })
           )}
         </div>
+
+        {handLabel && (
+          <span className="hand-strength-label">{handLabel}</span>
+        )}
+
         <div className="hero-panel__meta">
           <span className="hero-panel__stack">{formatChips(seat.stack)}</span>
           {seat.waitingForReentryBlind ? (
@@ -176,6 +205,7 @@ export function HeroActionPanel({
             currentBet={currentBet}
             limit={limit}
             onAction={onAction}
+            showPotOdds={showPotOdds}
           />
         )}
       </div>

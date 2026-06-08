@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { getLobbyById } from '../api/client';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { useTableAnimations } from '../hooks/useTableAnimations';
+import { useSettings } from '../hooks/useSettings';
 import { PokerTable } from '../components/PokerTable';
 import { TwelveCardFlip } from '../components/TwelveCardFlip';
 import { BlackjackTable } from '../components/BlackjackTable';
@@ -29,8 +30,8 @@ export default function TablePage() {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [chatOpen, setChatOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [unreadChat, setUnreadChat] = useState(0);
+  const { settings, updateSetting } = useSettings();
   const prevChatLengthRef = useRef(0);
   const [snapshotLobby, setSnapshotLobby] = useState<LobbySummary | null>(null);
   const [cashOutOpen, setCashOutOpen] = useState(false);
@@ -210,9 +211,10 @@ export default function TablePage() {
         reconnecting={reconnecting}
         unreadChat={unreadChat}
         chatOpen={chatOpen}
+        settings={settings}
         onCopyInvite={copyInvite}
         onChatToggle={() => setChatOpen((o) => !o)}
-        onHistoryToggle={() => setHistoryOpen((o) => !o)}
+        onSettingChange={updateSetting}
         lastHandSeed={table?.lastHandSeed}
       />
 
@@ -277,6 +279,11 @@ export default function TablePage() {
             cardsRevealed={cardsRevealed}
             onRevealCards={() => { setCardsRevealed(true); send({ type: 'reveal_blind_cards' }); }}
             onBlindHandToggle={(enabled) => send({ type: 'set_blind_hand', enabled })}
+            showHandStrength={settings.showHandStrength}
+            board={table?.board ?? []}
+            variant={headerLobby?.settings.game ?? 'holdem'}
+            isFolded={myGameSeat?.folded ?? false}
+            showPotOdds={settings.showPotOdds}
           />
         )}
         <div className="table-felt-wrapper">
@@ -379,8 +386,8 @@ export default function TablePage() {
         />
       )}
 
-      {historyOpen && lobbyId && (
-        <HandHistoryPanel lobbyId={lobbyId} onClose={() => setHistoryOpen(false)} />
+      {settings.showHandHistory && lobbyId && (
+        <HandHistoryPanel lobbyId={lobbyId} onClose={() => updateSetting('showHandHistory', false)} />
       )}
 
       {(cashOutOpen || cashOutConfirmPending) && !cashOutSummary && mySeat && (

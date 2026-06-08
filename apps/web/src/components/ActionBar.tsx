@@ -8,6 +8,7 @@ interface Props {
   pot: number;
   currentBet: number;
   limit?: string;
+  showPotOdds?: boolean;
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -20,7 +21,7 @@ function computeDefaultRaise(pot: number, currentBet: number, min: number, max: 
   return clamp(raw, min, max);
 }
 
-export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Props) {
+export function ActionBar({ legalActions, onAction, pot, currentBet, limit, showPotOdds }: Props) {
   const [showRaise, setShowRaise] = useState(false);
   const [showAllInConfirm, setShowAllInConfirm] = useState(false);
   const [raiseAmount, setRaiseAmount] = useState(0);
@@ -177,9 +178,16 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
           </button>
         )}
         {callAction && (
-          <button type="button" className="btn call" onClick={() => onAction('call', callAction.amount)}>
-            Call {formatChips(callAction.amount ?? 0)} <kbd className="key-hint">C</kbd>
-          </button>
+          <div className="call-btn-wrapper">
+            <button type="button" className="btn call" onClick={() => onAction('call', callAction.amount)}>
+              Call {formatChips(callAction.amount ?? 0)} <kbd className="key-hint">C</kbd>
+            </button>
+            {showPotOdds && (callAction.amount ?? 0) > 0 && pot > 0 && (
+              <span className="pot-odds-label">
+                {Math.round(((callAction.amount ?? 0) / (pot + (callAction.amount ?? 0))) * 100)}%
+              </span>
+            )}
+          </div>
         )}
         {hasRaise && (
           <button
