@@ -50,9 +50,10 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
     }
   }, [legalActions, hasRaise, raiseMin, raiseMax, pot, currentBet]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus the raise amount input when the raise panel is opened
+  // Focus the raise amount input when the raise panel is opened (desktop only —
+  // auto-focusing on touch devices opens the virtual keyboard and covers the confirm button)
   useEffect(() => {
-    if (showRaise) {
+    if (showRaise && !('ontouchstart' in window) && navigator.maxTouchPoints === 0) {
       setTimeout(() => {
         const input = document.querySelector('.raise-panel__amount-input') as HTMLInputElement;
         if (input) {
@@ -185,7 +186,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit }: Pr
             type="button"
             className={`btn raise-btn${showRaise ? ' active' : ''}`}
             onClick={() => setShowRaise((s) => !s)}
-            aria-expanded={showRaise}
+            aria-expanded={showRaise ? 'true' : 'false'}
           >
             Raise {showRaise ? '▾' : '▸'} <kbd className="key-hint">R</kbd>
           </button>
