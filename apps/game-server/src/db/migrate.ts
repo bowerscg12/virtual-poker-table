@@ -106,6 +106,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE us
 -- Add table_seats columns added after initial schema.
 ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS waiting_for_reentry_blind BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS seated_at TIMESTAMP;
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS next_hand_blind BOOLEAN NOT NULL DEFAULT false;
+
+-- Lobby Templates: per-user saved game-setting presets.
+CREATE TABLE IF NOT EXISTS lobby_templates (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name        VARCHAR(64) NOT NULL,
+  settings    JSONB NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lobby_templates_user ON lobby_templates(user_id);
 `;
 
 async function main() {

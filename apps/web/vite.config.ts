@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const apiPort = process.env.GAME_SERVER_PORT ?? '3001';
+const apiPort = process.env.GAME_SERVER_PORT ?? '3003';
 
 export default defineConfig({
   plugins: [

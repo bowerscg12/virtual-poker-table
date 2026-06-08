@@ -4465,3 +4465,72 @@ select {
   min-width: 80px;
   text-align: right;
 }
+
+/* ── Lobby Templates panel ───────────────────────────────────────────────── */
+
+.templates-guest-hint a {
+  color: var(--accent, #7fb3d3);
+}
+
+.templates-select {
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.templates-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.templates-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.88rem;
+}
+
+.templates-list-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.templates-list-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.templates-save-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.templates-save-form label {
+  font-size: 0.88rem;
+}
+
+.templates-save-form input {
+  margin: 0.2rem 0 0;
+}
+
+.templates-save-form .btn {
+  align-self: flex-start;
+}
+
+.templates-success {
+  color: #7fcea0;
+  font-size: 0.88rem;
+  margin: 0;
+}

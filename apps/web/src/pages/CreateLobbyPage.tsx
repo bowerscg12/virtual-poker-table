@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { RulesPreset, VariantConfig } from '@vct/shared-types';
+import type { LobbyTemplate, RulesPreset, VariantConfig } from '@vct/shared-types';
 import { TIMER_STEPS_SEC, formatTimerLabel } from '@vct/shared-types';
-import { getPresets } from '../api/client';
+import { deleteMyTemplate, getMyTemplates, getPresets, saveTemplate } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 function digitsOnly(value: string): string {
   return value.replace(/[^\d]/g, '');
@@ -54,6 +55,15 @@ export default function CreateLobbyPage() {
   const [bjNumDecks, setBjNumDecks] = useState<1 | 4 | 6 | 8>(6);
   const [bjSoftSeventeen, setBjSoftSeventeen] = useState<'hit' | 'stand'>('stand');
 
+  const { user } = useAuth();
+  const isRegistered = !!user && !user.isGuest;
+  const [templates, setTemplates] = useState<LobbyTemplate[]>([]);
+  const [templateName, setTemplateName] = useState('');
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const selectedPreset = presets.find((preset) => preset.id === presetId) ?? presets[0];
   const isHoldem = selectedPreset?.config.game === 'holdem';
   const isTwelveCardFlip = selectedPreset?.config.game === 'twelve_card_flip';
@@ -104,17 +114,35 @@ export default function CreateLobbyPage() {
     );
   }, [presetId, selectedPreset]);
 
-  function handleNext(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedPreset || !isFormValid || parsedBuyIn === null) {
-      setError('Please enter valid buy-in and blind values before continuing.');
-      return;
+  useEffect(() => {
+    if (!isRegistered) return;
+    getMyTemplates().then((res) => setTemplates(res.templates));
+  }, [isRegistered]);
+
+  function loadTemplateIntoForm(template: LobbyTemplate): void {
+    const s = template.settings;
+    const matchedPreset = presets.find((p) => p.config.game === s.game);
+    if (matchedPreset) setPresetId(matchedPreset.id);
+    setBuyIn(String(s.buyIn ?? s.minBuyIn ?? 500));
+    setSmallBlind(String(s.blinds?.small ?? 5));
+    setBigBlind(String(s.blinds?.big ?? 10));
+    setStraddleEnabled(s.game === 'holdem' && !!s.straddle);
+    setStraddleAmount(String(s.straddleAmount ?? (s.blinds?.big ?? 10) * 2));
+    setSevenDeuceRule(s.game === 'holdem' && !!s.sevenDeuceRule);
+    setActionTimerSec(s.actionTimerSec ?? 0);
+    if (s.game === 'blackjack') {
+      if (s.blackjackNumDecks) setBjNumDecks(s.blackjackNumDecks);
+      if (s.blackjackMinBet) setBjMinBet(String(s.blackjackMinBet));
+      if (s.blackjackMaxBet) setBjMaxBet(String(s.blackjackMaxBet));
+      if (s.blackjackDealerSoftSeventeen) setBjSoftSeventeen(s.blackjackDealerSoftSeventeen);
     }
+  }
 
-    const base: VariantConfig = selectedPreset.config;
-
+  function buildCurrentSettings(): VariantConfig | null {
+    if (!selectedPreset || parsedBuyIn === null) return null;
+    const base = selectedPreset.config;
     if (isTwelveCardFlip) {
-      const settings: VariantConfig = {
+      return {
         ...base,
         buyIn: parsedBuyIn,
         minBuyIn: parsedBuyIn,
@@ -122,18 +150,12 @@ export default function CreateLobbyPage() {
         twelveCardFlipAnte: parsedBuyIn,
         actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
       };
-      navigate('/name', { state: { mode: 'create', presetId, settings } });
-      return;
     }
-
     if (isBlackjack) {
       const parsedMinBet = parsePositiveInt(bjMinBet);
       const parsedMaxBet = parsePositiveInt(bjMaxBet);
-      if (!parsedMinBet || !parsedMaxBet || parsedMinBet > parsedMaxBet) {
-        setError('Bet limits must be valid positive numbers with min ≤ max.');
-        return;
-      }
-      const settings: VariantConfig = {
+      if (!parsedMinBet || !parsedMaxBet || parsedMinBet > parsedMaxBet) return null;
+      return {
         ...base,
         buyIn: parsedBuyIn,
         minBuyIn: parsedBuyIn,
@@ -144,25 +166,14 @@ export default function CreateLobbyPage() {
         blackjackDealerSoftSeventeen: bjSoftSeventeen,
         actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
       };
-      navigate('/name', { state: { mode: 'create', presetId, settings } });
-      return;
     }
-
-    if (parsedSmallBlind === null || parsedBigBlind === null) {
-      setError('Please enter valid blind values before continuing.');
-      return;
-    }
-
-    const settings: VariantConfig = {
+    if (parsedSmallBlind === null || parsedBigBlind === null) return null;
+    return {
       ...base,
       buyIn: parsedBuyIn,
       minBuyIn: parsedBuyIn,
       maxBuyIn: Math.max(parsedBuyIn, base.maxBuyIn),
-      blinds: {
-        ...base.blinds,
-        small: parsedSmallBlind,
-        big: parsedBigBlind,
-      },
+      blinds: { ...base.blinds, small: parsedSmallBlind, big: parsedBigBlind },
       straddle: base.game === 'holdem' ? straddleEnabled : false,
       straddleAmount:
         base.game === 'holdem' && straddleEnabled
@@ -171,7 +182,55 @@ export default function CreateLobbyPage() {
       sevenDeuceRule: base.game === 'holdem' ? sevenDeuceRule : false,
       actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
     };
+  }
 
+  async function handleSaveTemplate() {
+    const name = templateName.trim();
+    if (!name) return;
+    const settings = buildCurrentSettings();
+    if (!settings) {
+      setTemplateError('Fix form errors before saving.');
+      return;
+    }
+    setTemplateSaving(true);
+    setTemplateError(null);
+    setTemplateSuccess(null);
+    try {
+      const saved = await saveTemplate({ name, settings });
+      setTemplates((prev) => [...prev, saved]);
+      setTemplateName('');
+      setTemplateSuccess(`"${saved.name}" saved`);
+      setTimeout(() => setTemplateSuccess(null), 3000);
+    } catch (err) {
+      setTemplateError((err as Error).message ?? 'Could not save template.');
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    setDeletingId(id);
+    try {
+      await deleteMyTemplate(id);
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch {
+      // silent
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function handleNext(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isFormValid) {
+      setError('Please enter valid buy-in and blind values before continuing.');
+      return;
+    }
+    const settings = buildCurrentSettings();
+    if (!settings) {
+      setError(isBlackjack ? 'Bet limits must be valid positive numbers with min ≤ max.' : 'Please enter valid values before continuing.');
+      return;
+    }
     navigate('/name', { state: { mode: 'create', presetId, settings } });
   }
 
@@ -179,6 +238,74 @@ export default function CreateLobbyPage() {
     <div className="page">
       <form className="panel" onSubmit={handleNext}>
         <h2>Create table</h2>
+
+        {/* ── Lobby Templates ─────────────────────────────────────── */}
+        {!isRegistered ? (
+          <p className="field-hint templates-guest-hint">
+            <a href="/login">Sign up</a> to save your favourite settings as reusable templates.
+          </p>
+        ) : (
+          <fieldset className="settings-group">
+            <legend>My templates</legend>
+
+            {templates.length > 0 && (
+              <ul className="templates-list">
+                {templates.map((t) => (
+                  <li key={t.id} className="templates-list-item">
+                    <span className="templates-list-name">{t.name}</span>
+                    <div className="templates-list-actions">
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() => loadTemplateIntoForm(t)}
+                        aria-label={`Apply template "${t.name}"`}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        className="btn danger small"
+                        disabled={deletingId === t.id}
+                        onClick={() => handleDeleteTemplate(t.id)}
+                        aria-label={`Delete template "${t.name}"`}
+                      >
+                        {deletingId === t.id ? '…' : 'Delete'}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {templates.length < 20 ? (
+              <div className="templates-save-form">
+                <label>
+                  Save current settings as template
+                  <input
+                    type="text"
+                    placeholder='e.g. "Friday Night $1/$2"'
+                    maxLength={64}
+                    value={templateName}
+                    onChange={(e) => { setTemplateName(e.target.value); setTemplateError(null); }}
+                  />
+                </label>
+                {templateError && <p className="form-error">{templateError}</p>}
+                {templateSuccess && <p className="templates-success">{templateSuccess}</p>}
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={!templateName.trim() || templateSaving || !isFormValid}
+                  onClick={handleSaveTemplate}
+                >
+                  {templateSaving ? 'Saving…' : 'Save template'}
+                </button>
+              </div>
+            ) : (
+              <p className="field-hint">Template limit reached (20 max). Delete one to save a new template.</p>
+            )}
+          </fieldset>
+        )}
+
         <label>
           Rules preset
           <select value={presetId} onChange={(e) => setPresetId(e.target.value)}>

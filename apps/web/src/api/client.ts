@@ -1,4 +1,4 @@
-import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, EnterLobbyResponse, LobbySummary, RulesPreset } from '@vct/shared-types';
+import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, CreateTemplateRequest, EnterLobbyResponse, LobbyTemplate, LobbySummary, RulesPreset } from '@vct/shared-types';
 
 const API = import.meta.env.VITE_SERVER_URL ? `${import.meta.env.VITE_SERVER_URL}/api` : '/api';
 
@@ -168,6 +168,41 @@ export async function releaseActiveSeat(): Promise<void> {
     await fetch(`${API}/me/seat`, { method: 'DELETE', headers: authHeaders() });
   } catch {
     // ignore — seat will be released by server-side timer anyway
+  }
+}
+
+export async function getMyTemplates(): Promise<{ templates: LobbyTemplate[] }> {
+  try {
+    const res = await fetch(`${API}/templates`, { headers: authHeaders() });
+    if (!res.ok) return { templates: [] };
+    return res.json() as Promise<{ templates: LobbyTemplate[] }>;
+  } catch {
+    return { templates: [] };
+  }
+}
+
+export async function saveTemplate(req: CreateTemplateRequest): Promise<LobbyTemplate> {
+  const res = await fetch(`${API}/templates`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not save template');
+  }
+  const data = await res.json() as { template: LobbyTemplate };
+  return data.template;
+}
+
+export async function deleteMyTemplate(templateId: string): Promise<void> {
+  const res = await fetch(`${API}/templates/${templateId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not delete template');
   }
 }
 

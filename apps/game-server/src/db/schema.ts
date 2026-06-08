@@ -49,3 +49,11 @@ export const playerSessions = pgTable('player_sessions', {
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const lobbyTemplates = pgTable('lobby_templates', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  userId:    uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name:      varchar('name', { length: 64 }).notNull(),
+  settings:  jsonb('settings').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

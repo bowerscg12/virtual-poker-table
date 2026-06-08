@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { AuthUser, CreateLobbyRequest } from '@vct/shared-types';
+import type { AuthUser, CreateLobbyRequest, CreateTemplateRequest } from '@vct/shared-types';
 import { RULES_PRESETS } from '@vct/shared-types';
 import { guestLogin, getUserById, loginUser, registerUser, toAuthResponse, updateUserAvatar, updateUserDisplayName } from '../services/auth.js';
 import {
@@ -14,6 +14,7 @@ import {
 } from '../services/lobby.js';
 import { getHandHistories } from '../services/game-manager.js';
 import { createSession, deleteSessionsByUserId } from '../services/session.js';
+import { createTemplate, deleteTemplate, getTemplatesForUser } from '../services/templates.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   const displayNameSchema = z.string().trim().min(1).max(10);
@@ -245,6 +246,42 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/presets', async () => ({ presets: RULES_PRESETS }));
+
+  // ── Lobby Templates ────────────────────────────────────────────────────────
+
+  app.get('/templates', { onRequest: [app.authenticate] }, async (req) => {
+    const userId = (req.user as { sub: string }).sub;
+    const templates = await getTemplatesForUser(userId);
+    return { templates };
+  });
+
+  app.post('/templates', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const body = z
+      .object({ name: z.string().min(1).max(64), settings: z.any() })
+      .parse(req.body);
+
+    const user = await getUserById(userId);
+    if (!user || user.isGuest) {
+      return reply.status(403).send({ error: 'Templates are only available to registered accounts' });
+    }
+
+    try {
+      const template = await createTemplate(userId, body as CreateTemplateRequest);
+      return reply.status(201).send({ template });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not save template';
+      return reply.status(400).send({ error: msg });
+    }
+  });
+
+  app.delete('/templates/:id', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const { id } = req.params as { id: string };
+    const deleted = await deleteTemplate(userId, id);
+    if (!deleted) return reply.status(404).send({ error: 'Template not found' });
+    return { ok: true };
+  });
 
   app.get('/health', { config: { rateLimit: false } }, async () => ({ ok: true }));
 }
