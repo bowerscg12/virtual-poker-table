@@ -208,6 +208,19 @@ Notable `VariantConfig` fields: `nextHandBombPot`, `runItOut` (1/2/3 runs), `str
 
 ---
 
+## Project Agents (`.claude/agents/`)
+
+Specialized agents scoped to high-frequency task patterns. Claude Code surfaces them automatically when the task matches.
+
+| Agent | File | Use when... |
+|---|---|---|
+| `ws-protocol` | `.claude/agents/ws-protocol.md` | Adding or modifying any WS message type |
+| `game-engine` | `.claude/agents/game-engine.md` | Changing poker or blackjack rules/logic |
+| `schema-migration` | `.claude/agents/schema-migration.md` | Adding columns, tables, or indexes |
+| `test-writer` | `.claude/agents/test-writer.md` | Writing engine tests after logic changes |
+
+---
+
 ## Commands
 
 ```bash
