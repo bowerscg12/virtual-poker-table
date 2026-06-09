@@ -75,7 +75,6 @@ export default function TournamentLobbyPage() {
     fetchTournament();
   }, [fetchTournament]);
 
-  // WebSocket for real-time tournament state
   useEffect(() => {
     if (!id) return;
     const token = localStorage.getItem('vct_token');
@@ -157,7 +156,6 @@ export default function TournamentLobbyPage() {
     setActionLoading(true);
     setError(null);
     try {
-      // Send via WS for real-time response
       wsRef.current?.send(JSON.stringify({ type: 'host_start_tournament', tournamentId: id }));
     } catch (err) {
       setError((err as Error).message);
@@ -173,64 +171,58 @@ export default function TournamentLobbyPage() {
       return;
     }
     wsRef.current.send(JSON.stringify({ type: 'host_cancel_tournament', tournamentId: id }));
-    // Navigation happens via tournament_cancelled WS broadcast
   }
 
   if (loading) return <div className="page home"><div className="panel"><p>Loading...</p></div></div>;
-  if (!tournament) return <div className="page home"><div className="panel"><p style={{ color: 'var(--error,#f56)' }}>{error ?? 'Tournament not found'}</p></div></div>;
+  if (!tournament) return <div className="page home"><div className="panel"><p className="form-error">{error ?? 'Tournament not found'}</p></div></div>;
 
   const totalSlots = tournament.totalPlayers;
   const prizePool = tournament.prizePool > 0 ? tournament.prizePool : Math.floor(tournament.buyIn * totalSlots * 1.5);
 
   return (
     <div className="page home">
-      <header className="hero" style={{ paddingBottom: '1rem', position: 'relative' }}>
+      <header className="hero">
         <h1>{tournament.variant === 'holdem' ? "Hold'em" : 'Omaha'} Tournament</h1>
-        <div style={{ fontSize: '0.85rem', opacity: 0.7 }}>Code: <strong style={{ color: 'var(--gold)', letterSpacing: '0.1em' }}>{tournament.inviteCode}</strong></div>
-        <button
-          type="button"
-          className="btn"
-          style={{ position: 'absolute', top: '1rem', left: '1rem', fontSize: '0.85rem' }}
-          onClick={() => navigate('/tournaments')}
-        >
-          Back
-        </button>
+        <p>
+          Code: <strong style={{ color: 'var(--gold)', letterSpacing: '0.1em' }}>{tournament.inviteCode}</strong>
+        </p>
       </header>
 
       <div className="panel">
-        <h2>Tournament Info</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 1.5rem', fontSize: '0.9rem' }}>
-          <div><span style={{ opacity: 0.6 }}>Buy-in:</span> {tournament.buyIn.toLocaleString()} chips</div>
-          <div><span style={{ opacity: 0.6 }}>Starting Stack:</span> {tournament.startingStack.toLocaleString()}</div>
-          <div><span style={{ opacity: 0.6 }}>Players:</span> {totalSlots}</div>
-          <div><span style={{ opacity: 0.6 }}>Prize Pool:</span> {prizePool.toLocaleString()}</div>
+        <p className="home-section-label"><span aria-hidden="true">♠</span> Tournament Info</p>
+        <div className="tournament-info-grid">
+          <div><span className="tournament-info-label">Buy-in: </span>{tournament.buyIn.toLocaleString()} chips</div>
+          <div><span className="tournament-info-label">Starting Stack: </span>{tournament.startingStack.toLocaleString()}</div>
+          <div><span className="tournament-info-label">Players: </span>{totalSlots}</div>
+          <div><span className="tournament-info-label">Prize Pool: </span>{prizePool.toLocaleString()}</div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <span style={{ opacity: 0.6 }}>Starts in:</span> <strong style={{ color: 'var(--gold)' }}>{countdown}</strong>
+            <span className="tournament-info-label">Starts in: </span>
+            <span className="tournament-countdown">{countdown}</span>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <span style={{ opacity: 0.6 }}>Scheduled:</span> {formatDate(tournament.scheduledStart)}
+            <span className="tournament-info-label">Scheduled: </span>{formatDate(tournament.scheduledStart)}
           </div>
         </div>
       </div>
 
       <div className="panel">
-        <h2>Blind Schedule</h2>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        <p className="home-section-label"><span aria-hidden="true">♦</span> Blind Schedule</p>
+        <div className="blind-schedule-preview">
+          <table className="blind-schedule-table">
             <thead>
-              <tr style={{ opacity: 0.6 }}>
-                <th style={{ textAlign: 'left', paddingRight: '1rem' }}>Level</th>
-                <th style={{ textAlign: 'left', paddingRight: '1rem' }}>Small</th>
-                <th style={{ textAlign: 'left', paddingRight: '1rem' }}>Big</th>
-                <th style={{ textAlign: 'left' }}>Duration</th>
+              <tr>
+                <th>Level</th>
+                <th>Small</th>
+                <th>Big</th>
+                <th>Duration</th>
               </tr>
             </thead>
             <tbody>
               {tournament.blindSchedule.map((l) => (
                 <tr key={l.level}>
-                  <td style={{ paddingRight: '1rem', paddingTop: '0.2rem' }}>{l.level}</td>
-                  <td style={{ paddingRight: '1rem' }}>{l.small.toLocaleString()}</td>
-                  <td style={{ paddingRight: '1rem' }}>{l.big.toLocaleString()}</td>
+                  <td>{l.level}</td>
+                  <td>{l.small.toLocaleString()}</td>
+                  <td>{l.big.toLocaleString()}</td>
                   <td>{l.durationMinutes}m</td>
                 </tr>
               ))}
@@ -240,26 +232,28 @@ export default function TournamentLobbyPage() {
       </div>
 
       <div className="panel">
-        <h2>Registered Players ({totalSlots})</h2>
+        <p className="home-section-label"><span aria-hidden="true">♣</span> Registered Players ({totalSlots})</p>
         {registrations.length === 0 ? (
           <p style={{ opacity: 0.6 }}>No players registered yet.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <div className="tournament-player-list">
             {registrations.map((r, i) => (
-              <div key={r.userId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', padding: '0.2rem 0' }}>
+              <div key={r.userId} className="tournament-player-row">
                 <span>{i + 1}. {r.displayName}</span>
-                {r.userId === tournament.hostUserId && <span style={{ opacity: 0.5, fontSize: '0.8rem' }}>host</span>}
+                {r.userId === tournament.hostUserId && (
+                  <span className="tournament-host-badge">host</span>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {error && <div className="panel"><p style={{ color: 'var(--error, #f56)', margin: 0 }}>{error}</p></div>}
+      {error && <div className="panel"><p className="form-error">{error}</p></div>}
 
       {tournament.status === 'waiting' && (
         <div className="panel">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div className="name-selection-actions" style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             {isHost ? (
               <>
                 <button
@@ -289,10 +283,18 @@ export default function TournamentLobbyPage() {
 
       {tournament.status === 'running' && (
         <div className="panel">
-          <p style={{ color: 'var(--gold)', fontWeight: 600 }}>Tournament in progress!</p>
-          {isRegistered && <p style={{ opacity: 0.7, fontSize: '0.9rem' }}>Check your table — you should have been redirected automatically.</p>}
+          <p style={{ color: 'var(--gold)', fontWeight: 600, margin: '0 0 0.4rem' }}>Tournament in progress!</p>
+          {isRegistered && (
+            <p style={{ opacity: 0.7, fontSize: '0.9rem', margin: 0 }}>
+              Check your table — you should have been redirected automatically.
+            </p>
+          )}
         </div>
       )}
+
+      <div className="name-selection-actions">
+        <button className="btn" onClick={() => navigate('/tournaments')}>Back</button>
+      </div>
     </div>
   );
 }

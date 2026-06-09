@@ -144,8 +144,8 @@ export default function HomePage() {
         )}
       </div>
 
-      <div className="panel">
-        <h2>Get started</h2>
+      <div className="panel home-action-panel">
+        <p className="home-section-label"><span aria-hidden="true">♠</span> Get started</p>
         <div className="actions">
           <Link className="btn primary" to="/create">
             Create table
@@ -154,24 +154,24 @@ export default function HomePage() {
             Join with Code
           </button>
         </div>
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '0.75rem', paddingTop: '0.75rem' }}>
-          <button
-            className="btn secondary"
-            type="button"
-            style={{ width: '100%', padding: '2.5rem 1.5rem', fontSize: '1.8rem', letterSpacing: '0.05em', fontWeight: 800 }}
-            onClick={() => {
-              if (user?.isGuest) {
-                setWalletError('Create an account to play in tournaments.');
-              } else {
-                setWalletError(null);
-                navigate('/tournaments');
-              }
-            }}
-          >
-            Tournaments
-          </button>
-          {walletError && <p style={{ color: 'var(--error, #f56)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{walletError}</p>}
+        <div className="home-suit-divider" aria-hidden="true">
+          <span>♦</span><span>♦</span>
         </div>
+        <button
+          className="btn tournament"
+          type="button"
+          onClick={() => {
+            if (user?.isGuest) {
+              setWalletError('Create an account to play in tournaments.');
+            } else {
+              setWalletError(null);
+              navigate('/tournaments');
+            }
+          }}
+        >
+          Tournaments
+        </button>
+        {walletError && <p className="home-wallet-error">{walletError}</p>}
       </div>
 
       {showWallet && <WalletModal onClose={() => setShowWallet(false)} />}

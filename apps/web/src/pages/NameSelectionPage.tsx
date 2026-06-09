@@ -127,11 +127,12 @@ export default function NameSelectionPage() {
     : 'Customize your avatar for this table.';
 
   return (
-    <div className="page">
+    <div className="page home">
+      <header className="hero">
+        <h1>Customize your player</h1>
+        <p>{subtitle}</p>
+      </header>
       <form className="panel" onSubmit={handleSubmit}>
-        <h2>Customize your player</h2>
-        <p className="field-hint">{subtitle}</p>
-
         {nameIsFixed ? (
           <div className="name-display">
             <span className="name-display-label">Playing as</span>

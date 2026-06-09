@@ -35,10 +35,21 @@ a {
   min-height: 100dvh;
 }
 
+.hero {
+  margin-bottom: 1rem;
+}
+
 .hero h1 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.4rem;
   font-weight: 800;
   letter-spacing: -0.5px;
+}
+
+.hero p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  opacity: 0.7;
 }
 
 /* UI panels (forms, side cards) — NOT poker cards */
@@ -302,6 +313,69 @@ a {
   width: 100%;
 }
 
+/* ── Home action panel (Get started section) ─────────────────────────────── */
+
+.home-action-panel .actions {
+  margin: 0;
+}
+
+.home-section-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(212, 175, 55, 0.5);
+}
+
+.home-section-label span {
+  margin-right: 0.2rem;
+}
+
+.home-suit-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  color: rgba(212, 175, 55, 0.35);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+}
+
+.home-suit-divider::before,
+.home-suit-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(212, 175, 55, 0.18);
+}
+
+.btn.tournament {
+  width: 100%;
+  padding: 1.5rem 1.5rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  background: rgba(212, 175, 55, 0.07);
+  border: 1.5px solid rgba(212, 175, 55, 0.6);
+  color: var(--gold);
+  border-radius: 12px;
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.08), inset 0 0 24px rgba(212, 175, 55, 0.04);
+  transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.btn.tournament:hover {
+  background: rgba(212, 175, 55, 0.13);
+  border-color: var(--gold);
+  box-shadow: 0 0 30px rgba(212, 175, 55, 0.22), inset 0 0 24px rgba(212, 175, 55, 0.06);
+}
+
+.home-wallet-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #f87171;
+}
+
 /* ── Name-display (read-only name in NameSelectionPage) ─────────────────── */
 
 .name-display {
@@ -375,13 +449,32 @@ button {
   font: inherit;
 }
 
-input,
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
 select {
   width: 100%;
-  padding: 0.6rem;
+  padding: 0.6rem 0.75rem;
   margin: 0.5rem 0;
   border-radius: 8px;
-  border: 1px solid #444;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
+select:focus {
+  outline: none;
+  border-color: rgba(212, 175, 55, 0.55);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
+}
+
+input::placeholder {
+  color: rgba(245, 245, 240, 0.35);
+}
+
+select option {
+  background: #1a2e1a;
+  color: var(--text);
 }
 
 .btn {
@@ -464,6 +557,211 @@ select {
 .disclaimer {
   font-size: 0.8rem;
   opacity: 0.7;
+}
+
+/* ── Join-table code input ───────────────────────────────────────────────── */
+
+.join-code-input {
+  font-size: 1.8rem !important;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 1rem 0.75rem !important;
+  margin: 0.75rem 0 !important;
+}
+
+/* ── Wallet panel (Tournaments page) ─────────────────────────────────────── */
+
+.wallet-balance {
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.wallet-balance-amount {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--gold);
+  line-height: 1.1;
+}
+
+.wallet-balance-label {
+  font-size: 0.78rem;
+  opacity: 0.6;
+  margin-top: 0.2rem;
+}
+
+/* ── Tournament list (browse panel) ─────────────────────────────────────── */
+
+.tournament-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.tournament-list-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  cursor: pointer;
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tournament-list-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(212, 175, 55, 0.35);
+}
+
+.tournament-list-item__title {
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.tournament-list-item__meta {
+  font-size: 0.82rem;
+  opacity: 0.7;
+  margin-top: 0.1rem;
+}
+
+/* ── Tournament lobby ────────────────────────────────────────────────────── */
+
+.tournament-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.tournament-info-label {
+  opacity: 0.6;
+}
+
+.tournament-countdown {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--gold);
+}
+
+.tournament-player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.tournament-player-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tournament-player-row:last-child {
+  border-bottom: none;
+}
+
+.tournament-host-badge {
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+/* ── Blind schedule preview (Create tournament + Tournament lobby) ─────────── */
+
+.blind-schedule-preview {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.blind-schedule-label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  margin: 0 0 0.5rem;
+}
+
+.blind-schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.blind-schedule-table th {
+  text-align: left;
+  padding-right: 1rem;
+  padding-bottom: 0.3rem;
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+.blind-schedule-table td {
+  padding-right: 1rem;
+  padding-top: 0.2rem;
+}
+
+/* ── Create tournament form layout ──────────────────────────────────────── */
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.form-field label {
+  font-size: 0.9rem;
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin: 0.1rem 0 0;
+}
+
+.radio-group {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* ── Tournament join code row ────────────────────────────────────────────── */
+
+.join-code-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.join-code-row input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 
 .table-layout {

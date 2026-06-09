@@ -51,20 +51,16 @@ function WalletPanel() {
   const alreadyClaimed = hasClaimedToday(lastClaim);
 
   return (
-    <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-        <span>💰</span> Chip Wallet
-      </h2>
+    <div className="panel">
+      <p className="home-section-label"><span aria-hidden="true">♣</span> Chip Wallet</p>
 
       {loading ? (
         <p style={{ opacity: 0.6, margin: 0 }}>Loading...</p>
       ) : (
         <>
-          <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
-            <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--gold)', lineHeight: 1.1 }}>
-              {(balance ?? 0).toLocaleString()}
-            </div>
-            <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '0.2rem' }}>chips available</div>
+          <div className="wallet-balance">
+            <div className="wallet-balance-amount">{(balance ?? 0).toLocaleString()}</div>
+            <div className="wallet-balance-label">chips available</div>
           </div>
 
           <button
@@ -80,9 +76,7 @@ function WalletPanel() {
               Come back tomorrow for more!
             </p>
           )}
-          {claimError && (
-            <p className="form-error" style={{ margin: 0 }}>{claimError}</p>
-          )}
+          {claimError && <p className="form-error" style={{ margin: 0 }}>{claimError}</p>}
         </>
       )}
     </div>
@@ -120,98 +114,76 @@ export default function TournamentsPage() {
   }
 
   return (
-    <div className="page" style={{ maxWidth: 720 }}>
-      <h1 style={{ textAlign: 'center', fontWeight: 800, fontSize: '1.8rem', margin: '0 0 1.25rem' }}>
-        Tournaments
-      </h1>
+    <div className="page home">
+      <header className="hero">
+        <h1>Tournaments</h1>
+        <p>Compete in structured events for the prize pool.</p>
+      </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '1rem', alignItems: 'start' }}>
+      <WalletPanel />
 
-        {/* Left column — wallet */}
-        <WalletPanel />
+      <div className="panel">
+        <p className="home-section-label"><span aria-hidden="true">♠</span> Host</p>
+        <p style={{ opacity: 0.8, margin: '0 0 0.75rem' }}>
+          Host a private tournament with custom blind schedules and prize pools.
+        </p>
+        <button className="btn primary" onClick={() => navigate('/tournaments/create')}>
+          Create Tournament
+        </button>
+      </div>
 
-        {/* Right column — create / join / browse + back */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="panel">
-            <h2>Create Tournament</h2>
-            <p style={{ opacity: 0.8, margin: '0.4rem 0 0.9rem' }}>
-              Host a private tournament with custom blind schedules and prize pools.
-            </p>
-            <button className="btn primary" onClick={() => navigate('/tournaments/create')}>
-              Create Tournament
-            </button>
-          </div>
+      <div className="panel">
+        <p className="home-section-label"><span aria-hidden="true">♦</span> Join with Code</p>
+        <form onSubmit={handleJoinByCode} className="join-code-row">
+          <input
+            type="text"
+            value={joinCode}
+            onChange={(e) => {
+              setJoinCode(e.target.value.toUpperCase().slice(0, 8));
+              setJoinError(null);
+            }}
+            placeholder="Invite code"
+            maxLength={8}
+            disabled={joining}
+          />
+          <button className="btn primary" type="submit" disabled={joining || !joinCode.trim()}>
+            {joining ? 'Looking up...' : 'Join'}
+          </button>
+        </form>
+        {joinError && <p className="form-error" style={{ marginTop: '0.4rem' }}>{joinError}</p>}
+      </div>
 
-          <div className="panel">
-            <h2>Join with Code</h2>
-            <form
-              onSubmit={handleJoinByCode}
-              style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', marginTop: '0.5rem', flexWrap: 'wrap' }}
-            >
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => {
-                  setJoinCode(e.target.value.toUpperCase().slice(0, 8));
-                  setJoinError(null);
-                }}
-                placeholder="Enter invite code"
-                maxLength={8}
-                style={{ flex: 1, minWidth: 0 }}
-                disabled={joining}
-              />
-              <button className="btn primary" type="submit" disabled={joining || !joinCode.trim()}>
-                {joining ? 'Looking up...' : 'Join'}
-              </button>
-            </form>
-            {joinError && (
-              <p className="form-error" style={{ marginTop: '0.4rem' }}>{joinError}</p>
-            )}
-          </div>
-
-          <div className="panel">
-            <h2>Browse Open Tournaments</h2>
-            {loading ? (
-              <p style={{ opacity: 0.7, marginTop: '0.5rem' }}>Loading...</p>
-            ) : tournaments.length === 0 ? (
-              <p style={{ opacity: 0.7, marginTop: '0.5rem' }}>No open tournaments right now. Create one!</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.5rem' }}>
-                {tournaments.map((t) => (
-                  <div
-                    key={t.id}
-                    style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      borderRadius: 10,
-                      padding: '0.75rem 0.9rem',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      flexWrap: 'wrap',
-                      cursor: 'pointer',
-                      border: '1px solid rgba(212,175,55,0.15)',
-                    }}
-                    onClick={() => navigate(`/tournaments/${t.id}`)}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600, color: 'var(--gold)' }}>
-                        {t.variant === 'holdem' ? "Hold'em" : 'Omaha'} — {t.buyIn.toLocaleString()} chips buy-in
-                      </div>
-                      <div style={{ fontSize: '0.82rem', opacity: 0.7, marginTop: '0.1rem' }}>
-                        Starts {formatDate(t.scheduledStart)} · {t.registeredCount}/{t.maxPlayers} registered
-                      </div>
-                    </div>
-                    <button className="btn small primary">View</button>
+      <div className="panel">
+        <p className="home-section-label"><span aria-hidden="true">♥</span> Open Tournaments</p>
+        {loading ? (
+          <p style={{ opacity: 0.7 }}>Loading...</p>
+        ) : tournaments.length === 0 ? (
+          <p style={{ opacity: 0.7 }}>No open tournaments right now. Create one!</p>
+        ) : (
+          <div className="tournament-list">
+            {tournaments.map((t) => (
+              <div
+                key={t.id}
+                className="tournament-list-item"
+                onClick={() => navigate(`/tournaments/${t.id}`)}
+              >
+                <div>
+                  <div className="tournament-list-item__title">
+                    {t.variant === 'holdem' ? "Hold'em" : 'Omaha'} — {t.buyIn.toLocaleString()} chips buy-in
                   </div>
-                ))}
+                  <div className="tournament-list-item__meta">
+                    Starts {formatDate(t.scheduledStart)} · {t.registeredCount}/{t.maxPlayers} registered
+                  </div>
+                </div>
+                <button className="btn small primary">View</button>
               </div>
-            )}
+            ))}
           </div>
-          <div className="name-selection-actions">
-            <button className="btn" onClick={() => navigate('/')}>Back</button>
-          </div>
-        </div>
+        )}
+      </div>
+
+      <div className="name-selection-actions">
+        <button className="btn" onClick={() => navigate('/')}>Back</button>
       </div>
     </div>
   );

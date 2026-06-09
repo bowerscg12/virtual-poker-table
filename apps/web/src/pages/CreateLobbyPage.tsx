@@ -235,9 +235,12 @@ export default function CreateLobbyPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page home">
+      <header className="hero">
+        <h1>Create table</h1>
+        <p>Set up your game rules and invite players.</p>
+      </header>
       <form className="panel" onSubmit={handleNext}>
-        <h2>Create table</h2>
 
         {/* ── Lobby Templates ─────────────────────────────────────── */}
         {!isRegistered ? (
@@ -508,3 +511,4 @@ export default function CreateLobbyPage() {
     </div>
   );
 }
+

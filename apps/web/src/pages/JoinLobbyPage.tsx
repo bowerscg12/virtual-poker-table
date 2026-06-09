@@ -35,11 +35,15 @@ export default function JoinLobbyPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page home">
+      <header className="hero">
+        <h1>Join table</h1>
+        <p>Enter an invite code to join a game.</p>
+      </header>
       <form className="panel" onSubmit={handleJoin}>
-        <h2>Join table</h2>
         <input
-          placeholder="Invite code"
+          className="join-code-input"
+          placeholder="INVITE CODE"
           value={inviteCode}
           onChange={(e) => {
             setInviteCode(e.target.value);

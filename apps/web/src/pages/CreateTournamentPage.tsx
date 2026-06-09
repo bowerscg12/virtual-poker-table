@@ -38,7 +38,6 @@ function parsePositiveInt(v: string): number | null {
 
 function minFutureDate(): string {
   const d = new Date(Date.now() + 5 * 60 * 1000);
-  // Format for datetime-local input: YYYY-MM-DDTHH:MM
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -128,7 +127,6 @@ export default function CreateTournamentPage() {
       setInitialSmall(String(first.small));
       setNumLevels(String(s.blindSchedule.length));
       setLevelDuration(String(first.durationMinutes));
-      // Try to detect multiplier
       if (s.blindSchedule.length >= 2) {
         const ratio = s.blindSchedule[1].small / s.blindSchedule[0].small;
         if (Math.round(ratio) === 4) setMultiplier(4);
@@ -162,7 +160,10 @@ export default function CreateTournamentPage() {
 
   if (user?.isGuest) {
     return (
-      <div className="page">
+      <div className="page home">
+        <header className="hero">
+          <h1>Create Tournament</h1>
+        </header>
         <div className="panel">
           <p>You need an account to create tournaments.</p>
           <button className="btn" onClick={() => navigate('/')}>Back</button>
@@ -172,17 +173,18 @@ export default function CreateTournamentPage() {
   }
 
   return (
-    <div className="page">
-      <h1 style={{ textAlign: 'center', fontWeight: 800, fontSize: '1.8rem', margin: '0 0 1.25rem' }}>
-        Create Tournament
-      </h1>
+    <div className="page home">
+      <header className="hero">
+        <h1>Create Tournament</h1>
+        <p>Set up blind schedules and prize pools.</p>
+      </header>
 
       {templates.length > 0 && (
         <div className="panel">
-          <h2>Load Template</h2>
+          <p className="home-section-label"><span aria-hidden="true">♠</span> Load Template</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {templates.map((t) => (
-              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+              <div key={t.id} className="templates-list-item">
                 <button className="btn small" onClick={() => loadTemplate(t)} style={{ flex: 1, textAlign: 'left' }}>
                   {t.name}
                 </button>
@@ -195,14 +197,14 @@ export default function CreateTournamentPage() {
         </div>
       )}
 
-      <form className="panel" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <h2>Tournament Settings</h2>
+      <form className="panel" onSubmit={handleSubmit}>
+        <p className="home-section-label"><span aria-hidden="true">♦</span> Tournament Settings</p>
 
-        <div>
+        <div className="form-field">
           <label>Variant</label>
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.4rem' }}>
+          <div className="radio-group">
             {(['holdem', 'omaha'] as const).map((v) => (
-              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+              <label key={v} className="radio-label">
                 <input type="radio" value={v} checked={variant === v} onChange={() => setVariant(v)} />
                 {v === 'holdem' ? "Hold'em" : 'Omaha'}
               </label>
@@ -210,7 +212,7 @@ export default function CreateTournamentPage() {
           </div>
         </div>
 
-        <div>
+        <div className="form-field">
           <label htmlFor="buyIn">Buy-in (chips)</label>
           <input
             id="buyIn"
@@ -221,7 +223,7 @@ export default function CreateTournamentPage() {
           />
         </div>
 
-        <div>
+        <div className="form-field">
           <label htmlFor="startingStack">Starting Stack (chips)</label>
           <input
             id="startingStack"
@@ -232,8 +234,8 @@ export default function CreateTournamentPage() {
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <div>
+        <div className="form-grid-2">
+          <div className="form-field">
             <label htmlFor="numTables">Tables</label>
             <input
               id="numTables"
@@ -243,7 +245,7 @@ export default function CreateTournamentPage() {
               onChange={(e) => setNumTables(digitsOnly(e.target.value).slice(0, 2))}
             />
           </div>
-          <div>
+          <div className="form-field">
             <label htmlFor="seatsPerTable">Seats per Table</label>
             <input
               id="seatsPerTable"
@@ -252,11 +254,11 @@ export default function CreateTournamentPage() {
               value={seatsPerTable}
               onChange={(e) => setSeatsPerTable(digitsOnly(e.target.value).slice(0, 1))}
             />
-            <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>2–9</span>
+            <span className="form-hint">2–9</span>
           </div>
         </div>
 
-        <div>
+        <div className="form-field">
           <label htmlFor="scheduledStart">Scheduled Start</label>
           <input
             id="scheduledStart"
@@ -267,10 +269,12 @@ export default function CreateTournamentPage() {
           />
         </div>
 
-        <h3 style={{ margin: '0.5rem 0 0', fontSize: '1rem', color: 'var(--gold)' }}>Blind Schedule</h3>
+        <div className="home-suit-divider" aria-hidden="true"><span>♣</span><span>♣</span></div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <div>
+        <p className="home-section-label" style={{ margin: 0 }}><span aria-hidden="true">♥</span> Blind Schedule</p>
+
+        <div className="form-grid-2">
+          <div className="form-field">
             <label htmlFor="initialSmall">Initial Small Blind</label>
             <input
               id="initialSmall"
@@ -280,7 +284,7 @@ export default function CreateTournamentPage() {
               onChange={(e) => setInitialSmall(digitsOnly(e.target.value).slice(0, 6))}
             />
           </div>
-          <div>
+          <div className="form-field">
             <label htmlFor="levelDuration">Level Duration (min)</label>
             <input
               id="levelDuration"
@@ -292,19 +296,19 @@ export default function CreateTournamentPage() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <div>
+        <div className="form-grid-2">
+          <div className="form-field">
             <label>Blind Multiplier</label>
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem' }}>
+            <div className="radio-group">
               {([2, 3, 4] as const).map((m) => (
-                <label key={m} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                <label key={m} className="radio-label">
                   <input type="radio" value={m} checked={multiplier === m} onChange={() => setMultiplier(m)} />
                   {m}×
                 </label>
               ))}
             </div>
           </div>
-          <div>
+          <div className="form-field">
             <label htmlFor="numLevels">Number of Levels</label>
             <input
               id="numLevels"
@@ -313,28 +317,28 @@ export default function CreateTournamentPage() {
               value={numLevels}
               onChange={(e) => setNumLevels(digitsOnly(e.target.value).slice(0, 2))}
             />
-            <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>min 3</span>
+            <span className="form-hint">min 3</span>
           </div>
         </div>
 
         {blindSchedule.length > 0 && (
-          <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '0.75rem', overflowX: 'auto' }}>
-            <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.5rem' }}>Blind Schedule Preview</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+          <div className="blind-schedule-preview">
+            <p className="blind-schedule-label">Blind Schedule Preview</p>
+            <table className="blind-schedule-table">
               <thead>
-                <tr style={{ opacity: 0.6 }}>
-                  <th style={{ textAlign: 'left', paddingRight: '1rem' }}>Level</th>
-                  <th style={{ textAlign: 'left', paddingRight: '1rem' }}>Small</th>
-                  <th style={{ textAlign: 'left', paddingRight: '1rem' }}>Big</th>
-                  <th style={{ textAlign: 'left' }}>Duration</th>
+                <tr>
+                  <th>Level</th>
+                  <th>Small</th>
+                  <th>Big</th>
+                  <th>Duration</th>
                 </tr>
               </thead>
               <tbody>
                 {blindSchedule.map((l) => (
                   <tr key={l.level}>
-                    <td style={{ paddingRight: '1rem', paddingTop: '0.2rem' }}>{l.level}</td>
-                    <td style={{ paddingRight: '1rem' }}>{l.small.toLocaleString()}</td>
-                    <td style={{ paddingRight: '1rem' }}>{l.big.toLocaleString()}</td>
+                    <td>{l.level}</td>
+                    <td>{l.small.toLocaleString()}</td>
+                    <td>{l.big.toLocaleString()}</td>
                     <td>{l.durationMinutes}m</td>
                   </tr>
                 ))}
@@ -343,7 +347,7 @@ export default function CreateTournamentPage() {
           </div>
         )}
 
-        {error && <p style={{ color: 'var(--error, #f56)', margin: 0 }}>{error}</p>}
+        {error && <p className="form-error">{error}</p>}
 
         <div className="name-selection-actions">
           <button type="submit" className="btn primary" disabled={submitting || blindSchedule.length < 3}>
@@ -363,13 +367,12 @@ export default function CreateTournamentPage() {
         </div>
 
         {showSaveTemplate && (
-          <form onSubmit={handleSaveTemplate} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <form onSubmit={handleSaveTemplate} className="join-code-row" style={{ marginTop: '0.25rem' }}>
             <input
               type="text"
               placeholder="Template name"
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value.slice(0, 40))}
-              style={{ flex: 1 }}
             />
             <button type="submit" className="btn small primary" disabled={savingTemplate || !templateName.trim()}>
               {savingTemplate ? 'Saving...' : 'Save'}
