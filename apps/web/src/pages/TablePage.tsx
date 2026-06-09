@@ -21,6 +21,7 @@ import { RebuyModal } from '../components/RebuyModal';
 import { DonateModal } from '../components/DonateModal';
 import { ShowCardsModal } from '../components/ShowCardsModal';
 import { BombPotPrompt } from '../components/BombPotPrompt';
+import { PineapplePrompt } from '../components/PineapplePrompt';
 import { RunItOutPrompt } from '../components/RunItOutPrompt';
 import { SessionResultsModal } from '../components/SessionResultsModal';
 import { ShowdownResultsModal } from '../components/ShowdownResultsModal';
@@ -65,6 +66,8 @@ export default function TablePage() {
     bombPotPrompt,
     bombPotNotice,
     clearBombPotNotice,
+    pineapplePrompt,
+    pineappleDiscardPhase,
     runItOutPrompt,
     clearCashOutSummary,
     donationReceived,
@@ -91,6 +94,11 @@ export default function TablePage() {
   useEffect(() => {
     setBombPotChoice(null);
   }, [bombPotPrompt?.deadline]);
+
+  const [pineappleChoice, setPineappleChoice] = useState<boolean | null>(null);
+  useEffect(() => {
+    setPineappleChoice(null);
+  }, [pineapplePrompt?.deadline]);
 
   const headerLobby = lobby ?? snapshotLobby;
   const mySeat = headerLobby?.seats.find((s) => s.userId === user?.id);
@@ -311,6 +319,9 @@ export default function TablePage() {
             board={table?.board ?? []}
             variant={headerLobby?.settings.game ?? 'holdem'}
             isFolded={myGameSeat?.folded ?? false}
+            pineappleDiscardActive={!!pineappleDiscardPhase && holeCards.length === 3}
+            pineappleDiscardDeadline={pineappleDiscardPhase?.deadline}
+            onPineappleDiscard={(cardIndex) => send({ type: 'pineapple_discard', cardIndex })}
             showPotOdds={settings.showPotOdds}
           />
         )}
@@ -402,6 +413,7 @@ export default function TablePage() {
             onSetFlipAnte={(ante) => send({ type: 'host_set_flip_ante', ante })}
             onSetBombPot={(value) => send({ type: 'host_set_bomb_pot', ...value })}
             onSetRunItOut={(times) => send({ type: 'host_set_run_it_out', times })}
+            onSetPineapple={(enabled) => send({ type: 'host_set_pineapple', enabled })}
           />
         </section>
       )}
@@ -445,6 +457,15 @@ export default function TablePage() {
           choice={bombPotChoice}
           onJoin={() => { setBombPotChoice(true); send({ type: 'bomb_pot_join', join: true }); }}
           onSitOut={() => { setBombPotChoice(false); send({ type: 'bomb_pot_join', join: false }); }}
+        />
+      )}
+
+      {pineapplePrompt && mySeat && !cashOutSummary && (
+        <PineapplePrompt
+          deadline={pineapplePrompt.deadline}
+          choice={pineappleChoice}
+          onJoin={() => { setPineappleChoice(true); send({ type: 'pineapple_join', join: true }); }}
+          onSitOut={() => { setPineappleChoice(false); send({ type: 'pineapple_join', join: false }); }}
         />
       )}
 

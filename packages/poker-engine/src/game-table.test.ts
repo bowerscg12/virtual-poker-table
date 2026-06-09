@@ -99,6 +99,29 @@ describe('game-table betting flow', () => {
     expect(state.actionSeatIndex).toBe(1);
   });
 
+  it('deals 3 hole cards to every player when pineapple is enabled (holdem only)', () => {
+    const pineappleConfig: VariantConfig = { ...config, pineapple: true };
+    const state = createInitialTable(players, pineappleConfig, 1, 0, () => 0.5);
+    for (const seat of state.seats) {
+      expect(seat.holeCards).toHaveLength(3);
+    }
+  });
+
+  it('deals the standard 2 hole cards when pineapple is off', () => {
+    const state = createInitialTable(players, config, 1, 0, () => 0.5);
+    for (const seat of state.seats) {
+      expect(seat.holeCards).toHaveLength(2);
+    }
+  });
+
+  it('ignores the pineapple flag for non-holdem games (omaha still deals 4)', () => {
+    const omahaPineapple: VariantConfig = { ...config, game: 'omaha', pineapple: true };
+    const state = createInitialTable(players, omahaPineapple, 1, 0, () => 0.5);
+    for (const seat of state.seats) {
+      expect(seat.holeCards).toHaveLength(4);
+    }
+  });
+
   it('runs the board out to showdown when an all-in is called and only one player can still act', () => {
     // Heads-up: seat 0 (short stack) is dealer/SB and acts first preflop.
     const headsUp = [

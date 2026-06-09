@@ -491,6 +491,34 @@ export async function clearNextHandBombPot(lobbyId: string): Promise<void> {
   await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
 }
 
+/** Toggle the persistent Pineapple mode for a lobby. Host only. Not available for omaha, plo8, or twelve_card_flip. */
+export async function setPineapple(
+  lobbyId: string,
+  hostUserId: string,
+  enabled: boolean,
+): Promise<LobbySummary | { error: string }> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only host can change Pineapple setting' };
+  const blocked: VariantConfig['game'][] = ['omaha', 'plo8', 'twelve_card_flip', 'blackjack', 'stud'];
+  if (blocked.includes(lobby.settings.game)) {
+    return { error: 'Pineapple is only available for Hold\'em' };
+  }
+
+  const settings: VariantConfig = { ...lobby.settings, pineapple: enabled || undefined };
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
+}
+
 export async function getLobbyByInvite(code: string): Promise<LobbySummary | null> {
   if (useMemory) {
     const id = memoryStore.inviteIndex.get(code.toUpperCase()) ?? memoryStore.inviteIndex.get(code);

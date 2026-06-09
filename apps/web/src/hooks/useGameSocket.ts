@@ -40,6 +40,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [showCardsPrompt, setShowCardsPrompt] = useState<{ deadline: string } | null>(null);
   const [bombPotPrompt, setBombPotPrompt] = useState<{ deadline: string; amount: number; doubleBoard: boolean } | null>(null);
   const [bombPotNotice, setBombPotNotice] = useState<string | null>(null);
+  const [pineapplePrompt, setPineapplePrompt] = useState<{ deadline: string } | null>(null);
+  const [pineappleDiscardPhase, setPineappleDiscardPhase] = useState<{ deadline: string } | null>(null);
   const [runItOutPrompt, setRunItOutPrompt] = useState<{ chooserSeatIndex: number; deadline: string; maxRuns: number } | null>(null);
   const [donationReceived, setDonationReceived] = useState<{ donorDisplayName: string; amount: number } | null>(null);
   const [donationConfirmed, setDonationConfirmed] = useState<{ recipientDisplayName: string; amount: number } | null>(null);
@@ -203,6 +205,15 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             if (msg.public.bombPot || msg.public.street === 'preflop') {
               setBombPotPrompt(null);
             }
+            // Pineapple opt-in resolves once a hand starts.
+            if (msg.public.street === 'preflop') {
+              setPineapplePrompt(null);
+            }
+            // Pineapple discard phase clears once 2-card preflop betting begins
+            // (private.legalActions will be non-empty when the action seat gets their turn).
+            if (msg.private?.legalActions && msg.private.legalActions.length > 0) {
+              setPineappleDiscardPhase(null);
+            }
             // Run-it-out prompt resolves once the board reveal starts.
             if (msg.public.runout?.active) {
               setRunItOutPrompt(null);
@@ -258,6 +269,18 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
           case 'bomb_pot_cancelled':
             setBombPotPrompt(null);
             setBombPotNotice(msg.reason);
+            break;
+
+          case 'pineapple_prompt':
+            setPineapplePrompt({ deadline: msg.deadline });
+            break;
+
+          case 'pineapple_cancelled':
+            setPineapplePrompt(null);
+            break;
+
+          case 'pineapple_discard_phase':
+            setPineappleDiscardPhase({ deadline: msg.deadline });
             break;
 
           case 'run_it_out_prompt':
@@ -391,6 +414,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     bombPotPrompt,
     bombPotNotice,
     clearBombPotNotice,
+    pineapplePrompt,
+    pineappleDiscardPhase,
     runItOutPrompt,
     clearCashOutSummary,
     donationReceived,

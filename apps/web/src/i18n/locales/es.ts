@@ -74,6 +74,16 @@ const es: Translations = {
     donateChips: 'Donar fichas',
     holeCardsAnnouncement: 'Tus cartas: {{cards}}',
   },
+  pineapple: {
+    discard: 'Descartar',
+    discardOne: 'DESCARTA UNA',
+    discarded: 'DESCARTADA',
+    waitingForOthers: 'Descartada — esperando a los demás jugadores…',
+    discardCard: 'Descartar {{card}}',
+    discardThisCard: 'Descartar esta carta',
+    confirmDiscard: '¿Descartar {{card}}?',
+    confirmDiscardBlind: '¿Descartar esta carta?',
+  },
   settings: {
     title: 'Configuración',
     handStrength: 'Fuerza de mano',

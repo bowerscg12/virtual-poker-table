@@ -17,9 +17,10 @@ interface Props {
   onSetFlipAnte?: (ante: number) => void;
   onSetBombPot?: (value: { enabled: boolean; amount?: number; doubleBoard?: boolean }) => void;
   onSetRunItOut?: (times: number) => void;
+  onSetPineapple?: (enabled: boolean) => void;
 }
 
-export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot, onSetRunItOut }: Props) {
+export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot, onSetRunItOut, onSetPineapple }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
   const isBlackjack = lobby.settings.game === 'blackjack';
   const currentBuyIn = getTableBuyIn(lobby.settings);
@@ -193,6 +194,25 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
             {bombPotEnabled
               ? `Next hand: ${bombPotDoubleBoard ? 'Double Board ' : ''}Bomb Pot (${formatChips(pendingBombPot?.amount ?? 0)}). Players opt in before it starts.`
               : 'Run the next hand as a Bomb Pot — forced ante, no betting, board runs out automatically.'}
+          </p>
+        </fieldset>
+      )}
+
+      {lobby.settings.game === 'holdem' && onSetPineapple && (
+        <fieldset className="settings-group bomb-pot-controls">
+          <legend>Pineapple (persistent)</legend>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={!!lobby.settings.pineapple}
+              onChange={(e) => onSetPineapple(e.target.checked)}
+            />
+            Pineapple Mode
+          </label>
+          <p className="field-hint">
+            {lobby.settings.pineapple
+              ? 'Every hand: 3 hole cards dealt, players discard one before preflop. Players opt in each hand.'
+              : 'Deal 3 hole cards per hand — players choose one to discard before preflop betting.'}
           </p>
         </fieldset>
       )}

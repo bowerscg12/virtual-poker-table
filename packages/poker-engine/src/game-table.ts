@@ -72,9 +72,10 @@ export function createInitialTable(
     holeCards: [],
   }));
 
+  const holeCount = (config.pineapple && config.game === 'holdem') ? 3 : module.holeCardCount;
   let remaining = deck;
   for (const seat of seats) {
-    const { drawn, remaining: r } = drawCards(remaining, module.holeCardCount);
+    const { drawn, remaining: r } = drawCards(remaining, holeCount);
     seat.holeCards = drawn;
     remaining = r;
   }

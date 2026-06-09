@@ -179,12 +179,12 @@ interface SeatedPlayer {
   waitingForReentryBlind: boolean;
 }
 
-async function seatedPlayers(lobbyId: string): Promise<SeatedPlayer[]> {
+async function seatedPlayers(lobbyId: string, excludeUserIds?: Set<string>): Promise<SeatedPlayer[]> {
   if (isMemoryMode()) {
     const lobby = getMemoryLobby(lobbyId);
     if (!lobby) return [];
     return lobby.seats
-      .filter((s) => s.userId && s.stack > 0)
+      .filter((s) => s.userId && s.stack > 0 && !excludeUserIds?.has(s.userId))
       .map((s) => ({
         seatIndex: s.seatIndex,
         userId: s.userId!,
@@ -197,7 +197,8 @@ async function seatedPlayers(lobbyId: string): Promise<SeatedPlayer[]> {
   }
 
   const db = getDb();
-  const seats = await db.select().from(tableSeats).where(and(eq(tableSeats.lobbyId, lobbyId), isNotNull(tableSeats.userId), gt(tableSeats.stack, 0)));
+  const rawSeats = await db.select().from(tableSeats).where(and(eq(tableSeats.lobbyId, lobbyId), isNotNull(tableSeats.userId), gt(tableSeats.stack, 0)));
+  const seats = excludeUserIds ? rawSeats.filter((s) => !s.userId || !excludeUserIds.has(s.userId)) : rawSeats;
   if (seats.length === 0) return [];
 
   const userIds = [...new Set(seats.map((seat) => seat.userId).filter((id): id is string => !!id))];
@@ -217,8 +218,12 @@ async function seatedPlayers(lobbyId: string): Promise<SeatedPlayer[]> {
     }));
 }
 
-export async function startHand(lobbyId: string, config: VariantConfig): Promise<GameTableState | { error: string }> {
-  const allSeated = await seatedPlayers(lobbyId);
+export async function startHand(
+  lobbyId: string,
+  config: VariantConfig,
+  excludeUserIds?: Set<string>,
+): Promise<GameTableState | { error: string }> {
+  const allSeated = await seatedPlayers(lobbyId, excludeUserIds);
 
   // Separate fully-active, blind-owed, sitting-out, and reentry-waiting players
   const fullyActive    = allSeated.filter((p) => !p.sitOutNextHand && !p.waitingForReentryBlind);
@@ -607,6 +612,7 @@ export function toPublicState(
   revealAllHoleCards?: boolean,
   runoutCurrentRun?: number,
   runoutTotalRuns?: number,
+  suppressLegalActions?: boolean,
 ): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
@@ -786,7 +792,7 @@ export function toPublicState(
   }
 
   let legalActions: import('@vct/shared-types').LegalAction[] = [];
-  if (state.actionSeatIndex === viewerSeat.seatIndex) {
+  if (!suppressLegalActions && state.actionSeatIndex === viewerSeat.seatIndex) {
     if (isTwelveCardFlip) {
       legalActions = getTwelveCardFlipLegalActions(state, viewerSeat.seatIndex);
     } else {
@@ -805,6 +811,20 @@ export function toPublicState(
 
 export async function getActiveGame(lobbyId: string): Promise<GameTableState | null> {
   return loadGame(lobbyId);
+}
+
+/**
+ * Remove the card at `cardIndex` from a player's hole cards during the Pineapple discard phase.
+ * No-op if the game, seat, or index is invalid.
+ */
+export async function removePineappleCard(lobbyId: string, userId: string, cardIndex: number): Promise<boolean> {
+  const state = activeGames.get(lobbyId);
+  if (!state) return false;
+  const seat = state.seats.find((s) => s.userId === userId);
+  if (!seat || cardIndex < 0 || cardIndex >= seat.holeCards.length) return false;
+  seat.holeCards = seat.holeCards.filter((_, i) => i !== cardIndex);
+  await persistGame(lobbyId, state);
+  return true;
 }
 
 /**

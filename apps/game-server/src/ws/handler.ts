@@ -25,6 +25,7 @@ import {
   setFlipAnte,
   setNextHandBombPot,
   clearNextHandBombPot,
+  setPineapple,
   setNextHandBlind,
   setRunItOut,
   setSitOutNextHand,
@@ -53,6 +54,7 @@ import {
   getHandHistories,
   getIntermissionDeadline,
   processGameAction,
+  removePineappleCard,
   setActionDeadline,
   setBlindHandSeats,
   setIntermissionDeadline,
@@ -228,6 +230,8 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelShowCardsTimer(lobbyId);
   cancelRunout(lobbyId);
   cancelBombPotOptIn(lobbyId);
+  cancelPineappleOptIn(lobbyId);
+  cancelPineappleDiscard(lobbyId);
   cancelRunItOut(lobbyId);
   cancelAllBjTimers(lobbyId);
   waitingForPlayers.delete(lobbyId);
@@ -274,6 +278,8 @@ async function tryStartWaitingHand(lobbyId: string): Promise<void> {
 
   // If the host queued a Bomb Pot for the next hand, run the opt-in flow instead.
   if (await maybeStartBombPot(lobbyId, lobby.settings)) return;
+  // If pineapple mode is on, run the opt-in flow instead.
+  if (await maybeStartPineapple(lobbyId, lobby.settings)) return;
 
   const result = await startHand(lobbyId, lobby.settings);
   if ('error' in result) {
@@ -539,9 +545,12 @@ async function startBombPotOptIn(lobbyId: string, config: VariantConfig): Promis
   return true;
 }
 
-/** Start a normal hand after a Bomb Pot is cancelled, so play continues. */
+/** Start a normal hand after a special hand (Bomb Pot / Pineapple) is cancelled, so play continues. */
 async function startNormalHandFallback(lobbyId: string, settings: VariantConfig): Promise<void> {
-  const result = await startHand(lobbyId, settings);
+  // A fallback hand is always a standard hand — strip Pineapple so we deal 2 cards with
+  // no discard phase even though the lobby's persistent Pineapple mode is still on.
+  const normalSettings: VariantConfig = settings.pineapple ? { ...settings, pineapple: false } : settings;
+  const result = await startHand(lobbyId, normalSettings);
   if ('error' in result) {
     waitingForPlayers.set(lobbyId, true);
     await broadcastTableState(lobbyId);
@@ -549,7 +558,7 @@ async function startNormalHandFallback(lobbyId: string, settings: VariantConfig)
   }
   await applyBlindHandFlags(lobbyId, result);
   recordHandStart(lobbyId, result);
-  scheduleActionTimer(lobbyId, settings, result);
+  scheduleActionTimer(lobbyId, normalSettings, result);
   await broadcastTableState(lobbyId);
 }
 
@@ -598,6 +607,207 @@ async function resolveBombPotOptIn(lobbyId: string): Promise<void> {
 async function maybeStartBombPot(lobbyId: string, settings: VariantConfig): Promise<boolean> {
   if (!settings.nextHandBombPot) return false;
   return startBombPotOptIn(lobbyId, settings);
+}
+
+// ── Pineapple orchestration ───────────────────────────────────
+
+const PINEAPPLE_OPT_IN_MS = 10_000;
+const PINEAPPLE_DISCARD_MS = 20_000;
+
+interface PineapplePendingOptIn {
+  deadline: string;
+  gen: number;
+  joined: Set<string>;
+}
+
+interface PineappleDiscardState {
+  deadline: string;
+  gen: number;
+  /** userId → card index they chose to discard */
+  discards: Map<string, number>;
+  /** userIds still waiting to discard */
+  pending: Set<string>;
+}
+
+const pineappleOptInPending = new Map<string, PineapplePendingOptIn>();
+const pineappleOptInTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pineappleOptInGenerations = new Map<string, number>();
+
+const pineappleDiscardData = new Map<string, PineappleDiscardState>();
+const pineappleDiscardTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pineappleDiscardGenerations = new Map<string, number>();
+
+function cancelPineappleOptIn(lobbyId: string): void {
+  const t = pineappleOptInTimers.get(lobbyId);
+  if (t) { clearTimeout(t); pineappleOptInTimers.delete(lobbyId); }
+  pineappleOptInPending.delete(lobbyId);
+  pineappleOptInGenerations.set(lobbyId, (pineappleOptInGenerations.get(lobbyId) ?? 0) + 1);
+}
+
+function cancelPineappleDiscard(lobbyId: string): void {
+  const t = pineappleDiscardTimers.get(lobbyId);
+  if (t) { clearTimeout(t); pineappleDiscardTimers.delete(lobbyId); }
+  pineappleDiscardData.delete(lobbyId);
+  pineappleDiscardGenerations.set(lobbyId, (pineappleDiscardGenerations.get(lobbyId) ?? 0) + 1);
+}
+
+/** Returns true if a pineapple discard phase is currently active for the lobby. */
+export function isPineappleDiscardActive(lobbyId: string): boolean {
+  return pineappleDiscardData.has(lobbyId);
+}
+
+/** Ranks in ascending order for auto-discard logic. */
+const RANK_ORDER = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'] as const;
+
+/**
+ * Auto-select the card to discard from 3 hole cards.
+ * Rules: discard lowest rank. If two cards tie for lowest (a pocket pair), discard the odd card.
+ * If all three are the same rank, discard a random one.
+ */
+function autoDiscardIndex(holeCards: Card[], rng: () => number = Math.random): number {
+  const rankOf = (c: Card) => RANK_ORDER.indexOf(c[0] as typeof RANK_ORDER[number]);
+  const ranks = holeCards.map(rankOf);
+  const minRank = Math.min(...ranks);
+  const minIndices = ranks.map((r, i) => r === minRank ? i : -1).filter((i) => i !== -1);
+
+  if (minIndices.length === 3) {
+    // All three same rank — discard random
+    return minIndices[Math.floor(rng() * 3)];
+  }
+  if (minIndices.length === 2) {
+    // Two tied for lowest (pocket pair) — discard the third (odd) card
+    const oddIdx = ranks.findIndex((_, i) => !minIndices.includes(i));
+    return oddIdx;
+  }
+  // One clear lowest — discard it
+  return minIndices[0];
+}
+
+/** Start the Pineapple opt-in phase and return true so callers skip the normal hand start. */
+async function startPineappleOptIn(lobbyId: string, _config: VariantConfig): Promise<boolean> {
+  cancelPineappleOptIn(lobbyId);
+  const gen = pineappleOptInGenerations.get(lobbyId) ?? 0;
+  const deadline = new Date(Date.now() + PINEAPPLE_OPT_IN_MS).toISOString();
+  pineappleOptInPending.set(lobbyId, { deadline, gen, joined: new Set() });
+
+  const eligible = await eligibleBombPotPlayers(lobbyId); // reuse: seated, chips, not sitting out
+  for (const userId of eligible) {
+    const ws = connectedUserSockets.get(userId);
+    if (ws) send(ws, { type: 'pineapple_prompt', deadline });
+  }
+
+  pineappleOptInTimers.set(lobbyId, setTimeout(() => {
+    if ((pineappleOptInGenerations.get(lobbyId) ?? 0) !== gen) return;
+    resolvePineappleOptIn(lobbyId).catch(() => {});
+  }, PINEAPPLE_OPT_IN_MS));
+
+  return true;
+}
+
+async function resolvePineappleOptIn(lobbyId: string): Promise<void> {
+  const pending = pineappleOptInPending.get(lobbyId);
+  cancelPineappleOptIn(lobbyId);
+  if (!pending) return;
+
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.status !== 'playing') {
+    await broadcastTableState(lobbyId);
+    return;
+  }
+
+  const seatedWithChips = new Set(lobby.seats.filter((s) => s.userId && s.stack > 0).map((s) => s.userId!));
+  const participants = [...pending.joined].filter((id) => seatedWithChips.has(id));
+
+  if (participants.length < 2) {
+    broadcastLobby(lobbyId, () => ({ type: 'pineapple_cancelled', reason: 'Pineapple cancelled: not enough participants' }));
+    await startNormalHandFallback(lobbyId, lobby.settings);
+    return;
+  }
+
+  // Any eligible player who did not opt in sits out this hand entirely — they are not dealt cards.
+  const eligible = await eligibleBombPotPlayers(lobbyId);
+  const excludeUserIds = new Set(eligible.filter((id) => !pending.joined.has(id)));
+
+  const result = await startHand(lobbyId, lobby.settings, excludeUserIds);
+  if ('error' in result) {
+    broadcastLobby(lobbyId, () => ({ type: 'pineapple_cancelled', reason: 'Pineapple cancelled: not enough players' }));
+    await startNormalHandFallback(lobbyId, lobby.settings);
+    return;
+  }
+
+  // Filter to participants who actually got seated in this hand
+  const seatedParticipants = result.seats
+    .filter((s) => participants.includes(s.userId))
+    .map((s) => s.userId);
+
+  if (seatedParticipants.length < 2) {
+    broadcastLobby(lobbyId, () => ({ type: 'pineapple_cancelled', reason: 'Pineapple cancelled: not enough participants' }));
+    await startNormalHandFallback(lobbyId, lobby.settings);
+    return;
+  }
+
+  await applyBlindHandFlags(lobbyId, result);
+  recordHandStart(lobbyId, result);
+  // Don't schedule the action timer yet — that happens after the discard phase.
+  await startPineappleDiscardPhase(lobbyId, result, lobby.settings);
+}
+
+/** Begin the 20-second simultaneous discard phase after a pineapple hand is dealt. */
+async function startPineappleDiscardPhase(
+  lobbyId: string,
+  state: GameTableState,
+  config: VariantConfig,
+): Promise<void> {
+  cancelPineappleDiscard(lobbyId);
+  const gen = pineappleDiscardGenerations.get(lobbyId) ?? 0;
+  const deadline = new Date(Date.now() + PINEAPPLE_DISCARD_MS).toISOString();
+
+  // All seated (non-folded) players must discard
+  const pendingUserIds = new Set(state.seats.map((s) => s.userId));
+  pineappleDiscardData.set(lobbyId, { deadline, gen, discards: new Map(), pending: pendingUserIds });
+
+  // Broadcast state with no legal actions (discard phase active), then send discard prompt
+  await broadcastTableState(lobbyId);
+
+  for (const userId of pendingUserIds) {
+    const ws = connectedUserSockets.get(userId);
+    if (ws) send(ws, { type: 'pineapple_discard_phase', deadline });
+  }
+
+  pineappleDiscardTimers.set(lobbyId, setTimeout(() => {
+    if ((pineappleDiscardGenerations.get(lobbyId) ?? 0) !== gen) return;
+    resolvePineappleDiscard(lobbyId, config).catch(() => {});
+  }, PINEAPPLE_DISCARD_MS));
+}
+
+async function resolvePineappleDiscard(lobbyId: string, config: VariantConfig): Promise<void> {
+  const data = pineappleDiscardData.get(lobbyId);
+  cancelPineappleDiscard(lobbyId);
+  if (!data) return;
+
+  const state = await getActiveGame(lobbyId);
+  if (!state) return;
+
+  // Apply manual discards first, then auto-discard remaining players
+  for (const seat of state.seats) {
+    const cardIndex = data.discards.has(seat.userId)
+      ? data.discards.get(seat.userId)!
+      : autoDiscardIndex(seat.holeCards);
+    await removePineappleCard(lobbyId, seat.userId, cardIndex);
+  }
+
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return;
+
+  scheduleActionTimer(lobbyId, config, state);
+  await broadcastTableState(lobbyId);
+}
+
+/** If pineapple mode is enabled, begin opt-in and return true. */
+async function maybeStartPineapple(lobbyId: string, settings: VariantConfig): Promise<boolean> {
+  if (!settings.pineapple) return false;
+  if (settings.game !== 'holdem') return false;
+  return startPineappleOptIn(lobbyId, settings);
 }
 
 // ── Run-It-Out prompt orchestration ──────────────────────────
@@ -946,6 +1156,8 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   const runoutActive = runout !== undefined;
   const revealHoleCards = runout ? runout.revealHoleCards : undefined;
 
+  const suppressLegalActions = isPineappleDiscardActive(lobbyId);
+
   broadcastLobby(lobbyId, (userId, isSpectator) => {
     if (!game) {
       return { type: 'lobby_state', lobby };
@@ -953,7 +1165,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
     const { public: pub, private: priv } = toPublicState(
       lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline,
       visibleBoardCount, runoutActive, revealHoleCards,
-      runoutCurrentRun, runoutTotalRuns,
+      runoutCurrentRun, runoutTotalRuns, suppressLegalActions,
     );
     return {
       type: 'table_state',
@@ -1027,7 +1239,9 @@ async function recoverHandLifecycle(lobbyId: string): Promise<void> {
     isComplete &&
     !intermissionTimers.has(lobbyId) &&
     !activeRunouts.has(lobbyId) &&
-    !bombPotPending.has(lobbyId)
+    !bombPotPending.has(lobbyId) &&
+    !pineappleOptInPending.has(lobbyId) &&
+    !pineappleDiscardData.has(lobbyId)
   ) {
     console.log(`[recovery] Scheduling intermission for stuck lobby ${lobbyId}`);
     scheduleIntermission(lobbyId, lobby.settings, 5000);
@@ -1178,6 +1392,8 @@ async function onIntermissionExpired(lobbyId: string, _config: VariantConfig): P
 
   // If the host queued a Bomb Pot for the next hand, run the opt-in flow instead.
   if (await maybeStartBombPot(lobbyId, lobby.settings)) return;
+  // If pineapple mode is on, run the opt-in flow instead.
+  if (await maybeStartPineapple(lobbyId, lobby.settings)) return;
 
   const result = await startHand(lobbyId, lobby.settings);
   if ('error' in result) {
@@ -1850,6 +2066,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           await sendBjStateToClient(ws, session.lobbyId, session.userId, bjDeps());
         } else {
           await broadcastTableState(session.lobbyId);
+          // If the player reconnects during a pineapple discard phase, re-send the discard prompt.
+          const pdData = pineappleDiscardData.get(session.lobbyId);
+          if (pdData && pdData.pending.has(session.userId)) {
+            send(ws, { type: 'pineapple_discard_phase', deadline: pdData.deadline });
+          }
         }
 
         // Safety net: if the startup scan missed a hand from a prior server instance (e.g.,
@@ -2081,7 +2302,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const existingGame = await getActiveGame(st.lobbyId);
       const isActiveHand =
         existingGame && (ACTIVE_STREETS as readonly string[]).includes(existingGame.street);
-      if (isActiveHand || activeRunouts.has(st.lobbyId) || bombPotPending.has(st.lobbyId)) {
+      if (isActiveHand || activeRunouts.has(st.lobbyId) || bombPotPending.has(st.lobbyId) ||
+          pineappleOptInPending.has(st.lobbyId) || pineappleDiscardData.has(st.lobbyId)) {
         send(ws, { type: 'error', message: 'Game already in progress' });
         return;
       }
@@ -2435,6 +2657,48 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!pending) return;
       if (msg.join) pending.joined.add(st.userId);
       else pending.joined.delete(st.userId);
+      return;
+    }
+
+    case 'host_set_pineapple': {
+      if (!st.userId || !st.lobbyId) return;
+      const result = await setPineapple(st.lobbyId, st.userId, msg.enabled);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
+      return;
+    }
+
+    case 'pineapple_join': {
+      if (!st.userId || !st.lobbyId) return;
+      const ppending = pineappleOptInPending.get(st.lobbyId);
+      if (!ppending) return;
+      if (msg.join) ppending.joined.add(st.userId);
+      else ppending.joined.delete(st.userId);
+      return;
+    }
+
+    case 'pineapple_discard': {
+      if (!st.userId || !st.lobbyId) return;
+      const discardData = pineappleDiscardData.get(st.lobbyId);
+      if (!discardData) return;
+      if (msg.cardIndex < 0 || msg.cardIndex > 2) return;
+      // Record the discard (can update before timer expires)
+      discardData.discards.set(st.userId, msg.cardIndex);
+      discardData.pending.delete(st.userId);
+
+      // If all players have discarded, resolve immediately
+      if (discardData.pending.size === 0) {
+        const lobby = await getLobbyById(st.lobbyId);
+        if (lobby) {
+          const gen = pineappleDiscardGenerations.get(st.lobbyId) ?? 0;
+          if (discardData.gen === gen) {
+            resolvePineappleDiscard(st.lobbyId, lobby.settings).catch(() => {});
+          }
+        }
+      }
       return;
     }
 

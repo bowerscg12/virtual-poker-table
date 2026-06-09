@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Card, LegalAction, PlayerActionType, TableSeat } from '@vct/shared-types';
+import { cardToString } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ActionBar } from './ActionBar';
 import { formatChips } from '../utils/formatChips';
@@ -46,6 +47,11 @@ interface Props {
   variant: string;
   isFolded: boolean;
 
+  // Pineapple discard phase
+  pineappleDiscardActive: boolean;
+  pineappleDiscardDeadline?: string;
+  onPineappleDiscard: (cardIndex: number) => void;
+
   // Settings pass-through
   showPotOdds: boolean;
 }
@@ -80,12 +86,47 @@ export function HeroActionPanel({
   board,
   variant,
   isFolded,
+  pineappleDiscardActive,
+  pineappleDiscardDeadline,
+  onPineappleDiscard,
   showPotOdds,
 }: Props) {
   const { t } = useTranslation();
   const announceRef = useRef<HTMLSpanElement>(null);
 
   const showBlindCards = isBlindThisHand && !cardsRevealed;
+
+  // ── Pineapple discard state ──────────────────────────────
+  // confirmIndex: card the player tapped/clicked, awaiting confirmation.
+  // submittedIndex: card the player confirmed discarding (locks the UI until the phase ends).
+  const [confirmIndex, setConfirmIndex] = useState<number | null>(null);
+  const [submittedIndex, setSubmittedIndex] = useState<number | null>(null);
+  const [discardSecs, setDiscardSecs] = useState(0);
+
+  // Reset selection state whenever a new discard phase begins.
+  useEffect(() => {
+    setConfirmIndex(null);
+    setSubmittedIndex(null);
+  }, [pineappleDiscardDeadline]);
+
+  // Countdown for the discard phase.
+  useEffect(() => {
+    if (!pineappleDiscardActive || !pineappleDiscardDeadline) return;
+    const tick = () => {
+      const secs = Math.max(0, Math.ceil((new Date(pineappleDiscardDeadline).getTime() - Date.now()) / 1000));
+      setDiscardSecs(secs);
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [pineappleDiscardActive, pineappleDiscardDeadline]);
+
+  function confirmDiscard() {
+    if (confirmIndex === null) return;
+    setSubmittedIndex(confirmIndex);
+    onPineappleDiscard(confirmIndex);
+    setConfirmIndex(null);
+  }
 
   const handLabel =
     showHandStrength &&
@@ -122,10 +163,51 @@ export function HeroActionPanel({
       {/* Left column — YOUR CARDS */}
       <div className="hero-panel__cards">
         <span className="hero-panel__label">
-          {showBlindCards ? <span className="blind-hand-badge blind-hand-badge--inline">BLIND</span> : t('hero.yourCards')}
+          {pineappleDiscardActive ? (
+            <span className={`pineapple-discard-label${discardSecs <= 5 ? ' urgent' : ''}`}>
+              🍍 {submittedIndex !== null ? t('pineapple.discarded') : t('pineapple.discardOne')} · {discardSecs}s
+            </span>
+          ) : showBlindCards ? (
+            <span className="blind-hand-badge blind-hand-badge--inline">BLIND</span>
+          ) : (
+            t('hero.yourCards')
+          )}
         </span>
         <div className="hero-panel__cards-row">
-          {showBlindCards ? (
+          {pineappleDiscardActive ? (
+            holeCards.map((card, index) => {
+              const delayClass = dealDelayClasses[index as 0 | 1] ?? '';
+              const dealClass = isDealingThisHand && delayClass ? `dealing ${delayClass}` : '';
+              const locked = submittedIndex !== null;
+              const isDiscarded = submittedIndex === index;
+              const label = showBlindCards
+                ? t('pineapple.discardThisCard')
+                : t('pineapple.discardCard', { card: cardToString(card) });
+              return (
+                <div
+                  key={index}
+                  className={['card-anim-wrapper', dealClass].filter(Boolean).join(' ')}
+                >
+                  <button
+                    type="button"
+                    className={[
+                      'pineapple-discardable',
+                      locked ? 'locked' : '',
+                      isDiscarded ? 'discarded' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => { if (!locked) setConfirmIndex(index); }}
+                    disabled={locked}
+                    aria-label={label}
+                  >
+                    {showBlindCards
+                      ? <div className="playing-card back" aria-hidden="true" />
+                      : <CardView card={card} faceUp />}
+                    {!locked && <span className="discard-overlay">{t('pineapple.discard')}</span>}
+                  </button>
+                </div>
+              );
+            })
+          ) : showBlindCards ? (
             holeCards.map((_, index) => {
               const delayClass = dealDelayClasses[index as 0 | 1] ?? '';
               const dealClass = isDealingThisHand && delayClass ? `dealing ${delayClass}` : '';
@@ -154,7 +236,11 @@ export function HeroActionPanel({
           )}
         </div>
 
-        {handLabel && (
+        {pineappleDiscardActive && submittedIndex !== null && (
+          <span className="hand-strength-label">{t('pineapple.waitingForOthers')}</span>
+        )}
+
+        {handLabel && !pineappleDiscardActive && (
           <span className="hand-strength-label">{handLabel}</span>
         )}
 
@@ -249,6 +335,26 @@ export function HeroActionPanel({
           />
         )}
       </div>
+
+      {confirmIndex !== null && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="pineapple-confirm-title">
+          <div className="modal pineapple-confirm-modal">
+            <h2 id="pineapple-confirm-title" className="modal-title">
+              🍍 {showBlindCards
+                ? t('pineapple.confirmDiscardBlind')
+                : t('pineapple.confirmDiscard', { card: cardToString(holeCards[confirmIndex]) })}
+            </h2>
+            <div className="modal-actions bomb-pot-actions">
+              <button type="button" className="btn primary" onClick={confirmDiscard}>
+                {t('pineapple.discard')}
+              </button>
+              <button type="button" className="btn small" onClick={() => setConfirmIndex(null)}>
+                {t('hero.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -72,6 +72,16 @@ const en = {
     donateChips: 'Donate Chips',
     holeCardsAnnouncement: 'Your hole cards: {{cards}}',
   },
+  pineapple: {
+    discard: 'Discard',
+    discardOne: 'DISCARD ONE',
+    discarded: 'DISCARDED',
+    waitingForOthers: 'Discarded — waiting for other players…',
+    discardCard: 'Discard {{card}}',
+    discardThisCard: 'Discard this card',
+    confirmDiscard: 'Discard {{card}}?',
+    confirmDiscardBlind: 'Discard this card?',
+  },
   settings: {
     title: 'Settings',
     handStrength: 'Hand Strength',

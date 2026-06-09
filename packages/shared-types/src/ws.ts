@@ -17,6 +17,9 @@ export type ClientMessage =
   | { type: 'host_set_flip_ante'; ante: number }
   | { type: 'host_set_bomb_pot'; enabled: boolean; amount?: number; doubleBoard?: boolean }
   | { type: 'bomb_pot_join'; join: boolean }
+  | { type: 'host_set_pineapple'; enabled: boolean }
+  | { type: 'pineapple_join'; join: boolean }
+  | { type: 'pineapple_discard'; cardIndex: number }
   | { type: 'run_it_out_choice'; times: number }
   | { type: 'host_set_run_it_out'; times: number }
   | { type: 'stand' }
@@ -77,6 +80,9 @@ export type ServerMessage =
   | { type: 'show_cards_result'; seatIndex: number; cards?: Card[] }
   | { type: 'bomb_pot_prompt'; deadline: string; amount: number; doubleBoard: boolean }
   | { type: 'bomb_pot_cancelled'; reason: string }
+  | { type: 'pineapple_prompt'; deadline: string }
+  | { type: 'pineapple_cancelled'; reason: string }
+  | { type: 'pineapple_discard_phase'; deadline: string }
   | { type: 'run_it_out_prompt'; chooserSeatIndex: number; deadline: string; maxRuns: number }
   | { type: 'donation_received'; donorDisplayName: string; amount: number }
   | { type: 'donation_confirmed'; recipientDisplayName: string; amount: number }

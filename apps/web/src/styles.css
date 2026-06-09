@@ -3472,6 +3472,79 @@ select option {
 .bomb-pot-choice--joined { color: var(--success, #6bd98a); }
 .bomb-pot-choice--out { color: rgba(255, 255, 255, 0.7); }
 
+/* ── Pineapple ─────────────────────────────────────────── */
+.pineapple-prompt-modal .modal-title,
+.pineapple-confirm-modal .modal-title {
+  color: #a8e063;
+}
+
+/* Discard-phase label above the hero's cards */
+.pineapple-discard-label {
+  color: #a8e063;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.pineapple-discard-label.urgent {
+  color: #ff7a4d;
+  animation: blind-pulse 1s ease-in-out infinite;
+}
+
+/* Interactive hole card during the discard phase */
+.pineapple-discardable {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.pineapple-discardable:hover:not(.locked),
+.pineapple-discardable:focus-visible:not(.locked) {
+  transform: translateY(-6px);
+  border-color: #ff5252;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  outline: none;
+}
+
+/* "Discard" cover — faint by default, brightens on hover/focus */
+.discard-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(180, 30, 30, 0.0);
+  color: rgba(255, 255, 255, 0.0);
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.pineapple-discardable:hover:not(.locked) .discard-overlay,
+.pineapple-discardable:focus-visible:not(.locked) .discard-overlay {
+  background: rgba(180, 30, 30, 0.62);
+  color: #fff;
+}
+
+.pineapple-discardable.locked {
+  cursor: default;
+}
+.pineapple-discardable.locked:not(.discarded) {
+  opacity: 0.5;
+}
+.pineapple-discardable.discarded {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
 /* ── Run-It-Out prompt ─────────────────────────────────── */
 .run-it-out-modal .modal-title {
   color: #4dd9ff;

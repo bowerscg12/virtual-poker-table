@@ -46,6 +46,8 @@ export interface VariantConfig {
   minBuyIn: number;
   maxBuyIn: number;
   actionTimerSec?: number;
+  /** When true, each player is dealt 3 hole cards and must discard one before preflop betting. holdem only. */
+  pineapple?: boolean;
   /** Extra community cards dealt in one street (house preset) */
   extraFlopCards?: number;
   /** Bomb pot ante per player for twelve_card_flip (defaults to buyIn) */
