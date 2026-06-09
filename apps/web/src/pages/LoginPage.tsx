@@ -1,10 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import i18n, { LANGUAGE_LABELS, type AppLanguage } from '../i18n';
 
 type Mode = 'signin' | 'register' | 'guest';
 
+function switchLanguage(lang: AppLanguage) {
+  i18n.changeLanguage(lang);
+  try {
+    const raw = localStorage.getItem('vct_settings');
+    const settings = raw ? JSON.parse(raw) : {};
+    localStorage.setItem('vct_settings', JSON.stringify({ ...settings, language: lang }));
+  } catch {
+    // ignore
+  }
+}
+
 export default function LoginPage() {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('signin');
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
@@ -17,7 +31,6 @@ export default function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: string })?.from ?? '/';
 
-  // Already authenticated — skip the login page
   useEffect(() => {
     if (user) navigate(from, { replace: true });
   }, [user, from, navigate]);
@@ -43,7 +56,7 @@ export default function LoginPage() {
       }
       navigate(from, { replace: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      const msg = err instanceof Error ? err.message : t('login.somethingWentWrong');
       setError(msg);
     } finally {
       setLoading(false);
@@ -58,11 +71,13 @@ export default function LoginPage() {
       ? displayName.trim().length > 0 && username.trim().length >= 3 && password.length >= 6
       : displayName.trim().length > 0);
 
+  const currentLang = i18n.language as AppLanguage;
+
   return (
     <div className="page home">
       <header className="hero">
-        <h1>Home Game</h1>
-        <p>Your home game, online.</p>
+        <h1>{t('login.title')}</h1>
+        <p>{t('login.subtitle')}</p>
       </header>
 
       <div className="panel login-panel">
@@ -72,31 +87,31 @@ export default function LoginPage() {
             className={`login-tab${mode === 'signin' ? ' active' : ''}`}
             onClick={() => switchMode('signin')}
           >
-            Sign In
+            {t('login.signIn')}
           </button>
           <button
             type="button"
             className={`login-tab${mode === 'register' ? ' active' : ''}`}
             onClick={() => switchMode('register')}
           >
-            Create Account
+            {t('login.createAccount')}
           </button>
           <button
             type="button"
             className={`login-tab${mode === 'guest' ? ' active' : ''}`}
             onClick={() => switchMode('guest')}
           >
-            Guest
+            {t('login.guest')}
           </button>
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
           {(mode === 'register' || mode === 'guest') && (
             <label>
-              Display name
+              {t('login.displayName')}
               <input
                 type="text"
-                placeholder="Your name at the table"
+                placeholder={t('login.displayNamePlaceholder')}
                 value={displayName}
                 onChange={(e) => { setDisplayName(e.target.value.slice(0, 10)); setError(null); }}
                 maxLength={10}
@@ -104,16 +119,16 @@ export default function LoginPage() {
                 autoFocus
                 disabled={loading}
               />
-              <span className="field-hint">Max 10 characters — visible to other players.</span>
+              <span className="field-hint">{t('login.displayNameHint')}</span>
             </label>
           )}
 
           {(mode === 'signin' || mode === 'register') && (
             <label>
-              Username
+              {t('login.username')}
               <input
                 type="text"
-                placeholder={mode === 'register' ? 'letters, numbers, underscores' : 'your_username'}
+                placeholder={mode === 'register' ? t('login.usernameRegisterPlaceholder') : t('login.usernamePlaceholder')}
                 value={username}
                 onChange={(e) => { setUsername(e.target.value.slice(0, 20)); setError(null); }}
                 autoComplete="username"
@@ -122,17 +137,17 @@ export default function LoginPage() {
                 disabled={loading}
               />
               {mode === 'register' && (
-                <span className="field-hint">3–20 characters. Letters, numbers, and underscores only.</span>
+                <span className="field-hint">{t('login.usernameHint')}</span>
               )}
             </label>
           )}
 
           {(mode === 'signin' || mode === 'register') && (
             <label>
-              Password
+              {t('login.password')}
               <input
                 type="password"
-                placeholder={mode === 'register' ? 'Min 6 characters' : 'Password'}
+                placeholder={mode === 'register' ? t('login.passwordMinHint') : t('login.password')}
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(null); }}
                 autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
@@ -149,27 +164,41 @@ export default function LoginPage() {
 
           {mode === 'register' && (
             <p className="policy-notice">
-              By creating an account you agree to our{' '}
-              <Link to="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</Link>.
+              {t('login.policyNotice')}{' '}
+              <Link to="/privacy" target="_blank" rel="noopener noreferrer">{t('login.privacyPolicy')}</Link>.
             </p>
           )}
 
           <button type="submit" className="btn primary" disabled={!canSubmit}>
             {loading
-              ? 'Please wait…'
+              ? t('login.pleaseWait')
               : mode === 'signin'
-              ? 'Sign In'
+              ? t('login.signIn')
               : mode === 'register'
-              ? 'Create Account'
-              : 'Continue as Guest'}
+              ? t('login.createAccount')
+              : t('login.continueAsGuest')}
           </button>
         </form>
       </div>
 
       <footer className="disclaimer">
-        Entertainment only. Play-money chips — no real-money wagering in this app.
+        {t('login.disclaimer')}
         {' · '}
-        <Link to="/privacy">Privacy Policy</Link>
+        <Link to="/privacy">{t('login.privacyPolicy')}</Link>
+
+        <div className="login-lang-switcher" role="group" aria-label={t('settings.language')}>
+          {(Object.keys(LANGUAGE_LABELS) as AppLanguage[]).map((lang) => (
+            <button
+              key={lang}
+              type="button"
+              className={`login-lang-btn${currentLang === lang ? ' active' : ''}`}
+              onClick={() => switchLanguage(lang)}
+              aria-pressed={currentLang === lang ? 'true' : 'false'}
+            >
+              {LANGUAGE_LABELS[lang]}
+            </button>
+          ))}
+        </div>
       </footer>
     </div>
   );

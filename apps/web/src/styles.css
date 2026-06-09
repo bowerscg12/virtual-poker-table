@@ -3511,6 +3511,55 @@ select {
   left: 18px;
 }
 
+/* Language selector row */
+.settings-menu__row--lang {
+  cursor: default;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.settings-menu__row--lang:hover {
+  background: transparent;
+}
+
+.settings-lang-buttons {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.settings-lang-btn {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.settings-lang-btn.active,
+.settings-lang-btn[aria-pressed='true'] {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #111;
+  font-weight: 600;
+}
+
+/* Visually hidden but accessible to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Hand strength label ──────────────────────────────────── */
 
 .hand-strength-label {
@@ -3874,6 +3923,32 @@ select {
   color: inherit;
   text-decoration: underline;
   opacity: 0.8;
+}
+
+.login-lang-switcher {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.login-lang-btn {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.login-lang-btn.active,
+.login-lang-btn[aria-pressed='true'] {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #111;
+  font-weight: 600;
 }
 
 /* ── Pot chip-pile display (below community cards) ──────────── */

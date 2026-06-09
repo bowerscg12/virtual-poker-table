@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { BlackjackLegalAction, BlackjackPhase, VariantConfig } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
 
@@ -31,6 +32,7 @@ export function BlackjackActionBar({
   onDouble,
   onSplit,
 }: Props) {
+  const { t } = useTranslation();
   const [stagedBet, setStagedBet] = useState(0);
 
   const minBet = config.blackjackMinBet ?? 5;
@@ -65,6 +67,7 @@ export function BlackjackActionBar({
                 className="bj-chip-btn"
                 onClick={() => addChip(d)}
                 disabled={stagedBet + d > maxBet || stagedBet >= myStack}
+                aria-label={t('blackjack.addChip', { amount: formatChips(d) })}
               >
                 {formatChips(d)}
               </button>
@@ -72,32 +75,35 @@ export function BlackjackActionBar({
           </div>
           <div className="bj-bet-controls">
             <div className="bj-bet-display">
-              Bet: <strong>{formatChips(stagedBet)}</strong>
+              {t('blackjack.bet')}: <strong>{formatChips(stagedBet)}</strong>
               {myPendingBet > 0 && (
-                <span className="bj-confirmed-bet"> (confirmed: {formatChips(myPendingBet)})</span>
+                <span className="bj-confirmed-bet"> ({t('blackjack.confirmed')}: {formatChips(myPendingBet)})</span>
               )}
             </div>
             <div className="bj-bet-actions">
-              <button className="btn" onClick={clear} disabled={stagedBet === 0}>
-                Clear
+              <button className="btn" onClick={clear} disabled={stagedBet === 0}
+                aria-label={t('blackjack.clear')}>
+                {t('blackjack.clear')}
               </button>
               <button
                 className="btn primary"
                 onClick={confirmBet}
                 disabled={!canConfirm}
+                aria-label={t('blackjack.placeBet')}
               >
-                Place Bet
+                {t('blackjack.placeBet')}
               </button>
               {myPendingBet > 0 && (
-                <button className="btn" onClick={onClearBet}>
-                  Cancel Bet
+                <button className="btn" onClick={onClearBet}
+                  aria-label={t('blackjack.cancelBet')}>
+                  {t('blackjack.cancelBet')}
                 </button>
               )}
             </div>
           </div>
         </div>
         <div className="bj-limits">
-          Min {formatChips(minBet)} · Max {formatChips(maxBet)}
+          {t('blackjack.limits', { min: formatChips(minBet), max: formatChips(maxBet) })}
         </div>
       </div>
     );
@@ -112,31 +118,37 @@ export function BlackjackActionBar({
       <div className="bj-action-bar">
         <div className="bj-play-buttons">
           {types.has('hit') && (
-            <button className="btn bj-btn-hit" onClick={() => onHit(handId)}>
-              Hit
+            <button className="btn bj-btn-hit" onClick={() => onHit(handId)}
+              aria-label={t('blackjack.hit')}>
+              {t('blackjack.hit')}
             </button>
           )}
           {types.has('stand') && (
-            <button className="btn bj-btn-stand" onClick={() => onStand(handId)}>
-              Stand
+            <button className="btn bj-btn-stand" onClick={() => onStand(handId)}
+              aria-label={t('blackjack.stand')}>
+              {t('blackjack.stand')}
             </button>
           )}
           {types.has('double_down') && (
-            <button className="btn bj-btn-double" onClick={() => onDouble(handId)}>
-              Double Down
+            <button className="btn bj-btn-double" onClick={() => onDouble(handId)}
+              aria-label={t('blackjack.doubleDown')}>
+              {t('blackjack.doubleDown')}
             </button>
           )}
           {types.has('split') && (
-            <button className="btn bj-btn-split" onClick={() => onSplit(handId)}>
-              Split
+            <button className="btn bj-btn-split" onClick={() => onSplit(handId)}
+              aria-label={t('blackjack.split')}>
+              {t('blackjack.split')}
             </button>
           )}
           {/* Stubs for future actions */}
-          <button className="btn bj-btn-disabled" disabled title="Coming soon">
-            Insurance
+          <button className="btn bj-btn-disabled" disabled title="Coming soon"
+            aria-label={t('blackjack.insurance')} aria-disabled="true">
+            {t('blackjack.insurance')}
           </button>
-          <button className="btn bj-btn-disabled" disabled title="Coming soon">
-            Surrender
+          <button className="btn bj-btn-disabled" disabled title="Coming soon"
+            aria-label={t('blackjack.surrender')} aria-disabled="true">
+            {t('blackjack.surrender')}
           </button>
         </div>
       </div>
@@ -145,12 +157,12 @@ export function BlackjackActionBar({
 
   // ── Waiting / dealing / dealer turn / settlement ───────────────────────────
   return (
-    <div className="bj-action-bar bj-action-bar--waiting">
-      {phase === 'dealing' && <span>Dealing cards…</span>}
-      {phase === 'player_turn' && <span>Waiting for your turn…</span>}
-      {phase === 'dealer_turn' && <span>Dealer is playing…</span>}
-      {phase === 'settlement' && <span>Settling bets…</span>}
-      {phase === 'round_complete' && <span>Next round starting…</span>}
+    <div className="bj-action-bar bj-action-bar--waiting" aria-live="polite" aria-atomic="true">
+      {phase === 'dealing' && <span>{t('blackjack.dealing')}</span>}
+      {phase === 'player_turn' && <span>{t('blackjack.waitingTurn')}</span>}
+      {phase === 'dealer_turn' && <span>{t('blackjack.dealerPlaying')}</span>}
+      {phase === 'settlement' && <span>{t('blackjack.settlingBets')}</span>}
+      {phase === 'round_complete' && <span>{t('blackjack.nextRound')}</span>}
     </div>
   );
 }

@@ -1,10 +1,12 @@
 import { useCallback, useState } from 'react';
+import type { AppLanguage } from '../i18n';
 
 export interface AppSettings {
   showHandStrength: boolean;
   showHandHistory: boolean;
   soundEffects: boolean;
   showPotOdds: boolean;
+  language: AppLanguage;
 }
 
 const DEFAULTS: AppSettings = {
@@ -12,6 +14,7 @@ const DEFAULTS: AppSettings = {
   showHandHistory: false,
   soundEffects: false,
   showPotOdds: false,
+  language: 'en',
 };
 
 const KEY = 'vct_settings';

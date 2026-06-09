@@ -8,6 +8,7 @@ import type {
   PublicBlackjackState,
   VariantConfig,
 } from '@vct/shared-types';
+import { useTranslation } from 'react-i18next';
 import { CardView } from './CardView';
 import { AvatarSvg } from './AvatarSvg';
 import { BlackjackActionBar } from './BlackjackActionBar';
@@ -18,38 +19,44 @@ import { formatChips } from '../utils/formatChips';
 function TotalBadge({ total, isSoft, isBust, isBlackjack }: {
   total?: number; isSoft?: boolean; isBust?: boolean; isBlackjack?: boolean;
 }) {
+  const { t } = useTranslation();
   if (!total) return null;
-  if (isBlackjack) return <span className="bj-total bj-total--bj">BJ</span>;
-  if (isBust) return <span className="bj-total bj-total--bust">Bust</span>;
+  if (isBlackjack) return (
+    <span className="bj-total bj-total--bj" aria-label={t('blackjack.handTotal.bj')}>BJ</span>
+  );
+  if (isBust) return (
+    <span className="bj-total bj-total--bust" aria-label={t('blackjack.handTotal.bust')}>
+      {t('blackjack.handTotal.bust')}
+    </span>
+  );
   const label = isSoft ? `S${total}` : `${total}`;
+  const ariaLabel = isSoft ? t('blackjack.handTotal.soft', { total }) : `${total}`;
   const cls = total === 21 ? 'bj-total--21' : total > 16 ? 'bj-total--good' : '';
-  return <span className={`bj-total ${cls}`}>{label}</span>;
+  return <span className={`bj-total ${cls}`} aria-label={ariaLabel}>{label}</span>;
 }
 
 // ── Status label ──────────────────────────────────────────────────────────────
 
 function StatusLabel({ status, isActive }: { status: PublicBlackjackPlayer['status']; isActive: boolean }) {
-  if (isActive) return <span className="bj-status bj-status--acting">Acting</span>;
-  if (status === 'betting') return <span className="bj-status">Betting</span>;
-  if (status === 'waiting') return <span className="bj-status bj-status--waiting">Waiting</span>;
-  if (status === 'sitting_out') return <span className="bj-status bj-status--out">Sitting out</span>;
+  const { t } = useTranslation();
+  if (isActive) return <span className="bj-status bj-status--acting">{t('blackjack.status.acting')}</span>;
+  if (status === 'betting') return <span className="bj-status">{t('blackjack.status.betting')}</span>;
+  if (status === 'waiting') return <span className="bj-status bj-status--waiting">{t('blackjack.status.waiting')}</span>;
+  if (status === 'sitting_out') return <span className="bj-status bj-status--out">{t('blackjack.status.sittingOut')}</span>;
   return null;
 }
 
 // ── Hand result overlay ───────────────────────────────────────────────────────
 
 function HandResult({ result, payout }: { result?: string; payout?: number }) {
+  const { t } = useTranslation();
   if (!result) return null;
-  const labels: Record<string, string> = {
-    win: 'Win',
-    loss: 'Bust/Loss',
-    push: 'Push',
-    blackjack: 'Blackjack!',
-  };
+  const resultKey = result as 'win' | 'loss' | 'push' | 'blackjack';
+  const label = t(`blackjack.result.${resultKey}` as Parameters<typeof t>[0], { defaultValue: result });
   const cls = `bj-hand-result bj-hand-result--${result}`;
   return (
-    <div className={cls}>
-      <div>{labels[result] ?? result}</div>
+    <div className={cls} role="status" aria-label={label}>
+      <div>{label}</div>
       {payout !== undefined && payout > 0 && (
         <div className="bj-hand-payout">+{formatChips(payout)}</div>
       )}

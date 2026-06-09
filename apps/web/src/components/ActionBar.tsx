@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { LegalAction, PlayerActionType } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
 
@@ -22,6 +23,7 @@ function computeDefaultRaise(pot: number, currentBet: number, min: number, max: 
 }
 
 export function ActionBar({ legalActions, onAction, pot, currentBet, limit, showPotOdds }: Props) {
+  const { t } = useTranslation();
   const [showRaise, setShowRaise] = useState(false);
   const [showAllInConfirm, setShowAllInConfirm] = useState(false);
   const [raiseAmount, setRaiseAmount] = useState(0);
@@ -164,23 +166,26 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
   }
 
   return (
-    <div className="action-bar" role="toolbar" aria-label="Your actions">
+    <div className="action-bar" role="toolbar" aria-label={t('actions.yourActions')}>
       {/* Buttons first in DOM — with column-reverse on parent they render closest to cards */}
       <div className="action-bar__btns">
         {legalActions.some((a) => a.type === 'fold') && (
-          <button type="button" className="btn fold" onClick={() => onAction('fold')}>
-            Fold <kbd className="key-hint">F</kbd>
+          <button type="button" className="btn fold" onClick={() => onAction('fold')}
+            aria-label={t('actions.fold')}>
+            {t('actions.fold')} <kbd className="key-hint">F</kbd>
           </button>
         )}
         {legalActions.some((a) => a.type === 'check') && (
-          <button type="button" className="btn check" onClick={() => onAction('check')}>
-            Check <kbd className="key-hint">C</kbd>
+          <button type="button" className="btn check" onClick={() => onAction('check')}
+            aria-label={t('actions.check')}>
+            {t('actions.check')} <kbd className="key-hint">C</kbd>
           </button>
         )}
         {callAction && (
           <div className="call-btn-wrapper">
-            <button type="button" className="btn call" onClick={() => onAction('call', callAction.amount)}>
-              Call {formatChips(callAction.amount ?? 0)} <kbd className="key-hint">C</kbd>
+            <button type="button" className="btn call" onClick={() => onAction('call', callAction.amount)}
+              aria-label={t('actions.call', { amount: formatChips(callAction.amount ?? 0) })}>
+              {t('actions.call', { amount: formatChips(callAction.amount ?? 0) })} <kbd className="key-hint">C</kbd>
             </button>
             {showPotOdds && (callAction.amount ?? 0) > 0 && pot > 0 && (
               <span className="pot-odds-label">
@@ -195,8 +200,9 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
             className={`btn raise-btn${showRaise ? ' active' : ''}`}
             onClick={() => setShowRaise((s) => !s)}
             aria-expanded={showRaise ? 'true' : 'false'}
+            aria-label={t('actions.raise')}
           >
-            Raise {showRaise ? '▾' : '▸'} <kbd className="key-hint">R</kbd>
+            {t('actions.raise')} {showRaise ? '▾' : '▸'} <kbd className="key-hint">R</kbd>
           </button>
         )}
         {legalActions.some((a) => a.type === 'all_in') && (
@@ -206,21 +212,23 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
                 type="button"
                 className="btn all-in"
                 onClick={() => { onAction('all_in'); setShowAllInConfirm(false); }}
+                aria-label={t('actions.confirmAllIn')}
               >
-                Confirm All-in
+                {t('actions.confirmAllIn')}
               </button>
               <button
                 type="button"
                 className="btn small"
                 onClick={() => setShowAllInConfirm(false)}
-                aria-label="Cancel all-in"
+                aria-label={t('actions.cancelAllIn')}
               >
                 ✕
               </button>
             </>
           ) : (
-            <button type="button" className="btn all-in" onClick={() => setShowAllInConfirm(true)}>
-              All-in
+            <button type="button" className="btn all-in" onClick={() => setShowAllInConfirm(true)}
+              aria-label={t('actions.allIn')}>
+              {t('actions.allIn')}
             </button>
           )
         )}
@@ -228,7 +236,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
 
       {/* Raise panel second in DOM — column-reverse positions it above the buttons */}
       {showRaise && hasRaise && (
-        <div className="raise-panel" role="group" aria-label="Set raise amount">
+        <div className="raise-panel" role="group" aria-label={t('actions.setRaiseAmount')}>
           <div className="raise-panel__slider-col">
             <span className="raise-panel__bound">{formatChips(raiseMax)}</span>
             <div className="raise-panel__slider-wrap">
@@ -244,7 +252,7 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
                   setRaiseAmount(v);
                   setInputValue(String(v));
                 }}
-                aria-label="Raise amount"
+                aria-label={t('actions.raiseAmount')}
               />
             </div>
             <span className="raise-panel__bound">{formatChips(raiseMin)}</span>
@@ -255,35 +263,39 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
               type="button"
               className="btn small raise-quick-btn"
               onClick={() => applyRaiseAmount(raiseMin)}
-              title={`Minimum: ${formatChips(raiseMin)}`}
+              title={`${t('actions.min')}: ${formatChips(raiseMin)}`}
+              aria-label={`${t('actions.min')}: ${formatChips(raiseMin)}`}
             >
-              Min <kbd className="key-hint">1</kbd>
+              {t('actions.min')} <kbd className="key-hint">1</kbd>
             </button>
             <button
               type="button"
               className="btn small raise-quick-btn"
               onClick={() => applyRaiseAmount(Math.floor((pot + toCall) / 2))}
-              title={`Half pot: ${formatChips(Math.floor((pot + toCall) / 2))}`}
+              title={`${t('actions.halfPot')}: ${formatChips(Math.floor((pot + toCall) / 2))}`}
+              aria-label={`${t('actions.halfPot')}: ${formatChips(Math.floor((pot + toCall) / 2))}`}
             >
-              ½ Pot <kbd className="key-hint">2</kbd>
+              {t('actions.halfPot')} <kbd className="key-hint">2</kbd>
             </button>
             {limit !== 'fixed' && limit !== 'pot_limit' && (
               <button
                 type="button"
                 className="btn small raise-quick-btn"
                 onClick={() => applyRaiseAmount(currentBet + pot + toCall)}
-                title={`Pot: ${formatChips(currentBet + pot + toCall)}`}
+                title={`${t('actions.pot')}: ${formatChips(currentBet + pot + toCall)}`}
+                aria-label={`${t('actions.pot')}: ${formatChips(currentBet + pot + toCall)}`}
               >
-                Pot <kbd className="key-hint">3</kbd>
+                {t('actions.pot')} <kbd className="key-hint">3</kbd>
               </button>
             )}
             <button
               type="button"
               className="btn small raise-quick-btn"
               onClick={() => applyRaiseAmount(raiseMax)}
-              title={`${limit === 'pot_limit' ? 'Pot' : 'All-in'}: ${formatChips(raiseMax)}`}
+              title={`${limit === 'pot_limit' ? t('actions.potLimit') : t('actions.allIn')}: ${formatChips(raiseMax)}`}
+              aria-label={`${limit === 'pot_limit' ? t('actions.potLimit') : t('actions.allIn')}: ${formatChips(raiseMax)}`}
             >
-              {limit === 'pot_limit' ? 'Pot' : 'Max / All-In'} <kbd className="key-hint">{limit === 'pot_limit' ? '3' : '4'}</kbd>
+              {limit === 'pot_limit' ? t('actions.potLimit') : t('actions.maxAllIn')} <kbd className="key-hint">{limit === 'pot_limit' ? '3' : '4'}</kbd>
             </button>
           </div>
 
@@ -302,20 +314,21 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
                   setShowRaise(false);
                 }
               }}
-              aria-label="Raise amount"
+              aria-label={t('actions.raiseAmount')}
             />
             <button
               type="button"
               className="btn primary"
               onClick={() => { onAction('raise', raiseAmount); setShowRaise(false); }}
+              aria-label={t('actions.raise')}
             >
-              Raise <kbd className="key-hint">R</kbd>
+              {t('actions.raise')} <kbd className="key-hint">R</kbd>
             </button>
             <button
               type="button"
               className="btn small"
               onClick={() => setShowRaise(false)}
-              aria-label="Cancel raise"
+              aria-label={t('actions.cancelRaise')}
             >
               ✕
             </button>
