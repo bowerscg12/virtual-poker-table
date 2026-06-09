@@ -21,6 +21,12 @@ export interface TableAnimState {
   allInShakeTrigger: number;
   /** Increments when the all-in runout starts; drives opponent hole-card flip animation */
   runoutHoleRevealTrigger: number;
+  /**
+   * Chip-to-pot flight animations to trigger. Each entry is one chip bundle traveling
+   * from a seat toward the pot. Set to a new array reference on every chip commitment;
+   * PokerTable uses reference equality to avoid replaying stale entries.
+   */
+  potFlightBatch: ReadonlyArray<{ id: string; seatIndex: number; isAllIn: boolean; delay: number }> | null;
 }
 
 type WinnerEntry = { seatIndex: number; amount: number; handDescription: string };
@@ -34,6 +40,7 @@ function emptyAnim(): TableAnimState {
     winnerBanner: null,
     allInShakeTrigger: 0,
     runoutHoleRevealTrigger: 0,
+    potFlightBatch: null,
   };
 }
 
@@ -95,6 +102,18 @@ export function useTableAnimations(
       schedule(() => {
         setAnim(a => (a.dealingHandNum === hn ? { ...a, dealingHandNum: null } : a));
       }, 1200);
+
+      // Animate blind/ante postings that are already reflected in the new preflop state
+      const ts = Date.now();
+      const blindSeats = table.seats.filter(s => s.betThisStreet > 0);
+      if (blindSeats.length > 0) {
+        updates.potFlightBatch = blindSeats.map((s, i) => ({
+          id: `pf-blind-${ts}-${s.seatIndex}`,
+          seatIndex: s.seatIndex,
+          isAllIn: s.allIn,
+          delay: i * 130,
+        }));
+      }
     }
 
     // ── Community cards: flip-in animation ─────────────────
@@ -111,20 +130,41 @@ export function useTableAnimations(
     // ── All-in runout start: flip opponents' hole cards over ─────────────
     const isNewRunoutStart = !!table.runout?.active && !prev.runout?.active;
 
-    // ── Bet / raise / call / all_in: chip-pulse; all_in also triggers shake ──
-    const lastActionChanged =
-      !!table.lastAction &&
-      JSON.stringify(table.lastAction) !== JSON.stringify(prev.lastAction);
-    const isNewAllIn = lastActionChanged && table.lastAction!.action === 'all_in';
+    // ── Chip commitments: detected from per-seat totalBet increases ──────────
+    // totalBet accumulates across the whole hand and is never cleared at street
+    // boundaries, so it catches closing calls (where lastAction is wiped before
+    // the broadcast because the street advanced in the same processGameAction call).
+    let chipSeatIndex: number | null = null;
+    let chipSeatAllIn = false;
 
-    if (lastActionChanged) {
-      const { action, seatIndex } = table.lastAction!;
-      if (action === 'raise' || action === 'call' || action === 'all_in') {
-        updates.recentBetSeat = seatIndex;
-        schedule(() => {
-          setAnim(a => (a.recentBetSeat === seatIndex ? { ...a, recentBetSeat: null } : a));
-        }, 700);
+    if (table.handNumber === prev.handNumber) {
+      for (const seat of table.seats) {
+        const prevSeat = prev.seats.find(s => s.seatIndex === seat.seatIndex);
+        if (seat.totalBet <= (prevSeat?.totalBet ?? 0)) continue;
+        chipSeatIndex = seat.seatIndex;
+        chipSeatAllIn = seat.allIn;
+        break;
       }
+    }
+
+    const isNewAllIn = chipSeatAllIn;
+
+    if (chipSeatIndex !== null) {
+      const seatIndex = chipSeatIndex;
+      updates.recentBetSeat = seatIndex;
+      schedule(() => {
+        setAnim(a => (a.recentBetSeat === seatIndex ? { ...a, recentBetSeat: null } : a));
+      }, 700);
+
+      // Chip-to-pot flight: 2 chips for all-in, 1 for normal commitment
+      const ts = Date.now();
+      const count = chipSeatAllIn ? 2 : 1;
+      updates.potFlightBatch = Array.from({ length: count }, (_, i) => ({
+        id: `pf-${ts}-${seatIndex}-${i}`,
+        seatIndex,
+        isAllIn: chipSeatAllIn,
+        delay: i * 90,
+      }));
     }
 
     // ── Hand complete: winner banner + seat glow ────────────

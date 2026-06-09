@@ -188,7 +188,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
 
   const potAreaRef = useRef<HTMLDivElement>(null);
   const [flyingChips, setFlyingChips] = useState<ChipFlight[]>([]);
+  const [inboundChips, setInboundChips] = useState<ChipFlight[]>([]);
   const prevWinnerBannerRef = useRef<WinnerBannerData | null>(null);
+  const prevPotFlightBatchRef = useRef(anim.potFlightBatch);
 
   useEffect(() => {
     const banner = anim.winnerBanner;
@@ -229,6 +231,44 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
     const tid = setTimeout(() => setFlyingChips([]), 800 + maxDelay + 150);
     return () => clearTimeout(tid);
   }, [anim.winnerBanner]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Pot-slide: chips fly from seat → pot on every chip commitment ────────
+  useEffect(() => {
+    const batch = anim.potFlightBatch;
+    if (!batch || batch === prevPotFlightBatchRef.current) return;
+    prevPotFlightBatchRef.current = batch;
+
+    const felt = feltRef.current;
+    const potArea = potAreaRef.current;
+    if (!felt || !potArea) return;
+
+    const feltRect = felt.getBoundingClientRect();
+    const potRect = potArea.getBoundingClientRect();
+    const potCenterX = potRect.left + potRect.width / 2 - feltRect.left;
+    const potCenterY = potRect.top + potRect.height / 2 - feltRect.top;
+
+    const now = Date.now();
+    const newChips: ChipFlight[] = batch.map(entry => {
+      const seat = computeSeatCenterPx(entry.seatIndex, angleStep, feltRect);
+      return {
+        id: `pots-${entry.seatIndex}-${now}-${entry.id}`,
+        startX: seat.x,
+        startY: seat.y,
+        dx: potCenterX - seat.x,
+        dy: potCenterY - seat.y,
+        delay: entry.delay,
+      };
+    });
+
+    if (newChips.length === 0) return;
+    setInboundChips(prev => [...prev, ...newChips]);
+
+    const maxDelay = Math.max(...batch.map(e => e.delay));
+    const tid = setTimeout(() => {
+      setInboundChips(prev => prev.filter(c => !newChips.some(n => n.id === c.id)));
+    }, 550 + maxDelay + 80);
+    return () => clearTimeout(tid);
+  }, [anim.potFlightBatch, angleStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalPot = table
     ? table.pots.reduce((s, p) => s + p.amount, 0)
@@ -281,6 +321,22 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
             if (!el) return;
             el.style.left = `${chip.startX - 15}px`;
             el.style.top = `${chip.startY - 15}px`;
+            el.style.setProperty('--chip-dx', `${chip.dx}px`);
+            el.style.setProperty('--chip-dy', `${chip.dy}px`);
+            el.style.animationDelay = `${chip.delay}ms`;
+          }}
+          aria-hidden
+        />
+      ))}
+
+      {inboundChips.map(chip => (
+        <div
+          key={chip.id}
+          className="chip-pot-slide"
+          ref={(el) => {
+            if (!el) return;
+            el.style.left = `${chip.startX - 14}px`;
+            el.style.top = `${chip.startY - 14}px`;
             el.style.setProperty('--chip-dx', `${chip.dx}px`);
             el.style.setProperty('--chip-dy', `${chip.dy}px`);
             el.style.animationDelay = `${chip.delay}ms`;

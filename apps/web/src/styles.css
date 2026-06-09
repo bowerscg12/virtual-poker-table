@@ -2828,6 +2828,67 @@ select option {
   }
 }
 
+/* ── Pot-slide: chips travel from seat to pot on every chip commitment ─────── */
+
+.chip-pot-slide {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #fff0a0, #d4a017 55%, #9a7200 100%);
+  border: 2px solid #7a5800;
+  box-shadow:
+    0 2px 0 0px #c49010,
+    0 4px 0 -1px #a07800,
+    0 3px 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 30;
+  will-change: transform, opacity;
+  animation-name: chip-pot-in;
+  animation-duration: 480ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes chip-pot-in {
+  0% {
+    transform: translate(0, 0) scale(0.9);
+    opacity: 0.85;
+  }
+  12% {
+    opacity: 1;
+    transform: translate(
+      calc(var(--chip-dx) * 0.06),
+      calc(var(--chip-dy) * 0.06 - 12px)
+    ) scale(1.18);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(
+      calc(var(--chip-dx) * 0.5),
+      calc(var(--chip-dy) * 0.5 - 16px)
+    ) scale(1.02);
+  }
+  88% {
+    opacity: 1;
+    transform: translate(
+      calc(var(--chip-dx) * 0.91),
+      calc(var(--chip-dy) * 0.91 - 2px)
+    ) scale(0.88);
+  }
+  100% {
+    transform: translate(var(--chip-dx), var(--chip-dy)) scale(0.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip-pot-slide {
+    animation: none;
+    display: none;
+  }
+}
+
 /* ── Avatar creator ────────────────────────────────────────────────────────── */
 
 .avatar-divider {

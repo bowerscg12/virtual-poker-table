@@ -40,16 +40,36 @@ export function useSoundEffects(
       playSound(enabled, 'deal');
     }
 
-    // Last action changed
-    const lastStr = JSON.stringify(table.lastAction);
-    const prevStr = JSON.stringify(prev.lastAction);
-    if (lastStr !== prevStr && table.lastAction) {
-      switch (table.lastAction.action) {
-        case 'check': playSound(enabled, 'check'); break;
-        case 'fold':  playSound(enabled, 'fold');  break;
-        case 'call':
-        case 'raise': playSound(enabled, 'chip');  break;
-        case 'all_in': playSound(enabled, 'allin'); break;
+    // Blind/ante postings at the start of a new hand
+    if (table.handNumber > prev.handNumber && table.street === 'preflop') {
+      if (table.seats.some(s => s.betThisStreet > 0)) {
+        playSound(enabled, 'chip');
+      }
+    }
+
+    // Chip sounds: use totalBet increase so closing calls (where lastAction is
+    // cleared by the street advance) still trigger a sound.
+    if (table.handNumber === prev.handNumber) {
+      for (const seat of table.seats) {
+        const prevSeat = prev.seats.find(s => s.seatIndex === seat.seatIndex);
+        if (seat.totalBet <= (prevSeat?.totalBet ?? 0)) continue;
+        playSound(enabled, seat.allIn ? 'allin' : 'chip');
+        break;
+      }
+    }
+
+    // Non-chip actions (check, fold): per-seat lastAction comparison is fine here
+    // because these actions don't close streets in a way that clears lastAction.
+    if (table.handNumber === prev.handNumber) {
+      for (const seat of table.seats) {
+        const prevSeat = prev.seats.find(s => s.seatIndex === seat.seatIndex);
+        if (!seat.lastAction) continue;
+        if (JSON.stringify(seat.lastAction) === JSON.stringify(prevSeat?.lastAction)) continue;
+        switch (seat.lastAction.action) {
+          case 'check': playSound(enabled, 'check'); break;
+          case 'fold':  playSound(enabled, 'fold');  break;
+        }
+        break;
       }
     }
 
