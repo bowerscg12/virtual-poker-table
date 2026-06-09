@@ -15,6 +15,21 @@ import {
 import { getHandHistories } from '../services/game-manager.js';
 import { createSession, deleteSessionsByUserId } from '../services/session.js';
 import { createTemplate, deleteTemplate, getTemplatesForUser } from '../services/templates.js';
+import {
+  buildPublicTournamentState,
+  claimDailyChips,
+  createTournament,
+  createTournamentTemplate,
+  deleteTournamentTemplate,
+  getChipBalance,
+  getTournamentById,
+  getTournamentByInviteCode,
+  getTournamentTemplatesForUser,
+  listWaitingTournaments,
+  registerForTournament,
+  unregisterFromTournament,
+} from '../services/tournament-service.js';
+import { tournamentManager } from '../services/tournament-manager.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   const displayNameSchema = z.string().trim().min(1).max(10);
@@ -284,4 +299,154 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/health', { config: { rateLimit: false } }, async () => ({ ok: true }));
+
+  // ── Chip Wallet ───────────────────────────────────────────────────────────
+
+  app.get('/wallet', { onRequest: [app.authenticate] }, async (req) => {
+    const userId = (req.user as { sub: string }).sub;
+    return getChipBalance(userId);
+  });
+
+  app.post('/wallet/claim-daily', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const result = await claimDailyChips(userId);
+    if ('error' in result) return reply.status(400).send({ error: result.error });
+    return result;
+  });
+
+  // ── Tournaments ───────────────────────────────────────────────────────────
+
+  const blindLevelSchema = z.object({
+    level: z.number().int().positive(),
+    small: z.number().int().positive(),
+    big: z.number().int().positive(),
+    durationMinutes: z.number().int().positive(),
+  });
+
+  const tournamentSettingsSchema = z.object({
+    variant: z.enum(['holdem', 'omaha']),
+    buyIn: z.number().int().positive(),
+    startingStack: z.number().int().positive(),
+    numTables: z.number().int().min(1).max(10),
+    seatsPerTable: z.number().int().min(2).max(9),
+    scheduledStart: z.string().datetime(),
+    blindSchedule: z.array(blindLevelSchema).min(3),
+  });
+
+  app.post('/tournaments', { onRequest: [app.authenticate], config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const user = await getUserById(userId);
+    if (!user || user.isGuest) return reply.status(403).send({ error: 'Guests cannot create tournaments. Please register an account.' });
+
+    let settings: z.infer<typeof tournamentSettingsSchema>;
+    try {
+      settings = tournamentSettingsSchema.parse(req.body);
+    } catch (err) {
+      return reply.status(400).send({ error: 'Invalid tournament settings' });
+    }
+
+    if (new Date(settings.scheduledStart) < new Date(Date.now() + 60_000)) {
+      return reply.status(400).send({ error: 'Scheduled start must be at least 1 minute in the future' });
+    }
+
+    const { id, inviteCode } = await createTournament(userId, settings);
+    tournamentManager.scheduleTournamentStart(id, new Date(settings.scheduledStart));
+    return reply.status(201).send({ id, inviteCode });
+  });
+
+  app.get('/tournaments', async (_req, _reply) => {
+    const list = await listWaitingTournaments();
+    return { tournaments: list };
+  });
+
+  app.get('/tournaments/invite/:code', async (req, reply) => {
+    const { code } = req.params as { code: string };
+    const tournamentId = await getTournamentByInviteCode(code);
+    if (!tournamentId) return reply.status(404).send({ error: 'Tournament not found' });
+    const t = await getTournamentById(tournamentId);
+    if (!t) return reply.status(404).send({ error: 'Tournament not found' });
+    return { tournament: buildPublicTournamentState(t, t.registrations, 0) };
+  });
+
+  app.get('/tournaments/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const t = await getTournamentById(id);
+    if (!t) return reply.status(404).send({ error: 'Tournament not found' });
+    return { tournament: buildPublicTournamentState(t, t.registrations, 0) };
+  });
+
+  app.post('/tournaments/:id/register', { onRequest: [app.authenticate], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const user = await getUserById(userId);
+    if (!user || user.isGuest) return reply.status(403).send({ error: 'Guests cannot join tournaments. Please register an account.' });
+
+    const { id } = req.params as { id: string };
+    const wallet = await getChipBalance(userId);
+    const t = await getTournamentById(id);
+    if (!t) return reply.status(404).send({ error: 'Tournament not found' });
+    if (wallet.chipBalance < t.buyIn) return reply.status(400).send({ error: 'Insufficient chips', code: 'INSUFFICIENT_CHIPS' });
+
+    const result = await registerForTournament(id, userId, user.displayName);
+    if ('error' in result) return reply.status(409).send({ error: result.error });
+    return { ok: true };
+  });
+
+  app.delete('/tournaments/:id/register', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const { id } = req.params as { id: string };
+    const result = await unregisterFromTournament(id, userId);
+    if ('error' in result) {
+      const status = result.error === 'Not registered' || result.error === 'Tournament not found' ? 404 : 400;
+      return reply.status(status).send({ error: result.error });
+    }
+    return { ok: true };
+  });
+
+  app.post('/tournaments/:id/start', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const { id } = req.params as { id: string };
+    const t = await getTournamentById(id);
+    if (!t) return reply.status(404).send({ error: 'Tournament not found' });
+    if (t.hostUserId !== userId) return reply.status(403).send({ error: 'Only the host can start the tournament' });
+    const result = await tournamentManager.startTournament(id);
+    if ('error' in result) return reply.status(400).send({ error: result.error });
+    return { ok: true };
+  });
+
+  app.delete('/tournaments/:id', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const { id } = req.params as { id: string };
+    const t = await getTournamentById(id);
+    if (!t) return reply.status(404).send({ error: 'Tournament not found' });
+    if (t.hostUserId !== userId) return reply.status(403).send({ error: 'Only the host can cancel the tournament' });
+    if (t.status === 'finished') return reply.status(400).send({ error: 'Tournament is already finished' });
+    await tournamentManager.cancelTournament(id);
+    return { ok: true };
+  });
+
+  // ── Tournament Templates ──────────────────────────────────────────────────
+
+  app.get('/tournament-templates', { onRequest: [app.authenticate] }, async (req) => {
+    const userId = (req.user as { sub: string }).sub;
+    return { templates: await getTournamentTemplatesForUser(userId) };
+  });
+
+  app.post('/tournament-templates', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const user = await getUserById(userId);
+    if (!user || user.isGuest) return reply.status(403).send({ error: 'Templates are only available to registered accounts' });
+
+    const body = z.object({ name: z.string().min(1).max(64), settings: z.any() }).parse(req.body);
+    const result = await createTournamentTemplate(userId, { name: body.name, settings: body.settings });
+    if ('error' in result) return reply.status(400).send({ error: result.error });
+    return reply.status(201).send({ template: result });
+  });
+
+  app.delete('/tournament-templates/:id', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const { id } = req.params as { id: string };
+    const deleted = await deleteTournamentTemplate(userId, id);
+    if (!deleted) return reply.status(404).send({ error: 'Template not found' });
+    return { ok: true };
+  });
 }

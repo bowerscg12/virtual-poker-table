@@ -8,6 +8,9 @@ import JoinLobbyPage from './pages/JoinLobbyPage';
 import NameSelectionPage from './pages/NameSelectionPage';
 import TablePage from './pages/TablePage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TournamentsPage from './pages/TournamentsPage';
+import CreateTournamentPage from './pages/CreateTournamentPage';
+import TournamentLobbyPage from './pages/TournamentLobbyPage';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -30,6 +33,9 @@ export default function App() {
         <Route path="/name" element={<ProtectedRoute><NameSelectionPage /></ProtectedRoute>} />
         <Route path="/lobby/:lobbyId/name" element={<ProtectedRoute><NameSelectionPage /></ProtectedRoute>} />
         <Route path="/table/:lobbyId" element={<ProtectedRoute><TablePage /></ProtectedRoute>} />
+        <Route path="/tournaments" element={<ProtectedRoute><TournamentsPage /></ProtectedRoute>} />
+        <Route path="/tournaments/create" element={<ProtectedRoute><CreateTournamentPage /></ProtectedRoute>} />
+        <Route path="/tournaments/:id" element={<ProtectedRoute><TournamentLobbyPage /></ProtectedRoute>} />
       </Routes>
     </AuthProvider>
   );

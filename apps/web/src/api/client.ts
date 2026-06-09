@@ -1,4 +1,4 @@
-import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, CreateTemplateRequest, EnterLobbyResponse, LobbyTemplate, LobbySummary, RulesPreset } from '@vct/shared-types';
+import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, CreateTemplateRequest, EnterLobbyResponse, LobbyTemplate, LobbySummary, RulesPreset, TournamentSettings, TournamentSummary, TournamentTemplate, PublicTournamentState } from '@vct/shared-types';
 
 const API = import.meta.env.VITE_SERVER_URL ? `${import.meta.env.VITE_SERVER_URL}/api` : '/api';
 
@@ -204,6 +204,124 @@ export async function deleteMyTemplate(templateId: string): Promise<void> {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? 'Could not delete template');
   }
+}
+
+// ── Chip wallet ───────────────────────────────────────────────────────────────
+
+export async function getWallet(): Promise<{ chipBalance: number; lastDailyClaim: string | null }> {
+  const res = await fetch(`${API}/wallet`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Could not fetch wallet');
+  return res.json();
+}
+
+export async function claimDailyChips(): Promise<{ chipBalance: number }> {
+  const res = await fetch(`${API}/wallet/claim-daily`, { method: 'POST', headers: authHeaders(), body: '{}' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not claim daily chips');
+  }
+  return res.json();
+}
+
+// ── Tournaments ───────────────────────────────────────────────────────────────
+
+export async function createTournament(settings: TournamentSettings): Promise<{ id: string; inviteCode: string }> {
+  const res = await fetch(`${API}/tournaments`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not create tournament');
+  }
+  return res.json();
+}
+
+export async function getTournamentById(id: string): Promise<{ tournament: PublicTournamentState & { registrations: unknown[] } }> {
+  const res = await fetch(`${API}/tournaments/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Tournament not found');
+  return res.json();
+}
+
+export async function getTournamentByCode(code: string): Promise<{ tournament: PublicTournamentState & { registrations: unknown[] } }> {
+  const res = await fetch(`${API}/tournaments/invite/${code.toUpperCase()}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Tournament not found');
+  return res.json();
+}
+
+export async function listTournaments(): Promise<{ tournaments: TournamentSummary[] }> {
+  const res = await fetch(`${API}/tournaments`, { headers: authHeaders() });
+  if (!res.ok) return { tournaments: [] };
+  return res.json();
+}
+
+export async function registerForTournament(id: string): Promise<void> {
+  const res = await fetch(`${API}/tournaments/${id}/register`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not register');
+  }
+}
+
+export async function unregisterFromTournament(id: string): Promise<void> {
+  const res = await fetch(`${API}/tournaments/${id}/register`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not unregister');
+  }
+}
+
+export async function hostStartTournament(id: string): Promise<void> {
+  const res = await fetch(`${API}/tournaments/${id}/start`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not start tournament');
+  }
+}
+
+export async function hostCancelTournament(id: string): Promise<void> {
+  const res = await fetch(`${API}/tournaments/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not cancel tournament');
+  }
+}
+
+export async function getTournamentTemplates(): Promise<{ templates: TournamentTemplate[] }> {
+  const res = await fetch(`${API}/tournament-templates`, { headers: authHeaders() });
+  if (!res.ok) return { templates: [] };
+  return res.json();
+}
+
+export async function saveTournamentTemplate(name: string, settings: TournamentSettings): Promise<TournamentTemplate> {
+  const res = await fetch(`${API}/tournament-templates`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ name, settings }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not save template');
+  }
+  const data = await res.json() as { template: TournamentTemplate };
+  return data.template;
+}
+
+export async function deleteTournamentTemplate(id: string): Promise<void> {
+  await fetch(`${API}/tournament-templates/${id}`, { method: 'DELETE', headers: authHeaders() });
 }
 
 export function getWsUrl(): string {

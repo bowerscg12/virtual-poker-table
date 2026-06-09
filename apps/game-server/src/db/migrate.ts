@@ -117,6 +117,62 @@ CREATE TABLE IF NOT EXISTS lobby_templates (
   created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_lobby_templates_user ON lobby_templates(user_id);
+
+-- Chip wallet columns on users.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS chip_balance INTEGER NOT NULL DEFAULT 5000;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_claim TIMESTAMP;
+
+-- Tournament tables.
+CREATE TABLE IF NOT EXISTS tournaments (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  host_user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invite_code          VARCHAR(8) NOT NULL UNIQUE,
+  status               VARCHAR(16) NOT NULL DEFAULT 'waiting',
+  variant              VARCHAR(32) NOT NULL DEFAULT 'holdem',
+  buy_in               INTEGER NOT NULL,
+  starting_stack       INTEGER NOT NULL,
+  num_tables           INTEGER NOT NULL DEFAULT 1,
+  seats_per_table      INTEGER NOT NULL DEFAULT 9,
+  scheduled_start      TIMESTAMP NOT NULL,
+  blind_schedule       JSONB NOT NULL,
+  prize_pool           INTEGER NOT NULL DEFAULT 0,
+  current_blind_level  INTEGER NOT NULL DEFAULT 0,
+  blind_level_started_at TIMESTAMP,
+  created_at           TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_tournaments_invite ON tournaments(invite_code);
+CREATE INDEX IF NOT EXISTS idx_tournaments_host ON tournaments(host_user_id);
+CREATE INDEX IF NOT EXISTS idx_tournaments_status ON tournaments(status);
+
+-- Link lobbies to a parent tournament (null for cash-game tables).
+ALTER TABLE lobbies ADD COLUMN IF NOT EXISTS tournament_id UUID REFERENCES tournaments(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS tournament_registrations (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id      UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  display_name       VARCHAR(64) NOT NULL,
+  registration_order INTEGER NOT NULL,
+  table_lobby_id     UUID REFERENCES lobbies(id) ON DELETE SET NULL,
+  seat_index         INTEGER,
+  current_stack      INTEGER,
+  bust_position      INTEGER,
+  prize_awarded      INTEGER,
+  status             VARCHAR(16) NOT NULL DEFAULT 'registered',
+  registered_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE(tournament_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_regs_tournament ON tournament_registrations(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_tournament_regs_user ON tournament_registrations(user_id);
+
+CREATE TABLE IF NOT EXISTS tournament_templates (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       VARCHAR(64) NOT NULL,
+  settings   JSONB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_templates_user ON tournament_templates(user_id);
 `;
 
 async function main() {

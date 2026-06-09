@@ -35,6 +35,7 @@ import {
   swapSeats,
   syncEndOfHandStacks,
   transferHost,
+  updateLobbySettings,
   updateLobbyStatus,
 } from '../services/lobby.js';
 import {
@@ -799,6 +800,58 @@ let verifyToken: TokenVerifier | null = null;
 
 export function setTokenVerifier(fn: TokenVerifier): void {
   verifyToken = fn;
+}
+
+/**
+ * Send a ServerMessage to a specific user by userId (if they're connected).
+ * Used by the tournament manager to send per-player notifications.
+ */
+export function sendToUser(userId: string, msg: ServerMessage): void {
+  const ws = connectedUserSockets.get(userId);
+  if (ws) send(ws, msg);
+}
+
+/**
+ * Broadcast a ServerMessage to every connected client in a lobby.
+ * Used by the tournament manager for tournament-level broadcasts.
+ */
+export function broadcastRawToLobby(lobbyId: string, msg: ServerMessage): void {
+  broadcastLobby(lobbyId, () => msg);
+}
+
+/**
+ * Start hands on a lobby that was just created for a tournament.
+ * Equivalent to a host pressing "Start" for the first time.
+ */
+export async function startTournamentTable(lobbyId: string): Promise<void> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return;
+  cancelIntermissionTimer(lobbyId);
+  await updateLobbyStatus(lobbyId, 'playing');
+  const result = await startHand(lobbyId, lobby.settings);
+  if ('error' in result) {
+    waitingForPlayers.set(lobbyId, true);
+    await broadcastTableState(lobbyId);
+    return;
+  }
+  await applyBlindHandFlags(lobbyId, result);
+  recordHandStart(lobbyId, result);
+  scheduleActionTimer(lobbyId, lobby.settings, result);
+  const connected = getConnectedSet(lobbyId);
+  const startedLobby = await getLobbyById(lobbyId, connected);
+  if (startedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));
+  await broadcastTableState(lobbyId);
+}
+
+/**
+ * Update blinds on a running tournament table to the new level values.
+ * Called by the tournament manager when blind levels advance.
+ */
+export async function updateTournamentTableBlinds(lobbyId: string, small: number, big: number): Promise<void> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return;
+  const settings = { ...lobby.settings, blinds: { ...lobby.settings.blinds, small, big } };
+  await updateLobbySettings(lobbyId, settings);
 }
 
 function send(ws: WebSocket, msg: ServerMessage): void {
@@ -1584,6 +1637,15 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
   const blindSeats = getBlindHandSeats(lobbyId);
   recordHandEnd(lobbyId, state, config, blindSeats);
   clearBlindHandSeats(lobbyId);
+
+  // Tournament hook: process busts, rebalancing, blind levels
+  const tLobby = await getLobbyById(lobbyId);
+  if (tLobby?.tournamentId) {
+    const { tournamentManager } = await import('../services/tournament-manager.js');
+    await tournamentManager.afterHandComplete(tLobby.tournamentId, lobbyId, state).catch((err) => {
+      console.error('[tournament] afterHandComplete error:', err);
+    });
+  }
 
   if (state.winnerPayouts.length > 0) {
     const payouts = state.winnerPayouts;
@@ -2611,6 +2673,17 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const bjLobby = await getLobbyById(st.lobbyId);
       if (!bjLobby) return;
       await handleBjMessage(ws, msg, st.userId, st.lobbyId, bjLobby.settings, bjDeps());
+      return;
+    }
+
+    case 'join_tournament':
+    case 'leave_tournament':
+    case 'host_start_tournament':
+    case 'host_cancel_tournament':
+    case 'host_advance_blind_level':
+    case 'tournament_acknowledge_seat_change': {
+      const { handleTournamentMessage } = await import('./tournament-handler.js');
+      await handleTournamentMessage(ws, msg, st, send);
       return;
     }
 

@@ -14,6 +14,8 @@ export interface MemoryUser {
   avatar?: AvatarConfig;
   isGuest: boolean;
   createdAt: string;
+  chipBalance: number;
+  lastDailyClaim: string | null;
 }
 
 export interface MemorySeat {
@@ -37,6 +39,7 @@ export interface MemoryLobby {
   settings: VariantConfig;
   seats: MemorySeat[];
   createdAt: string;
+  tournamentId: string | null;
 }
 
 export interface MemoryHandHistory {
@@ -65,13 +68,21 @@ export const memoryStore = {
   sessions: new Map<string, MemorySession>(),
 };
 
-export function memoryCreateUser(data: Omit<MemoryUser, 'id' | 'createdAt'>): MemoryUser {
-  const user: MemoryUser = { id: randomUUID(), createdAt: new Date().toISOString(), ...data };
+export function memoryCreateUser(
+  data: Omit<MemoryUser, 'id' | 'createdAt' | 'chipBalance' | 'lastDailyClaim'> & { chipBalance?: number; lastDailyClaim?: string | null }
+): MemoryUser {
+  const user: MemoryUser = {
+    ...data,
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    chipBalance: data.chipBalance ?? 5000,
+    lastDailyClaim: data.lastDailyClaim ?? null,
+  };
   memoryStore.users.set(user.id, user);
   return user;
 }
 
-export function memoryCreateLobby(hostUserId: string, settings: VariantConfig): MemoryLobby {
+export function memoryCreateLobby(hostUserId: string, settings: VariantConfig, tournamentId: string | null = null): MemoryLobby {
   const maxPlayers = settings.maxPlayers;
   const lobby: MemoryLobby = {
     id: randomUUID(),
@@ -91,6 +102,7 @@ export function memoryCreateLobby(hostUserId: string, settings: VariantConfig): 
       seatedAt: null,
     })),
     createdAt: new Date().toISOString(),
+    tournamentId,
   };
   memoryStore.lobbies.set(lobby.id, lobby);
   memoryStore.inviteIndex.set(lobby.inviteCode, lobby.id);

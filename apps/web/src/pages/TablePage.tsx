@@ -24,6 +24,10 @@ import { RunItOutPrompt } from '../components/RunItOutPrompt';
 import { SessionResultsModal } from '../components/SessionResultsModal';
 import { ShowdownResultsModal } from '../components/ShowdownResultsModal';
 import { CardView } from '../components/CardView';
+import { TournamentLeaderboard } from '../components/TournamentLeaderboard';
+import { BlindScheduleDisplay } from '../components/BlindScheduleDisplay';
+import { EliminationModal } from '../components/EliminationModal';
+import { SeatChangeModal } from '../components/SeatChangeModal';
 
 export default function TablePage() {
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -66,6 +70,15 @@ export default function TablePage() {
     donationConfirmed,
     rabbitHuntAvailable,
     rabbitCards,
+    tournamentState,
+    seatChangeWarning,
+    seatChanged,
+    clearSeatChanged,
+    eliminationResult,
+    clearEliminationResult,
+    tournamentFinalLeaderboard,
+    clearTournamentFinalLeaderboard,
+    tournamentCancelled,
     bjState,
     bjLegalActions,
     bjRoundResults,
@@ -137,6 +150,18 @@ export default function TablePage() {
     const t = setTimeout(() => setDonationNotice(null), 4000);
     return () => clearTimeout(t);
   }, [donationConfirmed]);
+
+  // Navigate to new table when tournament seat change executes
+  useEffect(() => {
+    if (!seatChanged) return;
+    clearSeatChanged();
+    navigate(`/table/${seatChanged.newLobbyId}`, { replace: true });
+  }, [seatChanged, clearSeatChanged, navigate]);
+
+  // Navigate away when the tournament is cancelled by the host
+  useEffect(() => {
+    if (tournamentCancelled) navigate('/tournaments');
+  }, [tournamentCancelled, navigate]);
 
   // Escape → open/focus chat
   useEffect(() => {
@@ -470,6 +495,65 @@ export default function TablePage() {
 
       {cashOutSummary && (
         <SessionResultsModal summary={cashOutSummary} onLeave={handleLeaveTable} />
+      )}
+
+      {/* ── Tournament overlays ──────────────────────────────────────── */}
+      {tournamentState && (
+        <TournamentLeaderboard tournament={tournamentState} />
+      )}
+
+      {tournamentState && headerLobby?.tournamentId && (
+        <div style={{ position: 'fixed', bottom: '4.5rem', left: '50%', transform: 'translateX(-50%)', zIndex: 28, maxWidth: 400, width: '90%' }}>
+          <BlindScheduleDisplay
+            tournament={tournamentState}
+            isHost={isHost}
+            onAdvanceLevel={() => {
+              if (headerLobby.tournamentId) {
+                send({ type: 'host_advance_blind_level', tournamentId: headerLobby.tournamentId });
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {seatChangeWarning && (
+        <SeatChangeModal
+          newTableNumber={seatChangeWarning.newTableNumber}
+          deadline={seatChangeWarning.deadline}
+          onDismiss={() => send({ type: 'tournament_acknowledge_seat_change' })}
+        />
+      )}
+
+      {eliminationResult && (
+        <EliminationModal
+          bustPosition={eliminationResult.bustPosition}
+          prizeAwarded={eliminationResult.prizeAwarded}
+          totalPlayers={eliminationResult.totalPlayers}
+          onClose={clearEliminationResult}
+        />
+      )}
+
+      {tournamentFinalLeaderboard && !eliminationResult && (
+        <div className="modal-overlay" style={{ zIndex: 75 }}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <h2 className="modal-title">Tournament Complete!</h2>
+            <div style={{ maxHeight: 300, overflowY: 'auto', margin: '0.75rem 0' }}>
+              {tournamentFinalLeaderboard.map((entry, i) => (
+                <div key={entry.userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.9rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span><span style={{ opacity: 0.5 }}>{i + 1}. </span>{entry.displayName}</span>
+                  {entry.prizeAwarded && entry.prizeAwarded > 0 && (
+                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>+{entry.prizeAwarded.toLocaleString()}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button className="btn primary" onClick={() => { clearTournamentFinalLeaderboard(); navigate('/'); }}>
+                Back to Home
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

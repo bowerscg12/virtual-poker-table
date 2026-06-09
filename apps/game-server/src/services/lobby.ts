@@ -119,6 +119,7 @@ function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): Lobb
       };
     }),
     createdAt: lobby.createdAt,
+    tournamentId: lobby.tournamentId,
   };
 }
 
@@ -221,6 +222,7 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
     settings: lobby.settings as VariantConfig,
     seats: seatSummaries,
     createdAt: lobby.createdAt.toISOString(),
+    tournamentId: lobby.tournamentId ?? null,
   };
 }
 
@@ -272,7 +274,7 @@ function validateSettings(settings: VariantConfig): void {
   }
 }
 
-export async function createLobby(hostUserId: string, req: CreateLobbyRequest): Promise<LobbySummary> {
+export async function createLobby(hostUserId: string, req: CreateLobbyRequest, tournamentId?: string): Promise<LobbySummary> {
   let settings: VariantConfig = req.settings ?? DEFAULT_VARIANT_CONFIG;
   if (req.presetId) {
     const preset = RULES_PRESETS.find((p) => p.id === req.presetId);
@@ -282,7 +284,7 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
   settings = normalizeSettings(settings);
 
   if (useMemory) {
-    const lobby = memoryCreateLobby(hostUserId, settings);
+    const lobby = memoryCreateLobby(hostUserId, settings, tournamentId ?? null);
     const seated = await autoSeatPlayer(lobby.id, hostUserId);
     if (!seated || 'error' in seated) return toSummary(lobby);
     return seated;
@@ -296,7 +298,7 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
   const lobby = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(lobbies)
-      .values({ hostUserId, inviteCode: code, settings, status: 'open' })
+      .values({ hostUserId, inviteCode: code, settings, status: 'open', tournamentId: tournamentId ?? null })
       .returning();
     const seatRows = Array.from({ length: settings.maxPlayers }, (_, i) => ({
       lobbyId: row.id,
@@ -310,6 +312,41 @@ export async function createLobby(hostUserId: string, req: CreateLobbyRequest): 
   const seated = await autoSeatPlayer(lobby.id, hostUserId);
   if (!seated || 'error' in seated) return (await pgToSummary(lobby.id))!;
   return seated;
+}
+
+/**
+ * Create a lobby for a tournament table, bypassing buy-in validation.
+ * Players are seated separately by the tournament manager.
+ */
+export async function createTournamentLobby(
+  hostUserId: string,
+  tournamentId: string,
+  settings: VariantConfig
+): Promise<string> {
+  if (useMemory) {
+    const lobby = memoryCreateLobby(hostUserId, settings, tournamentId);
+    return lobby.id;
+  }
+
+  const db = getDb();
+  const { customAlphabet } = await import('nanoid');
+  const code = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 5)();
+
+  const lobby = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(lobbies)
+      .values({ hostUserId, inviteCode: code, settings, status: 'open', tournamentId })
+      .returning();
+    const seatRows = Array.from({ length: settings.maxPlayers }, (_, i) => ({
+      lobbyId: row.id,
+      seatIndex: i,
+      stack: 0,
+    }));
+    await tx.insert(tableSeats).values(seatRows);
+    return row;
+  });
+
+  return lobby.id;
 }
 
 /** Seat player at first open seat with the table buy-in. */
@@ -544,6 +581,43 @@ export async function sitAtSeat(
   }
   await db.update(tableSeats).set({ userId, stack: amount, seatedAt: new Date() }).where(eq(tableSeats.id, seat.id));
   return (await getLobbyById(lobbyId))!;
+}
+
+/** Seat a player in a tournament table, bypassing the cash-game buy-in validation. */
+export async function sitTournamentPlayer(
+  lobbyId: string,
+  userId: string,
+  seatIndex: number,
+  stack: number
+): Promise<LobbySummary | { error: string }> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    const seat = mem.seats.find((s) => s.seatIndex === seatIndex);
+    if (!seat) return { error: 'Invalid seat' };
+    if (seat.userId) return { error: 'Seat taken' };
+    seat.userId = userId;
+    seat.stack = stack;
+    seat.seatedAt = new Date().toISOString();
+    return toSummary(mem);
+  }
+  const db = getDb();
+  const seats = await db.select().from(tableSeats).where(eq(tableSeats.lobbyId, lobbyId));
+  const seat = seats.find((s) => s.seatIndex === seatIndex);
+  if (!seat) return { error: 'Invalid seat' };
+  if (seat.userId) return { error: 'Seat taken' };
+  await db.update(tableSeats).set({ userId, stack, seatedAt: new Date() }).where(eq(tableSeats.id, seat.id));
+  return (await getLobbyById(lobbyId))!;
+}
+
+export async function updateLobbySettings(lobbyId: string, settings: VariantConfig): Promise<void> {
+  if (useMemory) {
+    const lobby = memoryStore.lobbies.get(lobbyId);
+    if (lobby) lobby.settings = settings;
+    return;
+  }
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
 }
 
 export async function updateLobbyStatus(lobbyId: string, status: MemoryLobby['status']): Promise<void> {

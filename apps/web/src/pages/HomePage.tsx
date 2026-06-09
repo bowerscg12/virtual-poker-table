@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { RejoinPrompt } from '../components/RejoinPrompt';
+import { WalletModal } from '../components/WalletModal';
 import { releaseActiveSeat } from '../api/client';
 
 export default function HomePage() {
@@ -13,6 +14,8 @@ export default function HomePage() {
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [declining, setDeclining] = useState(false);
+  const [showWallet, setShowWallet] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -147,11 +150,31 @@ export default function HomePage() {
           <Link className="btn primary" to="/create">
             Create table
           </Link>
-          <button className="btn secondary" type="button" onClick={() => navigate('/join')}>
-            Join with code
+          <button className="btn" type="button" onClick={() => navigate('/join')}>
+            Join with Code
           </button>
         </div>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '0.75rem', paddingTop: '0.75rem' }}>
+          <button
+            className="btn secondary"
+            type="button"
+            style={{ width: '100%', padding: '2.5rem 1.5rem', fontSize: '1.8rem', letterSpacing: '0.05em', fontWeight: 800 }}
+            onClick={() => {
+              if (user?.isGuest) {
+                setWalletError('Create an account to play in tournaments.');
+              } else {
+                setWalletError(null);
+                navigate('/tournaments');
+              }
+            }}
+          >
+            Tournaments
+          </button>
+          {walletError && <p style={{ color: 'var(--error, #f56)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{walletError}</p>}
+        </div>
       </div>
+
+      {showWallet && <WalletModal onClose={() => setShowWallet(false)} />}
 
       <footer className="disclaimer">
         Entertainment only. Play-money chips — no real-money wagering in this app.

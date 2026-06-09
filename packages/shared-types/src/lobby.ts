@@ -37,6 +37,8 @@ export interface LobbySummary {
   settings: VariantConfig;
   seats: TableSeat[];
   createdAt: string;
+  /** Set when this lobby is a table within a tournament */
+  tournamentId?: string | null;
 }
 
 export interface CreateLobbyRequest {

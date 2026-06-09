@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatMessage, ClientMessage, CashOutSummary, LobbySummary, PublicTableState, ServerMessage } from '@vct/shared-types';
+import type { ChatMessage, ClientMessage, CashOutSummary, LeaderboardEntry, LobbySummary, PublicTableState, PublicTournamentState, ServerMessage } from '@vct/shared-types';
 import type { Card, LegalAction } from '@vct/shared-types';
 import { getWsUrl } from '../api/client';
 import { useBlackjackState } from './useBlackjackState';
@@ -45,6 +45,12 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [donationConfirmed, setDonationConfirmed] = useState<{ recipientDisplayName: string; amount: number } | null>(null);
   const [rabbitHuntAvailable, setRabbitHuntAvailable] = useState(false);
   const [rabbitCards, setRabbitCards] = useState<Card[] | null>(null);
+  const [tournamentState, setTournamentState] = useState<PublicTournamentState | null>(null);
+  const [seatChangeWarning, setSeatChangeWarning] = useState<{ newTableNumber: number; deadline: string } | null>(null);
+  const [seatChanged, setSeatChanged] = useState<{ newLobbyId: string; newSeatIndex: number } | null>(null);
+  const [eliminationResult, setEliminationResult] = useState<{ bustPosition: number; prizeAwarded: number | null; totalPlayers: number } | null>(null);
+  const [tournamentFinalLeaderboard, setTournamentFinalLeaderboard] = useState<LeaderboardEntry[] | null>(null);
+  const [tournamentCancelled, setTournamentCancelled] = useState(false);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -292,6 +298,34 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             setRabbitCards(msg.cards);
             break;
 
+          case 'tournament_state':
+            setTournamentState(msg.tournament);
+            break;
+
+          case 'tournament_seat_change_warning':
+            setSeatChangeWarning({ newTableNumber: msg.newTableNumber, deadline: msg.deadline });
+            break;
+
+          case 'tournament_seat_changed':
+            setSeatChanged({ newLobbyId: msg.newLobbyId, newSeatIndex: msg.newSeatIndex });
+            break;
+
+          case 'tournament_blind_level_changed':
+            // tournament_state broadcast follows immediately; no separate action needed
+            break;
+
+          case 'tournament_elimination_result':
+            setEliminationResult({ bustPosition: msg.bustPosition, prizeAwarded: msg.prizeAwarded, totalPlayers: msg.totalPlayers });
+            break;
+
+          case 'tournament_complete':
+            setTournamentFinalLeaderboard(msg.finalLeaderboard);
+            break;
+
+          case 'tournament_cancelled':
+            setTournamentCancelled(true);
+            break;
+
           case 'error':
             setError(msg.message);
             break;
@@ -363,6 +397,15 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     donationConfirmed,
     rabbitHuntAvailable,
     rabbitCards,
+    tournamentState,
+    seatChangeWarning,
+    seatChanged,
+    clearSeatChanged: () => setSeatChanged(null),
+    eliminationResult,
+    clearEliminationResult: () => setEliminationResult(null),
+    tournamentFinalLeaderboard,
+    clearTournamentFinalLeaderboard: () => setTournamentFinalLeaderboard(null),
+    tournamentCancelled,
     // Blackjack state (non-null only when in a blackjack lobby)
     bjState: bj.bjState,
     bjLegalActions: bj.bjLegalActions,

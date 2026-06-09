@@ -7,15 +7,20 @@ import websocket from '@fastify/websocket';
 import { config } from './config.js';
 import { initLobbyStore } from './services/lobby.js';
 import { recoverInterruptedHands } from './services/game-manager.js';
+import { tournamentManager } from './services/tournament-manager.js';
 import { cleanupExpiredGuests } from './services/guest-cleanup.js';
 import { cleanExpiredSessions, markAllSessionsDisconnected } from './services/session.js';
 import { cleanupAbandonedLobbies } from './services/lobby-cleanup.js';
+import { cleanupExpiredTournaments } from './services/tournament-cleanup.js';
 import { registerApiRoutes } from './routes/api.js';
 import { registerClient, setTokenVerifier } from './ws/handler.js';
 
 async function main() {
   await initLobbyStore();
   await recoverInterruptedHands();
+  await tournamentManager.recoverTournamentTimers().catch((err) => {
+    console.error('[startup] Tournament timer recovery failed:', err);
+  });
 
   // Mark all sessions as disconnected so that crash-survivor sessions get a fresh
   // reconnect window (SEAT_RELEASE_MS) measured from this restart, not the original connect.
@@ -32,6 +37,13 @@ async function main() {
     await cleanupAbandonedLobbies();
   } catch (err) {
     console.error('[startup] Initial lobby cleanup failed:', err);
+  }
+
+  // Delete expired finished/cancelled tournaments on startup.
+  try {
+    await cleanupExpiredTournaments();
+  } catch (err) {
+    console.error('[startup] Initial tournament cleanup failed:', err);
   }
 
   const app = Fastify({ logger: true, trustProxy: true });
@@ -78,6 +90,7 @@ async function main() {
       await cleanExpiredSessions();
       await cleanupExpiredGuests();
       await cleanupAbandonedLobbies();
+      await cleanupExpiredTournaments();
     } catch (err) {
       console.error('[cleanup] Periodic cleanup failed:', err);
     }

@@ -402,6 +402,12 @@ select {
   font-weight: 600;
 }
 
+.btn.secondary {
+  background: #1e3a8a;
+  color: #fff;
+  font-weight: 600;
+}
+
 .btn.danger {
   background: var(--danger);
 }

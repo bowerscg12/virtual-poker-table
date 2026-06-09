@@ -3,6 +3,7 @@ import type { LegalAction, PlayerActionType, PublicTableState } from './game.js'
 import type { LobbySummary } from './lobby.js';
 import type { CashOutSummary } from './session-stats.js';
 import type { BlackjackLegalAction, BlackjackRoundPlayerResult, PublicBlackjackState } from './blackjack.js';
+import type { BlindLevel, LeaderboardEntry, PublicTournamentState } from './tournament.js';
 
 /** Client -> Server */
 export type ClientMessage =
@@ -39,6 +40,13 @@ export type ClientMessage =
   | { type: 'donate_chips'; recipientSeatIndex: number; amount: number; donationId: string }
   | { type: 'rabbit_hunt' }
   | { type: 'ping' }
+  // ── Tournament client messages ─────────────────────────────────────────────
+  | { type: 'join_tournament'; tournamentId: string }
+  | { type: 'leave_tournament'; tournamentId: string }
+  | { type: 'host_start_tournament'; tournamentId: string }
+  | { type: 'host_cancel_tournament'; tournamentId: string }
+  | { type: 'host_advance_blind_level'; tournamentId: string }
+  | { type: 'tournament_acknowledge_seat_change' }
   // ── Blackjack client messages ─────────────────────────────────────────────
   | { type: 'bj_place_bet'; amount: number }
   | { type: 'bj_clear_bet' }
@@ -75,6 +83,15 @@ export type ServerMessage =
   | { type: 'rabbit_hunt_available' }
   | { type: 'rabbit_hunt_result'; cards: Card[] }
   | { type: 'pong' }
+  // ── Tournament server messages ─────────────────────────────────────────────
+  | { type: 'tournament_state'; tournament: PublicTournamentState }
+  | { type: 'tournament_started'; tournamentId: string; tableLobbyId: string; seatIndex: number }
+  | { type: 'tournament_cancelled'; tournamentId: string }
+  | { type: 'tournament_seat_change_warning'; newTableNumber: number; deadline: string }
+  | { type: 'tournament_seat_changed'; newLobbyId: string; newSeatIndex: number }
+  | { type: 'tournament_blind_level_changed'; level: BlindLevel; levelNumber: number }
+  | { type: 'tournament_elimination_result'; bustPosition: number; prizeAwarded: number | null; totalPlayers: number }
+  | { type: 'tournament_complete'; finalLeaderboard: LeaderboardEntry[] }
   // ── Blackjack server messages ─────────────────────────────────────────────
   /** Full state sync — sent on join, reconnect, and after every state change. */
   | { type: 'bj_state'; state: PublicBlackjackState; legalActions?: BlackjackLegalAction[] }
