@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { getLobbyById } from '../api/client';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { useTableAnimations } from '../hooks/useTableAnimations';
+import { useSoundEffects } from '../hooks/useSoundEffects';
 import { useSettings } from '../hooks/useSettings';
 import { PokerTable } from '../components/PokerTable';
 import { TwelveCardFlip } from '../components/TwelveCardFlip';
@@ -91,7 +92,12 @@ export default function TablePage() {
     setBombPotChoice(null);
   }, [bombPotPrompt?.deadline]);
 
+  const headerLobby = lobby ?? snapshotLobby;
+  const mySeat = headerLobby?.seats.find((s) => s.userId === user?.id);
+  const mySeatIndex = mySeat?.seatIndex ?? -1;
+
   const anim = useTableAnimations(table, handComplete ?? null);
+  useSoundEffects(settings.soundEffects, table, anim, mySeatIndex, bjState, bjRoundResults, user?.id);
 
   useEffect(() => {
     if (!lobbyId) return;
@@ -183,10 +189,7 @@ export default function TablePage() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [chatOpen]);
 
-  const headerLobby = lobby ?? snapshotLobby;
   const isHost = !!(user && headerLobby && headerLobby.hostUserId === user.id);
-  const mySeat = headerLobby?.seats.find((s) => s.userId === user?.id);
-  const mySeatIndex = mySeat?.seatIndex ?? 0;
   const tableFull = headerLobby && !mySeat && headerLobby.seats.every((s) => s.userId);
   const buyIn = headerLobby ? getTableBuyIn(headerLobby.settings) : 0;
   const gameStarted = headerLobby?.status === 'playing' || headerLobby?.status === 'paused';

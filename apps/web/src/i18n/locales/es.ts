@@ -83,7 +83,7 @@ const es: Translations = {
     potOdds: 'Probabilidades',
     potOddsDesc: 'Mostrar % de probabilidades al igualar',
     soundEffects: 'Efectos de sonido',
-    soundEffectsDesc: 'Próximamente',
+    soundEffectsDesc: 'Reproduce sonidos para acciones, cartas y eventos del juego',
     language: 'Idioma',
   },
   login: {

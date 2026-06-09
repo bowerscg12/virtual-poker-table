@@ -72,7 +72,6 @@ export function SettingsMenu({ settings, onChange }: Props) {
             description={t('settings.soundEffectsDesc')}
             checked={settings.soundEffects}
             onChange={(v) => onChange('soundEffects', v)}
-            disabled
           />
 
           <div className="settings-menu__divider" />

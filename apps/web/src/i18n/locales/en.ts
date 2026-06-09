@@ -81,7 +81,7 @@ const en = {
     potOdds: 'Pot Odds',
     potOddsDesc: 'Show pot odds % on call',
     soundEffects: 'Sound Effects',
-    soundEffectsDesc: 'Coming soon',
+    soundEffectsDesc: 'Plays sounds for actions, cards, and game events',
     language: 'Language',
   },
   login: {

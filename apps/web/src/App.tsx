@@ -1,6 +1,8 @@
 import { type ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useSettings } from './hooks/useSettings';
+import { useClickSound } from './hooks/useClickSound';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import CreateLobbyPage from './pages/CreateLobbyPage';
@@ -11,6 +13,12 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TournamentsPage from './pages/TournamentsPage';
 import CreateTournamentPage from './pages/CreateTournamentPage';
 import TournamentLobbyPage from './pages/TournamentLobbyPage';
+
+function AppShell({ children }: { children: ReactNode }) {
+  const { settings } = useSettings();
+  useClickSound(settings.soundEffects);
+  return <>{children}</>;
+}
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -23,6 +31,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
+      <AppShell>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
@@ -37,6 +46,7 @@ export default function App() {
         <Route path="/tournaments/create" element={<ProtectedRoute><CreateTournamentPage /></ProtectedRoute>} />
         <Route path="/tournaments/:id" element={<ProtectedRoute><TournamentLobbyPage /></ProtectedRoute>} />
       </Routes>
+      </AppShell>
     </AuthProvider>
   );
 }

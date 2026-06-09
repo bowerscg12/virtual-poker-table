@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import i18n, { LANGUAGE_LABELS, type AppLanguage } from '../i18n';
+import { useSettings } from '../hooks/useSettings';
 
 type Mode = 'signin' | 'register' | 'guest';
 
@@ -27,6 +28,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const { user, loginAccount, registerAccount, loginGuest } = useAuth();
+  const { settings, updateSetting } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string })?.from ?? '/';
@@ -198,6 +200,14 @@ export default function LoginPage() {
               {LANGUAGE_LABELS[lang]}
             </button>
           ))}
+          <button
+            type="button"
+            className={`login-lang-btn${settings.soundEffects ? ' active' : ''}`}
+            onClick={() => updateSetting('soundEffects', !settings.soundEffects)}
+            aria-pressed={settings.soundEffects ? 'true' : 'false'}
+          >
+            {t('settings.soundEffects')}
+          </button>
         </div>
       </footer>
     </div>
