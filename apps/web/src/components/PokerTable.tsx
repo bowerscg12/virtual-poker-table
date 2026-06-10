@@ -64,6 +64,7 @@ interface Props {
   isHost?: boolean;
   handActive?: boolean;
   onMoveSeat?: (fromSeatIndex: number, toSeatIndex: number) => void;
+  onWhisper?: (userId: string, displayName: string) => void;
   myBlindRevealed?: boolean;
 }
 
@@ -90,7 +91,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, handActive, onMoveSeat, myBlindRevealed }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, handActive, onMoveSeat, onWhisper, myBlindRevealed }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 8;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
@@ -131,6 +132,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
     processedMsgCountRef.current = messages.length;
 
     newMessages.forEach((msg) => {
+      // Whispers are private — never surface them as table bubbles.
+      if (msg.isWhisper) return;
       const existing = bubbleTimers.current.get(msg.userId);
       if (existing !== undefined) clearTimeout(existing);
       setActiveBubbles((b) => new Map(b).set(msg.userId, { text: msg.text, key: msg.id }));
@@ -476,8 +479,24 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
                     }}
                   >
                     <AvatarSvg config={seat.avatar} size={32} />
-                    {activeStatsTip === seat.seatIndex && gs?.sessionStats && (
-                      <div className="seat-stats-overlay">
+                  </div>
+                )}
+
+                <strong
+                  className="seat-name"
+                  onPointerDown={occupied ? (e) => {
+                    e.stopPropagation();
+                    setActiveStatsTip(activeStatsTip === seat.seatIndex ? null : seat.seatIndex);
+                    setActiveBadgeTip(null);
+                  } : undefined}
+                >
+                  {seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}
+                </strong>
+
+                {activeStatsTip === seat.seatIndex && occupied && (gs?.sessionStats || (!isMe && onWhisper)) && (
+                  <div className="seat-stats-overlay">
+                    {gs?.sessionStats && (
+                      <>
                         <div className="seat-stats-title">Player Stats</div>
                         <div className="seat-stats-row"><span>VPIP</span><span>{gs.sessionStats.vpip}%</span></div>
                         <div className="seat-stats-row"><span>PFR</span><span>{gs.sessionStats.pfr}%</span></div>
@@ -492,12 +511,23 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
                         {gs.sessionStats.bestHandDescription && (
                           <div className="seat-stats-row"><span>Best</span><span>{gs.sessionStats.bestHandDescription}</span></div>
                         )}
-                      </div>
+                      </>
+                    )}
+                    {!isMe && onWhisper && (
+                      <button
+                        type="button"
+                        className="whisper-btn"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => {
+                          onWhisper(seat.userId!, seat.displayName ?? 'Player');
+                          setActiveStatsTip(null);
+                        }}
+                      >
+                        🤫 Whisper
+                      </button>
                     )}
                   </div>
                 )}
-
-                <strong className="seat-name">{seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}</strong>
                 {occupied && stack > 0 && <ChipStack amount={stack} />}
                 {!occupied && <span className="seat-empty-label">Open</span>}
                 {gs?.betThisStreet ? (

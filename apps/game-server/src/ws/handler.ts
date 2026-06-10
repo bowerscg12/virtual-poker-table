@@ -66,7 +66,7 @@ import {
   updateLastHandHistoryFoldWin,
   updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
-import { addChatMessage, addSystemChatMessage, canSendChat, getChatHistory } from '../services/chat.js';
+import { addChatMessage, addSystemChatMessage, addWhisperMessage, canSendChat, getChatHistory } from '../services/chat.js';
 import { getMemoryLobby } from '../services/lobby.js';
 import { deleteLobby } from '../services/lobby-cleanup.js';
 import { redisDel, keys } from '../store/redis.js';
@@ -2058,7 +2058,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
 
       if (session.lobbyId) {
-        for (const m of getChatHistory(session.lobbyId)) {
+        for (const m of getChatHistory(session.lobbyId, session.userId)) {
           send(ws, { type: 'chat', message: m });
         }
         const reconnLobbyForType = await getLobbyById(session.lobbyId);
@@ -2221,7 +2221,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         broadcastLobby(msg.lobbyId, () => ({ type: 'lobby_state', lobby: lobbyState }));
         if (claimed) announceHostChange(msg.lobbyId, null, lobbyState);
       }
-      for (const m of getChatHistory(msg.lobbyId)) {
+      for (const m of getChatHistory(msg.lobbyId, st.userId)) {
         send(ws, { type: 'chat', message: m });
       }
       // Send the right table state based on game type
@@ -2258,6 +2258,43 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         isHost
       );
       broadcastLobby(st.lobbyId, () => ({ type: 'chat', message: chatMsg }));
+      return;
+    }
+
+    case 'whisper': {
+      if (!st.userId || !st.lobbyId) return;
+      const text = msg.text?.trim();
+      if (!text) return;
+      if (msg.recipientUserId === st.userId) {
+        send(ws, { type: 'error', message: 'You cannot whisper to yourself' });
+        return;
+      }
+      if (!canSendChat(st.userId)) return;
+      // Recipient must be connected to the same lobby — never deliver across tables.
+      if (!getConnectedSet(st.lobbyId).has(msg.recipientUserId)) {
+        send(ws, { type: 'error', message: 'That player is no longer at the table' });
+        return;
+      }
+      const sender = await getUserById(st.userId);
+      const recipient = await getUserById(msg.recipientUserId);
+      if (!recipient) {
+        send(ws, { type: 'error', message: 'That player is no longer at the table' });
+        return;
+      }
+      const whisperMsg = addWhisperMessage(
+        st.lobbyId,
+        st.userId,
+        sender?.displayName ?? 'Player',
+        msg.recipientUserId,
+        recipient.displayName,
+        text
+      );
+      // Deliver to exactly two sockets: the sender and the recipient.
+      send(ws, { type: 'chat', message: whisperMsg });
+      const recipientWs = connectedUserSockets.get(msg.recipientUserId);
+      if (recipientWs && clients.get(recipientWs)?.lobbyId === st.lobbyId) {
+        send(recipientWs, { type: 'chat', message: whisperMsg });
+      }
       return;
     }
 

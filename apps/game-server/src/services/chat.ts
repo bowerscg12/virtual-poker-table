@@ -27,6 +27,32 @@ export function addChatMessage(
   return msg;
 }
 
+/** Store a private message — only replayed to the sender and recipient (see getChatHistory). */
+export function addWhisperMessage(
+  lobbyId: string,
+  senderId: string,
+  senderDisplayName: string,
+  recipientId: string,
+  recipientDisplayName: string,
+  text: string
+): ChatMessage {
+  const msg: ChatMessage = {
+    id: randomUUID(),
+    userId: senderId,
+    displayName: senderDisplayName,
+    text: text.trim().slice(0, 500),
+    timestamp: new Date().toISOString(),
+    isWhisper: true,
+    recipientUserId: recipientId,
+    recipientDisplayName,
+  };
+  const list = chatByLobby.get(lobbyId) ?? [];
+  list.push(msg);
+  if (list.length > MAX_MESSAGES) list.shift();
+  chatByLobby.set(lobbyId, list);
+  return msg;
+}
+
 /** Push a server-generated announcement (e.g. host migration) into a lobby's chat. */
 export function addSystemChatMessage(lobbyId: string, text: string): ChatMessage {
   const msg: ChatMessage = {
@@ -44,8 +70,16 @@ export function addSystemChatMessage(lobbyId: string, text: string): ChatMessage
   return msg;
 }
 
-export function getChatHistory(lobbyId: string): ChatMessage[] {
-  return chatByLobby.get(lobbyId) ?? [];
+/**
+ * Chat history visible to a given user. Whispers are included only when the
+ * user is the sender or recipient; with no userId (anonymous replay) they are
+ * always excluded so private messages can never leak.
+ */
+export function getChatHistory(lobbyId: string, forUserId?: string): ChatMessage[] {
+  const list = chatByLobby.get(lobbyId) ?? [];
+  return list.filter(
+    (m) => !m.isWhisper || (forUserId !== undefined && (m.userId === forUserId || m.recipientUserId === forUserId))
+  );
 }
 
 const lastMessageAt = new Map<string, number>();

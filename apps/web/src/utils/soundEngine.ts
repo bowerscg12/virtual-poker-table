@@ -1,4 +1,4 @@
-export type SoundType = 'click' | 'chip' | 'deal' | 'check' | 'fold' | 'allin' | 'win' | 'lose' | 'tick';
+export type SoundType = 'click' | 'chip' | 'deal' | 'check' | 'fold' | 'allin' | 'win' | 'lose' | 'tick' | 'whisper';
 
 let ctx: AudioContext | null = null;
 
@@ -172,6 +172,24 @@ const SYNTHS: Record<SoundType, (ac: AudioContext) => void> = {
     osc.onended = cleanup(osc, gain);
     osc.start(t);
     osc.stop(t + 0.6);
+  },
+
+  whisper(ac) {
+    const t = ac.currentTime;
+    ([880, 1175] as const).forEach((freq, i) => {
+      const start = t + i * 0.09;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.07, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.onended = cleanup(osc, gain);
+      osc.start(start);
+      osc.stop(start + 0.14);
+    });
   },
 
   tick(ac) {

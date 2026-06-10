@@ -11,6 +11,7 @@ export type ClientMessage =
   | { type: 'reconnect'; sessionId: string }
   | { type: 'join_lobby'; lobbyId: string }
   | { type: 'chat'; text: string }
+  | { type: 'whisper'; recipientUserId: string; text: string }
   | { type: 'sit'; seatIndex?: number; buyIn?: number }
   | { type: 'host_set_buy_in'; buyIn: number }
   | { type: 'host_set_action_timer'; seconds: number }
@@ -121,4 +122,8 @@ export interface ChatMessage {
   isHost?: boolean;
   /** Server-generated announcement (e.g. host migration), not a player message */
   isSystem?: boolean;
+  /** Private message — delivered only to the sender and recipient */
+  isWhisper?: boolean;
+  recipientUserId?: string;
+  recipientDisplayName?: string;
 }

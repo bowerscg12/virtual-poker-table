@@ -13,7 +13,8 @@ import { TwelveCardFlip } from '../components/TwelveCardFlip';
 import { BlackjackTable } from '../components/BlackjackTable';
 import { TableHeader } from '../components/TableHeader';
 import { HeroActionPanel } from '../components/HeroActionPanel';
-import { ChatPanel } from '../components/ChatPanel';
+import { ChatPanel, type WhisperTarget } from '../components/ChatPanel';
+import { playSound } from '../utils/soundEngine';
 import { HostControls } from '../components/HostControls';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
 import { CashOutModal } from '../components/CashOutModal';
@@ -45,6 +46,7 @@ export default function TablePage() {
   const [rebuyDismissed, setRebuyDismissed] = useState(false);
   const [dismissedShowdownHandNum, setDismissedShowdownHandNum] = useState<number | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [whisperTarget, setWhisperTarget] = useState<WhisperTarget | null>(null);
   const [donationNotice, setDonationNotice] = useState<string | null>(null);
   const [cardsRevealed, setCardsRevealed] = useState(false);
 
@@ -120,12 +122,31 @@ export default function TablePage() {
     return () => { cancelled = true; };
   }, [lobbyId]);
 
-  // Track unread messages while chat panel is closed
+  // Track unread messages while chat panel is closed; chime on incoming whispers
   useEffect(() => {
     const incoming = chat.length - prevChatLengthRef.current;
-    if (incoming > 0 && !chatOpen) setUnreadChat((n) => n + incoming);
+    if (incoming > 0) {
+      if (!chatOpen) setUnreadChat((n) => n + incoming);
+      const gotWhisper = chat
+        .slice(prevChatLengthRef.current)
+        .some((m) => m.isWhisper && m.recipientUserId === user?.id);
+      if (gotWhisper) playSound(settings.soundEffects, 'whisper');
+    }
     prevChatLengthRef.current = chat.length;
-  }, [chat, chatOpen]);
+  }, [chat, chatOpen, user?.id, settings.soundEffects]);
+
+  // Drop the whisper target if that player leaves the table
+  useEffect(() => {
+    if (!whisperTarget || !headerLobby) return;
+    if (!headerLobby.seats.some((s) => s.userId === whisperTarget.userId)) {
+      setWhisperTarget(null);
+    }
+  }, [headerLobby, whisperTarget]);
+
+  function handleWhisperRequest(userId: string, displayName: string) {
+    setWhisperTarget({ userId, displayName });
+    setChatOpen(true);
+  }
 
   useEffect(() => {
     if (chatOpen) setUnreadChat(0);
@@ -360,6 +381,7 @@ export default function TablePage() {
               isHost={isHost}
               handActive={handActive}
               onMoveSeat={(from, to) => send({ type: 'host_move_player', fromSeatIndex: from, toSeatIndex: to })}
+              onWhisper={handleWhisperRequest}
               myBlindRevealed={cardsRevealed}
             />
           )}
@@ -421,8 +443,12 @@ export default function TablePage() {
       {chatOpen && (
         <ChatPanel
           messages={chat}
+          myUserId={user?.id}
+          whisperTarget={whisperTarget}
           onSend={(text) => send({ type: 'chat', text })}
-          onClose={() => setChatOpen(false)}
+          onWhisper={(recipientUserId, text) => send({ type: 'whisper', recipientUserId, text })}
+          onWhisperTargetChange={setWhisperTarget}
+          onClose={() => { setChatOpen(false); setWhisperTarget(null); }}
         />
       )}
 
