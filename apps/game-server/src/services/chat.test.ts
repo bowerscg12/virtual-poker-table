@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { addChatMessage, addWhisperMessage, getChatHistory } from './chat.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+  addChatMessage,
+  addWhisperMessage,
+  canSendReaction,
+  createReaction,
+  getChatHistory,
+  REACTION_COOLDOWN_MS,
+} from './chat.js';
 
 describe('whisper visibility', () => {
   const lobbyId = 'test-whisper-lobby';
@@ -39,5 +46,53 @@ describe('whisper visibility', () => {
   it('truncates whisper text to 500 chars', () => {
     const long = addWhisperMessage(lobbyId, 'alice', 'Alice', 'bob', 'Bob', 'x'.repeat(600));
     expect(long.text.length).toBe(500);
+  });
+});
+
+describe('reaction cooldown', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('allows the first reaction and blocks repeats inside the cooldown window', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    expect(canSendReaction('dave')).toBe(true);
+    expect(canSendReaction('dave')).toBe(false);
+    vi.setSystemTime(1_000_000 + REACTION_COOLDOWN_MS - 1);
+    expect(canSendReaction('dave')).toBe(false);
+    vi.setSystemTime(1_000_000 + REACTION_COOLDOWN_MS);
+    expect(canSendReaction('dave')).toBe(true);
+  });
+
+  it('tracks cooldowns per player', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(2_000_000);
+    expect(canSendReaction('erin')).toBe(true);
+    expect(canSendReaction('frank')).toBe(true);
+    expect(canSendReaction('erin')).toBe(false);
+  });
+});
+
+describe('createReaction', () => {
+  it('builds a reaction event with seat and identity metadata', () => {
+    const r = createReaction('alice', 'Alice', '🔥', 3);
+    expect(r.userId).toBe('alice');
+    expect(r.displayName).toBe('Alice');
+    expect(r.emoji).toBe('🔥');
+    expect(r.seatIndex).toBe(3);
+    expect(r.id).toBeTruthy();
+    expect(Date.parse(r.timestamp)).not.toBeNaN();
+  });
+
+  it('uses a null seat for spectators', () => {
+    const r = createReaction('spec', 'Spec', '👏', null);
+    expect(r.seatIndex).toBeNull();
+  });
+
+  it('never enters chat history (reactions are transient)', () => {
+    createReaction('alice', 'Alice', '🎉', 1);
+    const history = getChatHistory('test-whisper-lobby');
+    expect(history.some((m) => m.text === '🎉')).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-export type SoundType = 'click' | 'chip' | 'deal' | 'check' | 'fold' | 'allin' | 'win' | 'lose' | 'tick' | 'whisper';
+export type SoundType = 'click' | 'chip' | 'deal' | 'check' | 'fold' | 'allin' | 'win' | 'lose' | 'tick' | 'whisper' | 'reaction';
 
 let ctx: AudioContext | null = null;
 
@@ -189,6 +189,25 @@ const SYNTHS: Record<SoundType, (ac: AudioContext) => void> = {
       osc.onended = cleanup(osc, gain);
       osc.start(start);
       osc.stop(start + 0.14);
+    });
+  },
+
+  reaction(ac) {
+    // Soft rising two-tone pop — quieter than chat/whisper cues
+    const t = ac.currentTime;
+    ([660, 990] as const).forEach((freq, i) => {
+      const start = t + i * 0.055;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.05, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.1);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.onended = cleanup(osc, gain);
+      osc.start(start);
+      osc.stop(start + 0.1);
     });
   },
 

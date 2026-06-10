@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import type { BadgeType, Card, LobbySummary, PublicTableState, ChatMessage, PlayerActionType } from '@vct/shared-types';
+import type { BadgeType, Card, LobbySummary, PublicTableState, ChatMessage, PlayerActionType, TableReaction } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
@@ -8,6 +8,7 @@ import { useActionTimer } from '../hooks/useActionTimer';
 import type { TableAnimState, WinnerBannerData } from '../hooks/useTableAnimations';
 import { formatChips } from '../utils/formatChips';
 import { PotDisplay } from './PotDisplay';
+import { ReactionOverlay } from './ReactionOverlay';
 
 /** How far (as fraction of seat orbit radius) the felt buttons sit from center. */
 const BTN_RADIUS_FACTOR = 0.62;
@@ -61,6 +62,7 @@ interface Props {
   myUserId?: string;
   anim: TableAnimState;
   messages?: ChatMessage[];
+  reactions?: TableReaction[];
   isHost?: boolean;
   handActive?: boolean;
   onMoveSeat?: (fromSeatIndex: number, toSeatIndex: number) => void;
@@ -91,7 +93,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, handActive, onMoveSeat, onWhisper, myBlindRevealed }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, isHost, handActive, onMoveSeat, onWhisper, myBlindRevealed }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 8;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
@@ -627,6 +629,17 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, isHost, han
           </div>
         );
       })}
+
+      <ReactionOverlay
+        reactions={reactions}
+        getPos={(r) => {
+          if (r.seatIndex === null) return null;
+          const rx = 50 + 46 * Math.cos(angleStep * r.seatIndex - Math.PI / 2);
+          const ry = 50 + 42 * Math.sin(angleStep * r.seatIndex - Math.PI / 2);
+          // Spawn just above the seat capsule; clamp so top seats stay on the felt
+          return { xPct: rx, yPct: Math.max(ry - 9, 5) };
+        }}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@vct/shared-types';
+import type { ChatMessage, ReactionEmoji, TableReaction } from '@vct/shared-types';
 import { randomUUID } from 'crypto';
 
 const chatByLobby = new Map<string, ChatMessage[]>();
@@ -90,4 +90,35 @@ export function canSendChat(userId: string): boolean {
   if (now - last < 500) return false;
   lastMessageAt.set(userId, now);
   return true;
+}
+
+/** Minimum interval between reactions per player (server-enforced spam guard). */
+export const REACTION_COOLDOWN_MS =
+  Number(process.env.REACTION_COOLDOWN_MS) > 0 ? Number(process.env.REACTION_COOLDOWN_MS) : 2500;
+
+const lastReactionAt = new Map<string, number>();
+
+export function canSendReaction(userId: string): boolean {
+  const now = Date.now();
+  const last = lastReactionAt.get(userId) ?? 0;
+  if (now - last < REACTION_COOLDOWN_MS) return false;
+  lastReactionAt.set(userId, now);
+  return true;
+}
+
+/** Build a reaction event. Reactions are transient — never stored, never replayed. */
+export function createReaction(
+  userId: string,
+  displayName: string,
+  emoji: ReactionEmoji,
+  seatIndex: number | null
+): TableReaction {
+  return {
+    id: randomUUID(),
+    userId,
+    displayName,
+    emoji,
+    seatIndex,
+    timestamp: new Date().toISOString(),
+  };
 }

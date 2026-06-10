@@ -10,3 +10,4 @@ export * from './avatar.js';
 export * from './blackjack.js';
 export * from './templates.js';
 export * from './tournament.js';
+export * from './reaction.js';

@@ -4,6 +4,7 @@ import type { LobbySummary } from './lobby.js';
 import type { CashOutSummary } from './session-stats.js';
 import type { BlackjackLegalAction, BlackjackRoundPlayerResult, PublicBlackjackState } from './blackjack.js';
 import type { BlindLevel, LeaderboardEntry, PublicTournamentState } from './tournament.js';
+import type { TableReaction } from './reaction.js';
 
 /** Client -> Server */
 export type ClientMessage =
@@ -12,6 +13,7 @@ export type ClientMessage =
   | { type: 'join_lobby'; lobbyId: string }
   | { type: 'chat'; text: string }
   | { type: 'whisper'; recipientUserId: string; text: string }
+  | { type: 'reaction'; emoji: string }
   | { type: 'sit'; seatIndex?: number; buyIn?: number }
   | { type: 'host_set_buy_in'; buyIn: number }
   | { type: 'host_set_action_timer'; seconds: number }
@@ -68,6 +70,8 @@ export type ServerMessage =
   | { type: 'lobby_state'; lobby: LobbySummary }
   | { type: 'table_state'; public: PublicTableState; private?: { holeCards: Card[]; legalActions: LegalAction[] } }
   | { type: 'chat'; message: ChatMessage }
+  /** Transient emoji reaction — display-only, never persisted or replayed. */
+  | { type: 'reaction'; reaction: TableReaction }
   | { type: 'hand_complete'; winners: { seatIndex: number; amount: number; handDescription: string }[] }
   | { type: 'hand_history'; entry: import('./game.js').HandHistoryEntry }
   | { type: 'cash_out_queued' }

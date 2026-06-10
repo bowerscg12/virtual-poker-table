@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatMessage, ClientMessage, CashOutSummary, LeaderboardEntry, LobbySummary, PublicTableState, PublicTournamentState, ServerMessage } from '@vct/shared-types';
+import type { ChatMessage, ClientMessage, CashOutSummary, LeaderboardEntry, LobbySummary, PublicTableState, PublicTournamentState, ServerMessage, TableReaction } from '@vct/shared-types';
 import type { Card, LegalAction } from '@vct/shared-types';
 import { getWsUrl } from '../api/client';
 import { useBlackjackState } from './useBlackjackState';
@@ -30,6 +30,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [table, setTable] = useState<PublicTableState | null>(null);
   const [privateState, setPrivateState] = useState<{ holeCards: Card[]; legalActions: LegalAction[] } | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [reactions, setReactions] = useState<TableReaction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cashOutQueued, setCashOutQueued] = useState(false);
   const [cashOutConfirmPending, setCashOutConfirmPending] = useState<{ amount: number; deadline: string } | null>(null);
@@ -230,6 +231,10 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             setChat((c) => [...c, msg.message]);
             break;
 
+          case 'reaction':
+            setReactions((r) => [...r, msg.reaction]);
+            break;
+
           case 'cash_out_queued':
             setCashOutQueued(true);
             break;
@@ -403,6 +408,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     table,
     privateState,
     chat,
+    reactions,
     error,
     cashOutQueued,
     cashOutConfirmPending,

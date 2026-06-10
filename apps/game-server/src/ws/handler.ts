@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { Card, ClientMessage, ServerMessage, VariantConfig } from '@vct/shared-types';
-import { getTableBuyIn } from '@vct/shared-types';
+import { getTableBuyIn, isReactionEmoji } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
 import {
   cancelAllBjTimers,
@@ -66,7 +66,7 @@ import {
   updateLastHandHistoryFoldWin,
   updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
-import { addChatMessage, addSystemChatMessage, addWhisperMessage, canSendChat, getChatHistory } from '../services/chat.js';
+import { addChatMessage, addSystemChatMessage, addWhisperMessage, canSendChat, canSendReaction, createReaction, getChatHistory } from '../services/chat.js';
 import { getMemoryLobby } from '../services/lobby.js';
 import { deleteLobby } from '../services/lobby-cleanup.js';
 import { redisDel, keys } from '../store/redis.js';
@@ -2258,6 +2258,21 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         isHost
       );
       broadcastLobby(st.lobbyId, () => ({ type: 'chat', message: chatMsg }));
+      return;
+    }
+
+    case 'reaction': {
+      if (!st.userId || !st.lobbyId) return;
+      // Emoji must come from the shared allowlist — drop anything else silently.
+      if (typeof msg.emoji !== 'string' || !isReactionEmoji(msg.emoji)) return;
+      if (!canSendReaction(st.userId)) return;
+      const user = await getUserById(st.userId);
+      const lobby = await getLobbyById(st.lobbyId);
+      const seatIndex = lobby?.seats.find((s) => s.userId === st.userId)?.seatIndex ?? null;
+      const reaction = createReaction(st.userId, user?.displayName ?? 'Player', msg.emoji, seatIndex);
+      // Transient by design: broadcast to all lobby sockets (players + spectators),
+      // never stored, so it cannot replay on reconnect or leak into hand history.
+      broadcastLobby(st.lobbyId, () => ({ type: 'reaction', reaction }));
       return;
     }
 

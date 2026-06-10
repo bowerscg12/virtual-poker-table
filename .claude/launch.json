@@ -5,7 +5,14 @@
       "name": "web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "-w", "@vct/web"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
+    },
+    {
+      "name": "game-server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@vct/game-server"],
+      "port": 3003
     }
   ]
 }

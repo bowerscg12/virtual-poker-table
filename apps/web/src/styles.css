@@ -1434,6 +1434,100 @@ select option {
   gap: 0.5rem;
 }
 
+/* ── Emoji reactions ─────────────────────────────────────── */
+
+.reaction-picker-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.reaction-btn {
+  background: none;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.3rem 0.45rem;
+  cursor: pointer;
+}
+
+.reaction-btn:hover:not(:disabled),
+.reaction-btn[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
+.reaction-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.reaction-picker {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+  background: #222;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  padding: 0.4rem;
+  width: 272px;
+  max-width: calc(100vw - 1.5rem);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  z-index: 12;
+}
+
+.reaction-picker button {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.3rem;
+  line-height: 1;
+  /* 40px+ touch targets for mobile tap-to-react */
+  min-height: 40px;
+  min-width: 40px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.reaction-picker button:hover,
+.reaction-picker button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Dedicated overlay layer above the felt — never intercepts pointer events */
+.reaction-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.felt-emote {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 1.9rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  /* Duration must match EMOTE_DURATION_MS in ReactionOverlay.tsx */
+  animation: felt-emote-float 3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes felt-emote-float {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  12%  { opacity: 1; transform: translate(-50%, -62%) scale(1.18); }
+  24%  { transform: translate(-50%, -68%) scale(1); }
+  72%  { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--emote-drift-x, 0px)), calc(-50% - 58px)) scale(0.92);
+  }
+}
+
 .history-panel {
   position: fixed;
   left: 1rem;
@@ -2457,6 +2551,11 @@ select option {
 @media (max-width: 600px) {
   .chat-panel {
     width: 100%;
+  }
+
+  /* Slightly smaller felt emotes so they don't crowd compact seat capsules */
+  .felt-emote {
+    font-size: 1.5rem;
   }
 
   .board {

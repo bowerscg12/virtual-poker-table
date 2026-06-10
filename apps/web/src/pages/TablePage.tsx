@@ -14,6 +14,7 @@ import { BlackjackTable } from '../components/BlackjackTable';
 import { TableHeader } from '../components/TableHeader';
 import { HeroActionPanel } from '../components/HeroActionPanel';
 import { ChatPanel, type WhisperTarget } from '../components/ChatPanel';
+import { ReactionOverlay } from '../components/ReactionOverlay';
 import { playSound } from '../utils/soundEngine';
 import { HostControls } from '../components/HostControls';
 import { HandHistoryPanel } from '../components/HandHistoryPanel';
@@ -57,6 +58,7 @@ export default function TablePage() {
     table,
     privateState,
     chat,
+    reactions,
     error,
     cashOutQueued,
     cashOutConfirmPending,
@@ -134,6 +136,15 @@ export default function TablePage() {
     }
     prevChatLengthRef.current = chat.length;
   }, [chat, chatOpen, user?.id, settings.soundEffects]);
+
+  // Soft pop for incoming reactions (everyone at the table hears their own and others')
+  const prevReactionCountRef = useRef(0);
+  useEffect(() => {
+    if (reactions.length > prevReactionCountRef.current) {
+      playSound(settings.soundEffects, 'reaction');
+    }
+    prevReactionCountRef.current = reactions.length;
+  }, [reactions, settings.soundEffects]);
 
   // Drop the whisper target if that player leaves the table
   useEffect(() => {
@@ -378,6 +389,7 @@ export default function TablePage() {
               myUserId={user?.id}
               anim={anim}
               messages={chat}
+              reactions={reactions}
               isHost={isHost}
               handActive={handActive}
               onMoveSeat={(from, to) => send({ type: 'host_move_player', fromSeatIndex: from, toSeatIndex: to })}
@@ -385,6 +397,10 @@ export default function TablePage() {
               myBlindRevealed={cardsRevealed}
             />
           )}
+
+          {/* Poker tables anchor reactions to seats inside PokerTable; other variants
+              float them from the felt centre via this wrapper-level overlay. */}
+          {(isTcf || isBlackjack) && <ReactionOverlay reactions={reactions} />}
 
           {!mySeat && headerLobby && token && connected && !isTcf && !isBlackjack && (
             <div className="sit-panel panel">
@@ -448,6 +464,7 @@ export default function TablePage() {
           onSend={(text) => send({ type: 'chat', text })}
           onWhisper={(recipientUserId, text) => send({ type: 'whisper', recipientUserId, text })}
           onWhisperTargetChange={setWhisperTarget}
+          onReact={(emoji) => send({ type: 'reaction', emoji })}
           onClose={() => { setChatOpen(false); setWhisperTarget(null); }}
         />
       )}

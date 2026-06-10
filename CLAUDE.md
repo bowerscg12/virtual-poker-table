@@ -83,6 +83,7 @@ Multiplayer browser card game app. Guest-first identity (display name at join/cr
 | `join_lobby` | `{ lobbyId }` |
 | `game_action` | `{ actionId, action, amount? }` |
 | `chat` | `{ text }` |
+| `reaction` | `{ emoji }` (must be in `REACTION_EMOJIS`; server-enforced cooldown) |
 | `sit` | `{ seatIndex?, buyIn? }` |
 | `stand` / `spectate` | — |
 | `sit_out_next_hand` | — |
@@ -126,6 +127,7 @@ Multiplayer browser card game app. Guest-first identity (display name at join/cr
 | `bomb_pot_prompt` | `{ amount, doubleBoard, deadline }` |
 | `bomb_pot_cancelled` | — |
 | `chat` | `{ text, displayName, isHost, isSystem }` |
+| `reaction` | `{ reaction: TableReaction }` (transient — never stored or replayed) |
 | `error` | `{ message, code? }` |
 | `pong` | — |
 
@@ -247,6 +249,7 @@ npm run migrate -w @vct/game-server
 | `PORT` | `3001` | HTTP/WS port |
 | `WEB_ORIGIN` | — | CORS origin for the web client |
 | `GUEST_EXPIRY_HOURS` | `48` | Hours before stale guest accounts are purged |
+| `REACTION_COOLDOWN_MS` | `2500` | Min interval between emoji reactions per player (ms) |
 
 No Docker needed — server falls back to in-memory when Postgres/Redis are unreachable.
 
