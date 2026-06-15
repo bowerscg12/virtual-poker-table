@@ -26,6 +26,8 @@ import {
   setNextHandBombPot,
   clearNextHandBombPot,
   setPineapple,
+  setBigBlindAnte,
+  setSmallBlindAnte,
   setNextHandBlind,
   setRunItOut,
   setSitOutNextHand,
@@ -2715,6 +2717,28 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
     case 'host_set_pineapple': {
       if (!st.userId || !st.lobbyId) return;
       const result = await setPineapple(st.lobbyId, st.userId, msg.enabled);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
+      return;
+    }
+
+    case 'host_set_big_blind_ante': {
+      if (!st.userId || !st.lobbyId) return;
+      const result = await setBigBlindAnte(st.lobbyId, st.userId, msg.amount);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
+      return;
+    }
+
+    case 'host_set_small_blind_ante': {
+      if (!st.userId || !st.lobbyId) return;
+      const result = await setSmallBlindAnte(st.lobbyId, st.userId, msg.amount);
       if ('error' in result) {
         send(ws, { type: 'error', message: result.error });
         return;

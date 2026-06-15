@@ -519,6 +519,64 @@ export async function setPineapple(
   return (await getLobbyById(lobbyId))!;
 }
 
+/** Set the Big Blind Ante amount for a lobby. 0 disables it. Host only. Not available for twelve_card_flip or blackjack. */
+export async function setBigBlindAnte(
+  lobbyId: string,
+  hostUserId: string,
+  amount: number,
+): Promise<LobbySummary | { error: string }> {
+  if (!Number.isInteger(amount) || amount < 0) return { error: 'Ante must be a non-negative integer' };
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only host can change Big Blind Ante setting' };
+  const blocked: VariantConfig['game'][] = ['twelve_card_flip', 'blackjack', 'stud'];
+  if (blocked.includes(lobby.settings.game)) {
+    return { error: 'Big Blind Ante is not available for this game' };
+  }
+
+  const settings: VariantConfig = { ...lobby.settings, bigBlindAnte: amount > 0 ? amount : undefined };
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
+}
+
+/** Set the Small Blind Ante amount for a lobby. 0 disables it. Host only. Not available for twelve_card_flip or blackjack. */
+export async function setSmallBlindAnte(
+  lobbyId: string,
+  hostUserId: string,
+  amount: number,
+): Promise<LobbySummary | { error: string }> {
+  if (!Number.isInteger(amount) || amount < 0) return { error: 'Ante must be a non-negative integer' };
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only host can change Small Blind Ante setting' };
+  const blocked: VariantConfig['game'][] = ['twelve_card_flip', 'blackjack', 'stud'];
+  if (blocked.includes(lobby.settings.game)) {
+    return { error: 'Small Blind Ante is not available for this game' };
+  }
+
+  const settings: VariantConfig = { ...lobby.settings, smallBlindAnte: amount > 0 ? amount : undefined };
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
+}
+
 export async function getLobbyByInvite(code: string): Promise<LobbySummary | null> {
   if (useMemory) {
     const id = memoryStore.inviteIndex.get(code.toUpperCase()) ?? memoryStore.inviteIndex.get(code);

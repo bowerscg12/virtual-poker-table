@@ -452,6 +452,8 @@ export default function TablePage() {
             onSetBombPot={(value) => send({ type: 'host_set_bomb_pot', ...value })}
             onSetRunItOut={(times) => send({ type: 'host_set_run_it_out', times })}
             onSetPineapple={(enabled) => send({ type: 'host_set_pineapple', enabled })}
+            onSetBigBlindAnte={(amount) => send({ type: 'host_set_big_blind_ante', amount })}
+            onSetSmallBlindAnte={(amount) => send({ type: 'host_set_small_blind_ante', amount })}
           />
         </section>
       )}

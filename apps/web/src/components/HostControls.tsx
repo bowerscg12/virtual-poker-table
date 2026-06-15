@@ -3,6 +3,75 @@ import type { LobbySummary } from '@vct/shared-types';
 import { TIMER_STEPS_SEC, formatTimerLabel, getTableBuyIn } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
 
+function AnteInput({ label, current, onSet }: { label: string; current: number; onSet: (amount: number) => void }) {
+  const [value, setValue] = useState(current > 0 ? String(current) : '');
+  const parsed = Number.parseInt(value, 10);
+  const isValid = value === '' || (Number.isInteger(parsed) && parsed >= 0 && parsed <= 10000 && parsed % 5 === 0);
+
+  function handleSet() {
+    if (!isValid) return;
+    onSet(value === '' ? 0 : parsed);
+  }
+
+  function handleClear() {
+    setValue('');
+    onSet(0);
+  }
+
+  return (
+    <label className="host-buy-in">
+      {label}
+      <div className="host-buy-in-row">
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="0 = off"
+          value={value}
+          onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, ''))}
+        />
+        <button type="button" className="btn small" onClick={handleSet} disabled={!isValid}>
+          Set
+        </button>
+        {current > 0 && (
+          <button type="button" className="btn small" onClick={handleClear}>
+            Clear
+          </button>
+        )}
+      </div>
+    </label>
+  );
+}
+
+function AntesControl({
+  lobby,
+  onSetBigBlindAnte,
+  onSetSmallBlindAnte,
+}: {
+  lobby: LobbySummary;
+  onSetBigBlindAnte: (amount: number) => void;
+  onSetSmallBlindAnte: (amount: number) => void;
+}) {
+  const bba = lobby.settings.bigBlindAnte ?? 0;
+  const sba = lobby.settings.smallBlindAnte ?? 0;
+  const lines: string[] = [];
+  if (bba > 0) lines.push(`BB posts ${formatChips(bba)} ante`);
+  if (sba > 0) lines.push(`SB posts ${formatChips(sba)} ante`);
+
+  return (
+    <fieldset className="settings-group bomb-pot-controls">
+      <legend>Antes</legend>
+      <AnteInput label="Big Blind Ante" current={bba} onSet={onSetBigBlindAnte} />
+      <AnteInput label="Small Blind Ante" current={sba} onSet={onSetSmallBlindAnte} />
+      <p className="field-hint">
+        {lines.length > 0
+          ? `Active: ${lines.join(', ')} each hand. Takes effect next hand.`
+          : 'Dead antes posted by position before blinds each hand. Takes effect next hand.'}
+      </p>
+    </fieldset>
+  );
+}
+
 interface Props {
   lobby: LobbySummary;
   handActive: boolean;
@@ -18,9 +87,11 @@ interface Props {
   onSetBombPot?: (value: { enabled: boolean; amount?: number; doubleBoard?: boolean }) => void;
   onSetRunItOut?: (times: number) => void;
   onSetPineapple?: (enabled: boolean) => void;
+  onSetBigBlindAnte?: (amount: number) => void;
+  onSetSmallBlindAnte?: (amount: number) => void;
 }
 
-export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot, onSetRunItOut, onSetPineapple }: Props) {
+export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot, onSetRunItOut, onSetPineapple, onSetBigBlindAnte, onSetSmallBlindAnte }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
   const isBlackjack = lobby.settings.game === 'blackjack';
   const currentBuyIn = getTableBuyIn(lobby.settings);
@@ -215,6 +286,14 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
               : 'Deal 3 hole cards per hand — players choose one to discard before preflop betting.'}
           </p>
         </fieldset>
+      )}
+
+      {!isTcf && !isBlackjack && (onSetBigBlindAnte || onSetSmallBlindAnte) && (
+        <AntesControl
+          lobby={lobby}
+          onSetBigBlindAnte={onSetBigBlindAnte ?? (() => {})}
+          onSetSmallBlindAnte={onSetSmallBlindAnte ?? (() => {})}
+        />
       )}
 
       {!isTcf && onSetRunItOut && (lobby.settings.game === 'holdem' || lobby.settings.game === 'omaha') && (

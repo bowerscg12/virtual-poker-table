@@ -87,6 +87,14 @@ export function createInitialTable(
 
   const sb = config.blinds.small;
   const bb = config.blinds.big;
+
+  if (config.smallBlindAnte && config.smallBlindAnte > 0) {
+    postAnte(seats, sbSeat, config.smallBlindAnte);
+  }
+  if (config.bigBlindAnte && config.bigBlindAnte > 0) {
+    postAnte(seats, bbSeat, config.bigBlindAnte);
+  }
+
   postBlind(seats, sbSeat, sb);
   postBlind(seats, bbSeat, bb);
 
@@ -142,6 +150,16 @@ function postBlind(seats: InternalSeat[], seatIndex: number, amount: number): vo
   const pay = Math.min(amount, seat.stack);
   seat.stack -= pay;
   seat.betThisStreet += pay;
+  seat.totalBet += pay;
+  if (seat.stack === 0) seat.allIn = true;
+}
+
+/** Post a dead ante: reduces stack and totalBet but NOT betThisStreet. */
+function postAnte(seats: InternalSeat[], seatIndex: number, amount: number): void {
+  const seat = getSeat(seats, seatIndex);
+  if (!seat) return;
+  const pay = Math.min(amount, seat.stack);
+  seat.stack -= pay;
   seat.totalBet += pay;
   if (seat.stack === 0) seat.allIn = true;
 }

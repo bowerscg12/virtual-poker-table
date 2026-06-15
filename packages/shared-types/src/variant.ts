@@ -50,6 +50,10 @@ export interface VariantConfig {
   pineapple?: boolean;
   /** Extra community cards dealt in one street (house preset) */
   extraFlopCards?: number;
+  /** When set (>0), the big blind player posts this ante into the pot before each hand. */
+  bigBlindAnte?: number;
+  /** When set (>0), the small blind player posts this ante into the pot before each hand. */
+  smallBlindAnte?: number;
   /** Bomb pot ante per player for twelve_card_flip (defaults to buyIn) */
   twelveCardFlipAnte?: number;
 

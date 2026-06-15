@@ -21,6 +21,8 @@ export type ClientMessage =
   | { type: 'host_set_bomb_pot'; enabled: boolean; amount?: number; doubleBoard?: boolean }
   | { type: 'bomb_pot_join'; join: boolean }
   | { type: 'host_set_pineapple'; enabled: boolean }
+  | { type: 'host_set_big_blind_ante'; amount: number }
+  | { type: 'host_set_small_blind_ante'; amount: number }
   | { type: 'pineapple_join'; join: boolean }
   | { type: 'pineapple_discard'; cardIndex: number }
   | { type: 'run_it_out_choice'; times: number }
