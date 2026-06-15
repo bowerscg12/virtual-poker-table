@@ -94,6 +94,7 @@ import {
   recordHandStart,
   recordRebuy,
 } from '../services/session-stats.js';
+import { persistHandStats, persistSessionEnd } from '../services/lifetime-stats.js';
 
 interface ClientState {
   userId: string | null;
@@ -1571,6 +1572,7 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
     const gameSeat = game?.seats.find((s) => s.userId === userId);
     const finalStack = gameSeat?.stack ?? seat.stack;
     const summary = finalizeCashOut(lobbyId, userId, finalStack);
+    persistSessionEnd(userId, summary).catch((err) => console.error('[lifetime-stats] session:', err));
     const prevHost = lobby.hostUserId;
 
     await removeSeat(lobbyId, userId);
@@ -1629,7 +1631,8 @@ async function promptPendingCashOuts(lobbyId: string): Promise<void> {
         const lobby = await getLobbyById(lobbyId);
         const seat = lobby?.seats.find((s) => s.userId === userId);
         if (seat) {
-          finalizeCashOut(lobbyId, userId, seat.stack);
+          const silentSummary = finalizeCashOut(lobbyId, userId, seat.stack);
+          persistSessionEnd(userId, silentSummary).catch((err) => console.error('[lifetime-stats] session:', err));
           await removeSeat(lobbyId, userId);
         }
         if (pending.sessionId) await deleteSession(pending.sessionId);
@@ -1666,7 +1669,8 @@ async function promptPendingCashOuts(lobbyId: string): Promise<void> {
             const lob = await getLobbyById(lobbyId);
             const s = lob?.seats.find((s) => s.userId === userId);
             if (s) {
-              finalizeCashOut(lobbyId, userId, s.stack);
+              const timeoutSummary = finalizeCashOut(lobbyId, userId, s.stack);
+              persistSessionEnd(userId, timeoutSummary).catch((err) => console.error('[lifetime-stats] session:', err));
               await removeSeat(lobbyId, userId);
             }
             if (pending.sessionId) await deleteSession(pending.sessionId);
@@ -1855,6 +1859,7 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
   const blindSeats = getBlindHandSeats(lobbyId);
   recordHandEnd(lobbyId, state, config, blindSeats);
   clearBlindHandSeats(lobbyId);
+  persistHandStats(state, config).catch((err) => console.error('[lifetime-stats] hand:', err));
 
   // Tournament hook: process busts, rebalancing, blind levels
   const tLobby = await getLobbyById(lobbyId);

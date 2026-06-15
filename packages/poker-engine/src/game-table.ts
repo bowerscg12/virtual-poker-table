@@ -748,6 +748,12 @@ export function createBombPotTable(
   for (const seat of seats) {
     postBlind(seats, seat.seatIndex, Math.min(amount, seat.stack));
   }
+  // Clear betThisStreet so the client pot display doesn't double-count:
+  // runShowdown builds `pots` from totalBet (correct), and the client adds
+  // betThisStreet on top — zeroing it here prevents the 2× display bug.
+  for (const seat of seats) {
+    seat.betThisStreet = 0;
+  }
 
   const flopCount = module.flopCardCount(config);
   const dealBoard = (): Card[] => {

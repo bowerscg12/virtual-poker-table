@@ -173,6 +173,54 @@ CREATE TABLE IF NOT EXISTS tournament_templates (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_templates_user ON tournament_templates(user_id);
+
+-- Lifetime aggregate stats: one row per authenticated user.
+-- biggest_session_loss stored as absolute value (positive integer).
+-- best_hand_rank: -1 = none, 0 = high_card, 9 = royal_flush.
+-- vpip_hands / raise_hands / call_hands / fold_hands feed archetype calculation.
+CREATE TABLE IF NOT EXISTS player_lifetime_stats (
+  user_id                UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  lifetime_profit        INTEGER NOT NULL DEFAULT 0,
+  winning_sessions       INTEGER NOT NULL DEFAULT 0,
+  losing_sessions        INTEGER NOT NULL DEFAULT 0,
+  hands_played           INTEGER NOT NULL DEFAULT 0,
+  hands_won              INTEGER NOT NULL DEFAULT 0,
+  biggest_pot_won        INTEGER NOT NULL DEFAULT 0,
+  biggest_pot_lost       INTEGER NOT NULL DEFAULT 0,
+  biggest_session_gain   INTEGER NOT NULL DEFAULT 0,
+  biggest_session_loss   INTEGER NOT NULL DEFAULT 0,
+  best_hand_rank         INTEGER NOT NULL DEFAULT -1,
+  best_hand_description  TEXT,
+  favorite_game_mode     VARCHAR(32),
+  archetype              VARCHAR(32),
+  vpip_hands             INTEGER NOT NULL DEFAULT 0,
+  raise_hands            INTEGER NOT NULL DEFAULT 0,
+  call_hands             INTEGER NOT NULL DEFAULT 0,
+  fold_hands             INTEGER NOT NULL DEFAULT 0,
+  created_at             TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at             TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Per canonical starting-hand stats per user (e.g. "AKs", "AA", "72o").
+CREATE TABLE IF NOT EXISTS player_hole_hand_stats (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  canonical_hand VARCHAR(8) NOT NULL,
+  times_dealt    INTEGER NOT NULL DEFAULT 0,
+  times_won      INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(user_id, canonical_hand)
+);
+CREATE INDEX IF NOT EXISTS idx_player_hole_hand_stats_user ON player_hole_hand_stats(user_id);
+
+-- Per game-variant stats per user.
+CREATE TABLE IF NOT EXISTS player_game_mode_stats (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game_mode    VARCHAR(32) NOT NULL,
+  hands_played INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(user_id, game_mode)
+);
+CREATE INDEX IF NOT EXISTS idx_player_game_mode_stats_user ON player_game_mode_stats(user_id);
 `;
 
 async function main() {

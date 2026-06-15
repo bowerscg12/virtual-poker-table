@@ -295,6 +295,11 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
   }
 
   const isRunoutActive = table?.runout?.active === true;
+  // Only show the runout overlay for genuine all-in showdowns. Bomb pots trigger
+  // the same runout path but nobody is necessarily all-in, so suppress it unless
+  // at least one seat is actually all-in.
+  const hasActualAllIn = table?.seats.some((s) => s.allIn) ?? false;
+  const showRunoutOverlay = isRunoutActive && (!table?.bombPot || hasActualAllIn);
 
   return (
     <div
@@ -307,7 +312,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
       {table?.paused && (
         <div className="pause-overlay"><span>Game Paused</span></div>
       )}
-      {isRunoutActive && (
+      {showRunoutOverlay && (
         <div className="runout-overlay" aria-live="polite">
           {table?.runout?.totalRuns && table.runout.totalRuns > 1
             ? <span>Run {table.runout.currentRun ?? 1} of {table.runout.totalRuns}</span>

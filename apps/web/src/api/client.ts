@@ -1,4 +1,4 @@
-import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CreateLobbyRequest, CreateTemplateRequest, EnterLobbyResponse, LobbyTemplate, LobbySummary, RulesPreset, TournamentSettings, TournamentSummary, TournamentTemplate, PublicTournamentState } from '@vct/shared-types';
+import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CareerStats, CreateLobbyRequest, CreateTemplateRequest, EnterLobbyResponse, LobbyTemplate, LobbySummary, RulesPreset, TournamentSettings, TournamentSummary, TournamentTemplate, PublicTournamentState } from '@vct/shared-types';
 
 const API = import.meta.env.VITE_SERVER_URL ? `${import.meta.env.VITE_SERVER_URL}/api` : '/api';
 
@@ -129,6 +129,17 @@ export async function updateDisplayName(displayName: string): Promise<{ user: Au
     throw new Error(err.error ?? 'Could not update display name.');
   }
   return res.json() as Promise<{ user: AuthUser }>;
+}
+
+export async function fetchCareerStats(): Promise<CareerStats | null> {
+  try {
+    const res = await fetch(`${API}/me/career-stats`, { headers: authHeaders() });
+    if (!res.ok) return null;
+    const data = await res.json() as CareerStats | null;
+    return data ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getLobbyByInvite(code: string): Promise<{ lobby: LobbySummary }> {

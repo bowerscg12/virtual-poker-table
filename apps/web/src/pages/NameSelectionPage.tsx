@@ -5,6 +5,7 @@ import { DEFAULT_AVATAR, coerceAvatar } from '@vct/shared-types';
 import { createTableAndEnter, enterLobby, getLobbyById } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AvatarCreator } from '../components/AvatarCreator';
+import { CareerStatsPanel } from '../components/CareerStatsPanel';
 
 interface CreateState {
   mode: 'create';
@@ -166,6 +167,8 @@ export default function NameSelectionPage() {
         <hr className="avatar-divider" />
 
         <AvatarCreator value={avatar} onChange={handleAvatarChange} />
+
+        {nameIsFixed && <CareerStatsPanel />}
 
         <div className="name-selection-actions">
           <button type="submit" className="btn primary" disabled={loading || !name.trim()}>

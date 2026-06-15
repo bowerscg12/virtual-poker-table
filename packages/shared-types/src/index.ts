@@ -11,3 +11,4 @@ export * from './blackjack.js';
 export * from './templates.js';
 export * from './tournament.js';
 export * from './reaction.js';
+export * from './career-stats.js';

@@ -101,3 +101,44 @@ export const tournamentTemplates = pgTable('tournament_templates', {
   settings:  jsonb('settings').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// Lifetime aggregate stats per authenticated user. One row per user.
+export const playerLifetimeStats = pgTable('player_lifetime_stats', {
+  userId:               uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  lifetimeProfit:       integer('lifetime_profit').notNull().default(0),
+  winningSessions:      integer('winning_sessions').notNull().default(0),
+  losingSessions:       integer('losing_sessions').notNull().default(0),
+  handsPlayed:          integer('hands_played').notNull().default(0),
+  handsWon:             integer('hands_won').notNull().default(0),
+  biggestPotWon:        integer('biggest_pot_won').notNull().default(0),
+  biggestPotLost:       integer('biggest_pot_lost').notNull().default(0),
+  biggestSessionGain:   integer('biggest_session_gain').notNull().default(0),
+  biggestSessionLoss:   integer('biggest_session_loss').notNull().default(0), // absolute value, positive
+  bestHandRank:         integer('best_hand_rank').notNull().default(-1),      // -1=none, 0=high_card … 9=royal_flush
+  bestHandDescription:  text('best_hand_description'),
+  favoriteGameMode:     varchar('favorite_game_mode', { length: 32 }),
+  archetype:            varchar('archetype', { length: 32 }),
+  vpipHands:            integer('vpip_hands').notNull().default(0),
+  raiseHands:           integer('raise_hands').notNull().default(0),
+  callHands:            integer('call_hands').notNull().default(0),
+  foldHands:            integer('fold_hands').notNull().default(0),
+  createdAt:            timestamp('created_at').defaultNow().notNull(),
+  updatedAt:            timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Per canonical starting-hand stats per user (e.g. "AKs", "AA", "72o").
+export const playerHoleHandStats = pgTable('player_hole_hand_stats', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  userId:        uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  canonicalHand: varchar('canonical_hand', { length: 8 }).notNull(),
+  timesDealt:    integer('times_dealt').notNull().default(0),
+  timesWon:      integer('times_won').notNull().default(0),
+});
+
+// Per game-variant stats per user.
+export const playerGameModeStats = pgTable('player_game_mode_stats', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  userId:      uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  gameMode:    varchar('game_mode', { length: 32 }).notNull(),
+  handsPlayed: integer('hands_played').notNull().default(0),
+});
