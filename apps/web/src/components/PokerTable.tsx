@@ -67,6 +67,7 @@ interface Props {
   handActive?: boolean;
   onMoveSeat?: (fromSeatIndex: number, toSeatIndex: number) => void;
   onWhisper?: (userId: string, displayName: string) => void;
+  onSideBetChallenge?: (seatIndex: number, displayName: string) => void;
   myBlindRevealed?: boolean;
 }
 
@@ -93,7 +94,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, isHost, handActive, onMoveSeat, onWhisper, myBlindRevealed }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, isHost, handActive, onMoveSeat, onWhisper, onSideBetChallenge, myBlindRevealed }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 8;
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
@@ -500,7 +501,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
                   {seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}
                 </strong>
 
-                {activeStatsTip === seat.seatIndex && occupied && (gs?.sessionStats || (!isMe && onWhisper)) && (
+                {activeStatsTip === seat.seatIndex && occupied && (gs?.sessionStats || (!isMe && (onWhisper || onSideBetChallenge))) && (
                   <div className="seat-stats-overlay">
                     {gs?.sessionStats && (
                       <>
@@ -533,6 +534,19 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
                         🤫 Whisper
                       </button>
                     )}
+                    {!isMe && onSideBetChallenge && (
+                      <button
+                        type="button"
+                        className="whisper-btn sidebet-challenge-btn"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => {
+                          onSideBetChallenge(seat.seatIndex, seat.displayName ?? 'Player');
+                          setActiveStatsTip(null);
+                        }}
+                      >
+                        🎲 Side Bet
+                      </button>
+                    )}
                   </div>
                 )}
                 {occupied && stack > 0 && <ChipStack amount={stack} />}
@@ -558,6 +572,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
                 )}
                 {occupied && gs?.isBlindThisHand && !(isMe && myBlindRevealed) && (
                   <span className="blind-hand-badge">BLIND</span>
+                )}
+                {occupied && gs?.hasSideBet && (
+                  <span className="sidebet-indicator" title="Active side bet" role="img" aria-label="Active side bet">🎲</span>
                 )}
                 {occupied && gs?.lastAction && (
                   <span className={`action-badge action-badge--${gs.lastAction.action}`}>

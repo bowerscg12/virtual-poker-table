@@ -21,6 +21,7 @@ import { keys, redisDel, redisGet, redisSet } from '../store/redis.js';
 import { clearSitOutBlindOwed, getActiveLobbyIds, getMemoryLobby, isMemoryMode, restorePreHandStacks, setWaitingForReentryBlind } from './lobby.js';
 import { memoryStore } from '../store/memory-fallback.js';
 import { getSessionBadgeData, getLiveSessionStats } from './session-stats.js';
+import { bindToHand, getActiveBetUserIdsForViewer } from './side-bets.js';
 
 interface SerializedGame extends Omit<GameTableState, 'processedActionIds' | 'seats' | 'revealedCards'> {
   processedActionIds: string[];
@@ -314,6 +315,8 @@ export async function startHand(
   }
 
   seatLastActions.delete(lobbyId);
+  // Bind any accepted 1v1 side bets to this freshly-dealt hand (evaluate-at-deal, reveal-at-end).
+  bindToHand(lobbyId, state);
   await persistGame(lobbyId, state);
   syncStacksToLobby(lobbyId, state);
   return state;
@@ -355,6 +358,8 @@ export async function startBombPotHand(
   const state = createBombPotTable(participants, config, handNumber, nextDealerIdx, amount, doubleBoard, rng);
 
   seatLastActions.delete(lobbyId);
+  // Bind any accepted 1v1 side bets to this freshly-dealt hand (evaluate-at-deal, reveal-at-end).
+  bindToHand(lobbyId, state);
   await persistGame(lobbyId, state);
   syncStacksToLobby(lobbyId, state);
   return state;
@@ -625,6 +630,8 @@ export function toPublicState(
   const badges = computeBadges(lobbyId, state);
   const currentStacks = new Map(state.seats.map((s) => [s.userId, s.stack]));
   const liveStats = getLiveSessionStats(lobbyId, currentStacks);
+  // Active 1v1 side-bet indicator — viewer-scoped (participants only) unless visibility is 'table'.
+  const sideBetUserIds = getActiveBetUserIdsForViewer(lobbyId, viewerUserId, config.sideBetResultVisibility);
 
   const displayNameFor = (seatIndex: number) =>
     state.seats.find((s) => s.seatIndex === seatIndex)?.displayName ?? `Seat ${seatIndex + 1}`;
@@ -769,6 +776,7 @@ export function toPublicState(
       badges: badges.get(s.seatIndex),
       isBlindThisHand: blindHandSeats.get(lobbyId)?.has(s.seatIndex) || undefined,
       sessionStats: liveStats.get(s.userId),
+      hasSideBet: sideBetUserIds.has(s.userId) || undefined,
     })),
     pots: displayPots.map((p) => ({ amount: p.amount, eligibleSeatIndices: p.eligibleSeatIndices })),
     dealerSeatIndex: state.dealerSeatIndex,

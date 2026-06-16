@@ -95,6 +95,17 @@ import {
   recordRebuy,
 } from '../services/session-stats.js';
 import { persistHandStats, persistSessionEnd } from '../services/lifetime-stats.js';
+import {
+  acceptChallenge,
+  createChallenge,
+  declineChallenge,
+  drainBindNotifications,
+  getOpenAcceptedBetsForUser,
+  getPendingChallengesForTarget,
+  getSettlementsForHand,
+  markSettled,
+  pruneTerminal,
+} from '../services/side-bets.js';
 
 interface ClientState {
   userId: string | null;
@@ -1007,6 +1018,10 @@ function trackDonationId(id: string): void {
   processedDonationIds.add(id);
 }
 
+/** Anti-spam cooldown for creating side-bet challenges: userId → last-create timestamp (ms). */
+const sideBetCreateAt = new Map<string, number>();
+const SIDE_BET_CREATE_COOLDOWN_MS = 3_000;
+
 export type TokenVerifier = (token: string) => Promise<{ sub: string }>;
 
 let verifyToken: TokenVerifier | null = null;
@@ -1122,6 +1137,9 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
   const connected = getConnectedSet(lobbyId);
   const lobby = await getLobbyById(lobbyId, connected);
   if (!lobby) return;
+
+  // Deliver any pending 1v1 side-bet activation/expiry notifications queued at deal time.
+  deliverSideBetBindNotifications(lobbyId);
 
   const deadline = getActionDeadline(lobbyId);
   const intermDeadline = getIntermissionDeadline(lobbyId);
@@ -1850,6 +1868,75 @@ async function promptShowCards(lobbyId: string, state: GameTableState, config: V
   }, SHOW_CARDS_TIMEOUT_MS));
 }
 
+/** Deliver queued side-bet activation/expiry notifications to the involved players. */
+function deliverSideBetBindNotifications(lobbyId: string): void {
+  const drained = drainBindNotifications(lobbyId);
+  if (!drained) return;
+  for (const a of drained.activated) {
+    for (const userId of a.participantUserIds) {
+      sendToUser(userId, {
+        type: 'side_bet_activated',
+        betId: a.bet.id,
+        opponentName: a.opponentNameByUser[userId] ?? 'Opponent',
+      });
+    }
+  }
+  for (const e of drained.expired) {
+    for (const userId of e.participantUserIds) {
+      sendToUser(userId, { type: 'side_bet_expired', betId: e.bet.id, reason: e.reason });
+    }
+  }
+}
+
+/**
+ * Settle all 1v1 side bets bound to the just-completed hand. Runs after end-of-hand stacks are
+ * synced so payouts clamp to real post-hand chip counts. Transfers chips directly between the two
+ * players (never touching the pot) via the same path as donate_chips, then reveals the result.
+ */
+async function settleSideBets(lobbyId: string, handNumber: number, config: VariantConfig): Promise<void> {
+  const settlements = getSettlementsForHand(lobbyId, handNumber);
+  if (settlements.length === 0) return;
+
+  const tableWide = config.sideBetResultVisibility === 'table';
+
+  for (const { bet, result } of settlements) {
+    let payout = 0;
+    if (!result.push && result.winnerUserId) {
+      const winnerUserId = result.winnerUserId;
+      const loserUserId =
+        winnerUserId === bet.challengerUserId ? bet.targetUserId : bet.challengerUserId;
+
+      // Authoritative post-hand stack from the active engine state; clamp the payout to it.
+      const game = await getActiveGame(lobbyId);
+      const loserStack = game?.seats.find((s) => s.userId === loserUserId)?.stack ?? 0;
+      payout = Math.min(bet.wager, Math.max(0, loserStack));
+
+      if (payout > 0) {
+        await donateChips(lobbyId, loserUserId, winnerUserId, payout);
+        await transferChipsBetweenSeats(lobbyId, loserUserId, winnerUserId, payout);
+      }
+    }
+
+    const finalized = markSettled(lobbyId, bet.id, payout);
+    if (!finalized) continue; // already settled (idempotent guard)
+
+    if (tableWide) {
+      broadcastLobby(lobbyId, () => ({ type: 'side_bet_settled', result: finalized }));
+    } else {
+      sendToUser(bet.challengerUserId, { type: 'side_bet_settled', result: finalized });
+      sendToUser(bet.targetUserId, { type: 'side_bet_settled', result: finalized });
+    }
+  }
+
+  pruneTerminal(lobbyId);
+
+  // Reflect the transferred chips in everyone's tray + table immediately.
+  const connected = getConnectedSet(lobbyId);
+  const updatedLobby = await getLobbyById(lobbyId, connected);
+  if (updatedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
+  await broadcastTableState(lobbyId);
+}
+
 /**
  * Unified post-hand handler called from all three action paths
  * (game_action, onActionTimerExpired, onGracePeriodExpired).
@@ -1896,6 +1983,9 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
       broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: lobbyPostHand }));
     }
   }
+
+  // Settle 1v1 side bets now that post-hand stacks are final (clamps payouts to real chips).
+  await settleSideBets(lobbyId, state.handNumber, config);
 
   await notifyBustedPlayers(lobbyId);
 
@@ -2141,6 +2231,16 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
             deadline: reconnRunItOut.deadline,
             maxRuns: reconnLobbyForRio?.settings.runItOut ?? 1,
           });
+        }
+
+        // Re-send any pending side-bet challenges aimed at this player, and restore the
+        // "accepted" notice for any open bet they're part of. The active-bet seat indicator
+        // returns automatically via the resent table_state.
+        for (const challenge of getPendingChallengesForTarget(session.lobbyId, session.userId)) {
+          send(ws, { type: 'side_bet_challenge', challenge });
+        }
+        for (const bet of getOpenAcceptedBetsForUser(session.lobbyId, session.userId)) {
+          send(ws, { type: 'side_bet_accepted', challenge: bet });
         }
       }
       return;
@@ -2903,6 +3003,102 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
       // Recipient now has chips — they may unblock a hand waiting for players
       await tryStartWaitingHand(lobbyId);
+      return;
+    }
+
+    // ── 1v1 hole-card side bets ────────────────────────────────────────────
+    case 'side_bet_create': {
+      if (!st.userId || !st.lobbyId) return;
+      const userId = st.userId;
+      const lobbyId = st.lobbyId;
+      const { targetSeatIndex, betType, suit, wager, challengeId } = msg;
+
+      if (!Number.isInteger(wager) || wager <= 0) {
+        send(ws, { type: 'error', message: 'Side bet wager must be a positive integer' });
+        return;
+      }
+      if (betType === 'highest_suit' || betType === 'lowest_suit') {
+        if (suit !== 'h' && suit !== 'd' && suit !== 'c' && suit !== 's') {
+          send(ws, { type: 'error', message: 'A suit must be chosen for this side bet' });
+          return;
+        }
+      }
+
+      // Cooldown to prevent challenge spam.
+      const last = sideBetCreateAt.get(userId) ?? 0;
+      if (Date.now() - last < SIDE_BET_CREATE_COOLDOWN_MS) {
+        send(ws, { type: 'error', message: 'Slow down — too many side bet challenges' });
+        return;
+      }
+
+      const lobby = await getLobbyById(lobbyId);
+      if (!lobby) return;
+      const challengerSeat = lobby.seats.find((s) => s.userId === userId);
+      if (!challengerSeat) { send(ws, { type: 'error', message: 'You are not seated' }); return; }
+      const targetSeat = lobby.seats.find((s) => s.seatIndex === targetSeatIndex);
+      if (!targetSeat?.userId) { send(ws, { type: 'error', message: 'No player in that seat' }); return; }
+      if (targetSeat.userId === userId) { send(ws, { type: 'error', message: 'Cannot side bet against yourself' }); return; }
+
+      // Both players must currently hold at least the wager (engine stack is authoritative).
+      const game = await getActiveGame(lobbyId);
+      const challengerStack = game?.seats.find((s) => s.userId === userId)?.stack ?? challengerSeat.stack;
+      const targetStack = game?.seats.find((s) => s.userId === targetSeat.userId)?.stack ?? targetSeat.stack;
+      if (challengerStack < wager) { send(ws, { type: 'error', message: 'Insufficient chips for that wager' }); return; }
+      if (targetStack < wager) { send(ws, { type: 'error', message: 'That player has insufficient chips' }); return; }
+
+      const created = createChallenge(lobbyId, {
+        id: challengeId,
+        challengerUserId: userId,
+        challengerName: challengerSeat.displayName ?? 'Player',
+        targetUserId: targetSeat.userId,
+        targetName: targetSeat.displayName ?? 'Player',
+        type: betType,
+        suit: (betType === 'highest_suit' || betType === 'lowest_suit') ? suit : undefined,
+        wager,
+      });
+      if (!created.ok) { send(ws, { type: 'error', message: created.reason }); return; }
+
+      sideBetCreateAt.set(userId, Date.now());
+      // Deliver the challenge to the target; the challenger sees it as pending via accepted/declined replies.
+      sendToUser(targetSeat.userId, { type: 'side_bet_challenge', challenge: created.challenge });
+      return;
+    }
+
+    case 'side_bet_accept': {
+      if (!st.userId || !st.lobbyId) return;
+      const userId = st.userId;
+      const lobbyId = st.lobbyId;
+
+      const accepted = acceptChallenge(lobbyId, msg.challengeId, userId);
+      if (!accepted.ok) { send(ws, { type: 'error', message: accepted.reason }); return; }
+
+      // Revalidate both players can still cover the wager at acceptance time.
+      const bet = accepted.challenge;
+      const game = await getActiveGame(lobbyId);
+      const lobby = await getLobbyById(lobbyId);
+      const stackOf = (uid: string) =>
+        game?.seats.find((s) => s.userId === uid)?.stack ??
+        lobby?.seats.find((s) => s.userId === uid)?.stack ?? 0;
+      if (stackOf(bet.challengerUserId) < bet.wager || stackOf(bet.targetUserId) < bet.wager) {
+        // Roll back to declined and notify both parties.
+        declineChallenge(lobbyId, bet.id, userId);
+        sendToUser(bet.challengerUserId, { type: 'side_bet_declined', challengeId: bet.id });
+        sendToUser(bet.targetUserId, { type: 'side_bet_declined', challengeId: bet.id });
+        send(ws, { type: 'error', message: 'A player no longer has enough chips' });
+        return;
+      }
+
+      sendToUser(bet.challengerUserId, { type: 'side_bet_accepted', challenge: bet });
+      sendToUser(bet.targetUserId, { type: 'side_bet_accepted', challenge: bet });
+      return;
+    }
+
+    case 'side_bet_decline': {
+      if (!st.userId || !st.lobbyId) return;
+      const declined = declineChallenge(st.lobbyId, msg.challengeId, st.userId);
+      if (declined) {
+        sendToUser(declined.challengerUserId, { type: 'side_bet_declined', challengeId: declined.id });
+      }
       return;
     }
 

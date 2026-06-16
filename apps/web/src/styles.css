@@ -1918,6 +1918,153 @@ select option {
   color: var(--danger, #e05252);
 }
 
+/* ── 1v1 side bets ───────────────────────────────────────── */
+
+.sidebet-modal {
+  min-width: 300px;
+  max-width: 440px;
+}
+
+.sidebet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.sidebet-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.65;
+}
+
+.sidebet-type-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sidebet-type-btn {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.sidebet-type-btn--selected,
+.sidebet-suit-btn--selected {
+  border-color: rgba(180, 140, 255, 0.7);
+  background: rgba(150, 110, 240, 0.15);
+  color: rgba(200, 175, 255, 1);
+}
+
+.sidebet-suit-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.sidebet-suit-btn {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.sidebet-suit-btn--red {
+  color: #e88;
+}
+
+.sidebet-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.sidebet-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+
+.sidebet-summary-row span {
+  opacity: 0.65;
+}
+
+.sidebet-fineprint {
+  font-size: 0.78rem;
+  opacity: 0.6;
+  margin: 0 0 1rem;
+}
+
+.sidebet-challenge-btn {
+  margin-top: 0.3rem;
+}
+
+.sidebet-indicator {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  font-size: 0.85rem;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+  z-index: 3;
+}
+
+.sidebet-result-type {
+  text-align: center;
+  font-weight: 600;
+  opacity: 0.8;
+  margin: 0 0 0.75rem;
+}
+
+.sidebet-result-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sidebet-result-name {
+  font-weight: 600;
+}
+
+.sidebet-result-value {
+  opacity: 0.6;
+  font-weight: 400;
+}
+
+.sidebet-result-cards {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+}
+
+.sidebet-result-vs {
+  text-align: center;
+  opacity: 0.5;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.sidebet-outcome {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.sidebet-outcome--win { color: #6bd98a; }
+.sidebet-outcome--loss { color: #e07070; }
+.sidebet-outcome--push { color: #d8c170; }
+
 /* ── Showdown results modal ──────────────────────────────── */
 
 .showdown-overlay { z-index: 55; align-items: center; }

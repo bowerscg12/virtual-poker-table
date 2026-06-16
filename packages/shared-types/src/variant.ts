@@ -56,6 +56,11 @@ export interface VariantConfig {
   smallBlindAnte?: number;
   /** Bomb pot ante per player for twelve_card_flip (defaults to buyIn) */
   twelveCardFlipAnte?: number;
+  /**
+   * Who sees 1v1 side-bet results when a bet settles. 'participants' (default) reveals
+   * only to the two players; 'table' broadcasts the result to everyone.
+   */
+  sideBetResultVisibility?: 'participants' | 'table';
 
   // ── Blackjack-specific settings ──────────────────────────────────────────
   /** Number of 52-card decks in the shoe. Default: 6. */

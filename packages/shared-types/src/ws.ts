@@ -5,6 +5,8 @@ import type { CashOutSummary } from './session-stats.js';
 import type { BlackjackLegalAction, BlackjackRoundPlayerResult, PublicBlackjackState } from './blackjack.js';
 import type { BlindLevel, LeaderboardEntry, PublicTournamentState } from './tournament.js';
 import type { TableReaction } from './reaction.js';
+import type { Suit } from './cards.js';
+import type { SideBetChallenge, SideBetResult, SideBetType } from './side-bets.js';
 
 /** Client -> Server */
 export type ClientMessage =
@@ -47,6 +49,10 @@ export type ClientMessage =
   | { type: 'reveal_blind_cards' }
   | { type: 'donate_chips'; recipientSeatIndex: number; amount: number; donationId: string }
   | { type: 'rabbit_hunt' }
+  // ── 1v1 hole-card side bets ────────────────────────────────────────────────
+  | { type: 'side_bet_create'; targetSeatIndex: number; betType: SideBetType; suit?: Suit; wager: number; challengeId: string }
+  | { type: 'side_bet_accept'; challengeId: string }
+  | { type: 'side_bet_decline'; challengeId: string }
   | { type: 'ping' }
   // ── Tournament client messages ─────────────────────────────────────────────
   | { type: 'join_tournament'; tournamentId: string }
@@ -93,6 +99,13 @@ export type ServerMessage =
   | { type: 'run_it_out_prompt'; chooserSeatIndex: number; deadline: string; maxRuns: number }
   | { type: 'donation_received'; donorDisplayName: string; amount: number }
   | { type: 'donation_confirmed'; recipientDisplayName: string; amount: number }
+  // ── 1v1 hole-card side bets ────────────────────────────────────────────────
+  | { type: 'side_bet_challenge'; challenge: SideBetChallenge }
+  | { type: 'side_bet_accepted'; challenge: SideBetChallenge }
+  | { type: 'side_bet_declined'; challengeId: string }
+  | { type: 'side_bet_activated'; betId: string; opponentName: string }
+  | { type: 'side_bet_expired'; betId: string; reason: string }
+  | { type: 'side_bet_settled'; result: SideBetResult }
   | { type: 'rabbit_hunt_available' }
   | { type: 'rabbit_hunt_result'; cards: Card[] }
   | { type: 'pong' }

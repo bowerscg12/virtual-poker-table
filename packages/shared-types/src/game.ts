@@ -46,6 +46,12 @@ export interface SeatGameState {
   isBlindThisHand?: boolean;
   /** Live session stats for the avatar hover overlay — computed server-side each broadcast */
   sessionStats?: LiveSessionStats;
+  /**
+   * True when this seat is involved in an active 1v1 side bet visible to the viewer.
+   * Viewer-scoped: only set for seats in a bet the viewer participates in (or all
+   * involved seats when side-bet visibility is 'table').
+   */
+  hasSideBet?: boolean;
 }
 
 export interface PublicTableState {

@@ -21,6 +21,9 @@ import { HandHistoryPanel } from '../components/HandHistoryPanel';
 import { CashOutModal } from '../components/CashOutModal';
 import { RebuyModal } from '../components/RebuyModal';
 import { DonateModal } from '../components/DonateModal';
+import { SideBetModal } from '../components/SideBetModal';
+import { SideBetChallengePrompt } from '../components/SideBetChallengePrompt';
+import { SideBetResultModal } from '../components/SideBetResultModal';
 import { ShowCardsModal } from '../components/ShowCardsModal';
 import { BombPotPrompt } from '../components/BombPotPrompt';
 import { PineapplePrompt } from '../components/PineapplePrompt';
@@ -50,6 +53,7 @@ export default function TablePage() {
   const [whisperTarget, setWhisperTarget] = useState<WhisperTarget | null>(null);
   const [donationNotice, setDonationNotice] = useState<string | null>(null);
   const [cardsRevealed, setCardsRevealed] = useState(false);
+  const [sideBetTarget, setSideBetTarget] = useState<{ seatIndex: number; displayName: string } | null>(null);
 
   const {
     connected,
@@ -76,6 +80,12 @@ export default function TablePage() {
     clearCashOutSummary,
     donationReceived,
     donationConfirmed,
+    incomingSideBetChallenge,
+    clearIncomingSideBetChallenge,
+    sideBetNotice,
+    clearSideBetNotice,
+    sideBetResult,
+    clearSideBetResult,
     rabbitHuntAvailable,
     rabbitCards,
     tournamentState,
@@ -196,6 +206,14 @@ export default function TablePage() {
     const t = setTimeout(() => setDonationNotice(null), 4000);
     return () => clearTimeout(t);
   }, [donationConfirmed]);
+
+  // Reuse the donation toast slot for transient side-bet status notices.
+  useEffect(() => {
+    if (!sideBetNotice) return;
+    setDonationNotice(sideBetNotice);
+    const t = setTimeout(() => { setDonationNotice(null); clearSideBetNotice(); }, 4000);
+    return () => clearTimeout(t);
+  }, [sideBetNotice, clearSideBetNotice]);
 
   // Navigate to new table when tournament seat change executes
   useEffect(() => {
@@ -394,6 +412,7 @@ export default function TablePage() {
               handActive={handActive}
               onMoveSeat={(from, to) => send({ type: 'host_move_player', fromSeatIndex: from, toSeatIndex: to })}
               onWhisper={handleWhisperRequest}
+              onSideBetChallenge={mySeat ? (seatIndex, displayName) => setSideBetTarget({ seatIndex, displayName }) : undefined}
               myBlindRevealed={cardsRevealed}
             />
           )}
@@ -552,6 +571,33 @@ export default function TablePage() {
             send({ type: 'donate_chips', recipientSeatIndex, amount, donationId: crypto.randomUUID() })
           }
           onClose={() => setDonateOpen(false)}
+        />
+      )}
+
+      {sideBetTarget && mySeat && (
+        <SideBetModal
+          targetName={sideBetTarget.displayName}
+          myStack={mySeat.stack}
+          onCreate={(betType, suit, wager) =>
+            send({ type: 'side_bet_create', targetSeatIndex: sideBetTarget.seatIndex, betType, suit, wager, challengeId: crypto.randomUUID() })
+          }
+          onClose={() => setSideBetTarget(null)}
+        />
+      )}
+
+      {incomingSideBetChallenge && (
+        <SideBetChallengePrompt
+          challenge={incomingSideBetChallenge}
+          onAccept={() => { send({ type: 'side_bet_accept', challengeId: incomingSideBetChallenge.id }); clearIncomingSideBetChallenge(); }}
+          onDecline={() => { send({ type: 'side_bet_decline', challengeId: incomingSideBetChallenge.id }); clearIncomingSideBetChallenge(); }}
+        />
+      )}
+
+      {sideBetResult && (
+        <SideBetResultModal
+          result={sideBetResult}
+          myUserId={user?.id ?? null}
+          onClose={clearSideBetResult}
         />
       )}
 

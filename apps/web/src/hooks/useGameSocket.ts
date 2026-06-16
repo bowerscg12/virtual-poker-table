@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ClientMessage, CashOutSummary, LeaderboardEntry, LobbySummary, PublicTableState, PublicTournamentState, ServerMessage, TableReaction } from '@vct/shared-types';
-import type { Card, LegalAction } from '@vct/shared-types';
+import type { Card, LegalAction, SideBetChallenge, SideBetResult } from '@vct/shared-types';
 import { getWsUrl } from '../api/client';
 import { useBlackjackState } from './useBlackjackState';
 
@@ -46,6 +46,9 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
   const [runItOutPrompt, setRunItOutPrompt] = useState<{ chooserSeatIndex: number; deadline: string; maxRuns: number } | null>(null);
   const [donationReceived, setDonationReceived] = useState<{ donorDisplayName: string; amount: number } | null>(null);
   const [donationConfirmed, setDonationConfirmed] = useState<{ recipientDisplayName: string; amount: number } | null>(null);
+  const [incomingSideBetChallenge, setIncomingSideBetChallenge] = useState<SideBetChallenge | null>(null);
+  const [sideBetNotice, setSideBetNotice] = useState<string | null>(null);
+  const [sideBetResult, setSideBetResult] = useState<SideBetResult | null>(null);
   const [rabbitHuntAvailable, setRabbitHuntAvailable] = useState(false);
   const [rabbitCards, setRabbitCards] = useState<Card[] | null>(null);
   const [tournamentState, setTournamentState] = useState<PublicTournamentState | null>(null);
@@ -318,6 +321,34 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             setDonationConfirmed({ recipientDisplayName: msg.recipientDisplayName, amount: msg.amount });
             break;
 
+          case 'side_bet_challenge':
+            setIncomingSideBetChallenge(msg.challenge);
+            break;
+
+          case 'side_bet_accepted':
+            setIncomingSideBetChallenge((c) => (c && c.id === msg.challenge.id ? null : c));
+            setSideBetNotice('Side bet accepted — locked in for the next hand');
+            break;
+
+          case 'side_bet_declined':
+            setIncomingSideBetChallenge((c) => (c && c.id === msg.challengeId ? null : c));
+            setSideBetNotice('Side bet declined');
+            break;
+
+          case 'side_bet_activated':
+            setIncomingSideBetChallenge((c) => (c && c.id === msg.betId ? null : c));
+            setSideBetNotice(`Side bet vs ${msg.opponentName} is live this hand`);
+            break;
+
+          case 'side_bet_expired':
+            setIncomingSideBetChallenge((c) => (c && c.id === msg.betId ? null : c));
+            setSideBetNotice('Side bet expired — a player was not dealt in');
+            break;
+
+          case 'side_bet_settled':
+            setSideBetResult(msg.result);
+            break;
+
           case 'rabbit_hunt_available':
             setRabbitHuntAvailable(true);
             break;
@@ -426,6 +457,12 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
     clearCashOutSummary,
     donationReceived,
     donationConfirmed,
+    incomingSideBetChallenge,
+    clearIncomingSideBetChallenge: () => setIncomingSideBetChallenge(null),
+    sideBetNotice,
+    clearSideBetNotice: () => setSideBetNotice(null),
+    sideBetResult,
+    clearSideBetResult: () => setSideBetResult(null),
     rabbitHuntAvailable,
     rabbitCards,
     tournamentState,
