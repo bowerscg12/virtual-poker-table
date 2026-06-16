@@ -1057,6 +1057,10 @@ select option {
   opacity: 1;
 }
 
+.raise-quick-btn__short {
+  display: none;
+}
+
 .raise-panel__amount-input {
   font-size: 1rem;
   font-weight: 700;
@@ -2617,12 +2621,87 @@ select option {
     font-size: 0.78rem;
   }
 
+  /* Mobile landscape: the 130px hero column is too narrow for the inline raise
+     panel, so float it as a popover above the action buttons. It breaks out to
+     the right over the felt (hero-action-panel has z-index so it stays clickable)
+     and lays everything out vertically with room to breathe. */
+  .hero-panel__actions .action-bar {
+    position: relative;
+  }
+
+  .raise-panel {
+    position: absolute;
+    /* Pop out to the RIGHT of the action buttons, over the felt — anchoring it
+       above would push it behind the header on short landscape screens. */
+    left: calc(100% + 0.5rem);
+    bottom: 0;
+    width: 248px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.6rem;
+    background: rgba(12, 18, 12, 0.97);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+  }
+
+  /* Horizontal slider: bounds flank it (min left, max right via row-reverse) */
+  .raise-panel__slider-col {
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
   .raise-panel__slider-wrap {
-    height: 70px;
+    flex: 1;
+    width: auto;
+    height: 24px;
   }
 
   .raise-panel__slider {
-    width: 70px;
+    position: static;
+    transform: none;
+    width: 100%;
+    height: 24px;
+  }
+
+  /* Quick-size buttons in an even row */
+  .raise-panel__quick {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 0.3rem;
+  }
+
+  .raise-panel__quick .raise-quick-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 0.7rem !important;
+    padding: 0.3rem 0.2rem !important;
+  }
+
+  /* Labels don't fit these narrow boxes on mobile — swap to short forms */
+  .raise-panel__quick .raise-quick-btn .raise-quick-btn__full {
+    display: none;
+  }
+
+  .raise-panel__quick .raise-quick-btn .raise-quick-btn__short {
+    display: inline;
+  }
+
+  /* Amount input + Raise confirm + cancel in a bottom row */
+  .raise-panel__right {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .raise-panel__amount-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
   }
 
   /* Revert button sizes for tight landscape layout */
@@ -4219,6 +4298,9 @@ select option {
   gap: 0.5rem;
   padding: 0.75rem 0.75rem 1.25rem;
   background: transparent;
+  /* Ensure raise panel overflows above the table felt, not behind it */
+  position: relative;
+  z-index: 2;
   border: none;
 }
 

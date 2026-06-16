@@ -18,6 +18,11 @@ const es: Translations = {
     pot: 'Bote',
     maxAllIn: 'Máx / Todo',
     potLimit: 'Bote',
+    minShort: 'Mín',
+    halfPotShort: '1/2',
+    potShort: 'Bote',
+    maxAllInShort: 'Máx',
+    potLimitShort: 'Bote',
   },
   blackjack: {
     hit: 'Carta',

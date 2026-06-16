@@ -266,7 +266,9 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
               title={`${t('actions.min')}: ${formatChips(raiseMin)}`}
               aria-label={`${t('actions.min')}: ${formatChips(raiseMin)}`}
             >
-              {t('actions.min')} <kbd className="key-hint">1</kbd>
+              <span className="raise-quick-btn__full">{t('actions.min')}</span>
+              <span className="raise-quick-btn__short">{t('actions.minShort')}</span>{' '}
+              <kbd className="key-hint">1</kbd>
             </button>
             <button
               type="button"
@@ -275,7 +277,9 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
               title={`${t('actions.halfPot')}: ${formatChips(Math.floor((pot + toCall) / 2))}`}
               aria-label={`${t('actions.halfPot')}: ${formatChips(Math.floor((pot + toCall) / 2))}`}
             >
-              {t('actions.halfPot')} <kbd className="key-hint">2</kbd>
+              <span className="raise-quick-btn__full">{t('actions.halfPot')}</span>
+              <span className="raise-quick-btn__short">{t('actions.halfPotShort')}</span>{' '}
+              <kbd className="key-hint">2</kbd>
             </button>
             {limit !== 'fixed' && limit !== 'pot_limit' && (
               <button
@@ -285,7 +289,9 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
                 title={`${t('actions.pot')}: ${formatChips(currentBet + pot + toCall)}`}
                 aria-label={`${t('actions.pot')}: ${formatChips(currentBet + pot + toCall)}`}
               >
-                {t('actions.pot')} <kbd className="key-hint">3</kbd>
+                <span className="raise-quick-btn__full">{t('actions.pot')}</span>
+                <span className="raise-quick-btn__short">{t('actions.potShort')}</span>{' '}
+                <kbd className="key-hint">3</kbd>
               </button>
             )}
             <button
@@ -295,7 +301,9 @@ export function ActionBar({ legalActions, onAction, pot, currentBet, limit, show
               title={`${limit === 'pot_limit' ? t('actions.potLimit') : t('actions.allIn')}: ${formatChips(raiseMax)}`}
               aria-label={`${limit === 'pot_limit' ? t('actions.potLimit') : t('actions.allIn')}: ${formatChips(raiseMax)}`}
             >
-              {limit === 'pot_limit' ? t('actions.potLimit') : t('actions.maxAllIn')} <kbd className="key-hint">{limit === 'pot_limit' ? '3' : '4'}</kbd>
+              <span className="raise-quick-btn__full">{limit === 'pot_limit' ? t('actions.potLimit') : t('actions.maxAllIn')}</span>
+              <span className="raise-quick-btn__short">{limit === 'pot_limit' ? t('actions.potLimitShort') : t('actions.maxAllInShort')}</span>{' '}
+              <kbd className="key-hint">{limit === 'pot_limit' ? '3' : '4'}</kbd>
             </button>
           </div>
 

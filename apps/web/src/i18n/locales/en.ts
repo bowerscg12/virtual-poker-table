@@ -16,6 +16,11 @@ const en = {
     pot: 'Pot',
     maxAllIn: 'Max / All-In',
     potLimit: 'Pot',
+    minShort: 'Min',
+    halfPotShort: '1/2',
+    potShort: 'Pot',
+    maxAllInShort: 'Max',
+    potLimitShort: 'Pot',
   },
   blackjack: {
     hit: 'Hit',
