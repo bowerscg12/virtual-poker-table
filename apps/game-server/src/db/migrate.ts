@@ -221,6 +221,9 @@ CREATE TABLE IF NOT EXISTS player_game_mode_stats (
   UNIQUE(user_id, game_mode)
 );
 CREATE INDEX IF NOT EXISTS idx_player_game_mode_stats_user ON player_game_mode_stats(user_id);
+
+-- The 5 cards (Card[]) making up the best hand a player has ever made.
+ALTER TABLE player_lifetime_stats ADD COLUMN IF NOT EXISTS best_hand_cards JSONB;
 `;
 
 async function main() {

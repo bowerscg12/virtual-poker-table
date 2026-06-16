@@ -3365,7 +3365,6 @@ select option {
   border-radius: 50%;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
-}
 
 /* ── Session stats hover overlay ────────────────────────────────────────── */
 
@@ -5392,4 +5391,18 @@ select option {
 
 .career-loss {
   color: #e07070;
+}
+
+.career-stat-cards {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  padding: 0.15rem 0 0.35rem;
+}
+
+.career-stat-cards .playing-card {
+  width: 28px;
+  height: 40px;
+  font-size: 0.6rem;
+  border-radius: 3px;
 }

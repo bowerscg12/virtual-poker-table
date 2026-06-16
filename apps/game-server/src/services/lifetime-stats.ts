@@ -228,6 +228,8 @@ export async function persistSessionEnd(
   // Best hand rank
   const handRankInt = summary.bestHandRank ? (HAND_RANK_INT[summary.bestHandRank] ?? -1) : -1;
   const bestHandDesc = summary.bestHandDescription;
+  const bestHandCards = summary.bestHandCards;
+  const bestHandCardsJson = bestHandCards ? JSON.stringify(bestHandCards) : null;
 
   // Archetype inputs from this session's action counts.
   // CashOutSummary doesn't expose vpipHands directly; use pfrHandsRaised as a conservative proxy.
@@ -251,6 +253,7 @@ export async function persistSessionEnd(
       biggestSessionLoss: sessionLoss,
       bestHandRank: handRankInt,
       bestHandDescription: bestHandDesc ?? undefined,
+      bestHandCards: bestHandCards ?? undefined,
       vpipHands: vpipIncrement,
       raiseHands: raiseCount,
       callHands: callCount,
@@ -268,6 +271,7 @@ export async function persistSessionEnd(
         biggestSessionLoss: sql`GREATEST(${playerLifetimeStats.biggestSessionLoss}, ${sessionLoss})`,
         bestHandRank: sql`GREATEST(${playerLifetimeStats.bestHandRank}, ${handRankInt})`,
         bestHandDescription: sql`CASE WHEN ${handRankInt} > ${playerLifetimeStats.bestHandRank} THEN ${bestHandDesc} ELSE ${playerLifetimeStats.bestHandDescription} END`,
+        bestHandCards: sql`CASE WHEN ${handRankInt} > ${playerLifetimeStats.bestHandRank} THEN ${bestHandCardsJson}::jsonb ELSE ${playerLifetimeStats.bestHandCards} END`,
         vpipHands: sql`${playerLifetimeStats.vpipHands} + ${vpipIncrement}`,
         raiseHands: sql`${playerLifetimeStats.raiseHands} + ${raiseCount}`,
         callHands: sql`${playerLifetimeStats.callHands} + ${callCount}`,
@@ -313,6 +317,7 @@ const EMPTY_CAREER_STATS: CareerStats = {
   biggestSessionLoss: 0,
   bestHandRank: -1,
   bestHandDescription: null,
+  bestHandCards: null,
   favoriteGameMode: null,
   archetype: null,
   mostCommonHoleHand: null,
@@ -381,6 +386,7 @@ export async function getCareerStats(userId: string): Promise<CareerStats> {
     biggestSessionLoss: row.biggestSessionLoss,
     bestHandRank: row.bestHandRank,
     bestHandDescription: row.bestHandDescription ?? null,
+    bestHandCards: (row.bestHandCards as Card[] | null) ?? null,
     favoriteGameMode: row.favoriteGameMode ?? null,
     archetype: row.archetype ?? null,
     mostCommonHoleHand,

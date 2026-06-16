@@ -2,19 +2,8 @@ import { useEffect, useState } from 'react';
 import type { CareerStats } from '@vct/shared-types';
 import { fetchCareerStats } from '../api/client';
 import { formatChips } from '../utils/formatChips';
-
-const HAND_RANK_LABELS: Record<number, string> = {
-  0: 'High Card',
-  1: 'Pair',
-  2: 'Two Pair',
-  3: 'Three of a Kind',
-  4: 'Straight',
-  5: 'Flush',
-  6: 'Full House',
-  7: 'Four of a Kind',
-  8: 'Straight Flush',
-  9: 'Royal Flush',
-};
+import { holeHandToCards } from '../utils/holeHandCards';
+import { CardView } from './CardView';
 
 const GAME_MODE_LABELS: Record<string, string> = {
   holdem: 'Texas Hold\'em',
@@ -97,14 +86,14 @@ export function CareerStatsPanel() {
 
           {stats.bestHandDescription && (
             <div className="career-stats-group">
-              <StatRow
-                label="Best Hand"
-                value={
-                  stats.bestHandRank >= 0
-                    ? (HAND_RANK_LABELS[stats.bestHandRank] ?? stats.bestHandDescription)
-                    : stats.bestHandDescription
-                }
-              />
+              <StatRow label="Best Hand" value={stats.bestHandDescription} />
+              {stats.bestHandCards && stats.bestHandCards.length > 0 && (
+                <div className="career-stat-cards">
+                  {stats.bestHandCards.map((card, i) => (
+                    <CardView key={i} card={card} faceUp />
+                  ))}
+                </div>
+              )}
               <StatRow
                 label="Biggest Pot Won"
                 value={<span className="career-profit">+{formatChips(stats.biggestPotWon)}</span>}
@@ -141,19 +130,31 @@ export function CareerStatsPanel() {
                   </>
                 }
               />
+              <div className="career-stat-cards">
+                {holeHandToCards(stats.mostCommonHoleHand.hand).map((card, i) => (
+                  <CardView key={i} card={card} faceUp />
+                ))}
+              </div>
               {stats.bestHoleHand && (
-                <StatRow
-                  label="Best Starting Hand"
-                  value={
-                    <>
-                      <code>{stats.bestHoleHand.hand}</code>
-                      {' '}
-                      <span className="career-stat-sub">
-                        ({WinRatePct(stats.bestHoleHand.winRate)} win rate)
-                      </span>
-                    </>
-                  }
-                />
+                <>
+                  <StatRow
+                    label="Best Starting Hand"
+                    value={
+                      <>
+                        <code>{stats.bestHoleHand.hand}</code>
+                        {' '}
+                        <span className="career-stat-sub">
+                          ({WinRatePct(stats.bestHoleHand.winRate)} win rate)
+                        </span>
+                      </>
+                    }
+                  />
+                  <div className="career-stat-cards">
+                    {holeHandToCards(stats.bestHoleHand.hand).map((card, i) => (
+                      <CardView key={i} card={card} faceUp />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}

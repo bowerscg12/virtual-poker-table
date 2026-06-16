@@ -1,3 +1,5 @@
+import type { Card } from './cards.js';
+
 export interface HoleHandStat {
   hand: string;
   timesDealt: number;
@@ -19,6 +21,8 @@ export interface CareerStats {
   /** -1 = no ranked hands yet; 0 = high card … 9 = royal flush */
   bestHandRank: number;
   bestHandDescription: string | null;
+  /** The 5 cards making up the best hand ever made (hole + board). */
+  bestHandCards: Card[] | null;
   favoriteGameMode: string | null;
   archetype: string | null;
   /** Most frequently dealt starting hand (≥1 sample). */

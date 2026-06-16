@@ -116,6 +116,7 @@ export const playerLifetimeStats = pgTable('player_lifetime_stats', {
   biggestSessionLoss:   integer('biggest_session_loss').notNull().default(0), // absolute value, positive
   bestHandRank:         integer('best_hand_rank').notNull().default(-1),      // -1=none, 0=high_card … 9=royal_flush
   bestHandDescription:  text('best_hand_description'),
+  bestHandCards:        jsonb('best_hand_cards'),                             // Card[5] — the actual best hand ever made
   favoriteGameMode:     varchar('favorite_game_mode', { length: 32 }),
   archetype:            varchar('archetype', { length: 32 }),
   vpipHands:            integer('vpip_hands').notNull().default(0),
