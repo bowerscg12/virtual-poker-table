@@ -3593,25 +3593,29 @@ select option {
 
 /* ── 12 Card Flip ────────────────────────────────────────────────────────── */
 
-/* Make table-main pass its height to twelve-card-flip in TCF mode */
+/* Let table-main hand its height down to the flip layout */
 .table-layout--tcf .table-main {
   display: flex;
   flex-direction: column;
 }
 
 .twelve-card-flip {
+  --tcf-card-w: clamp(30px, min(11.5vw, 7vh), 56px);
+  --tcf-gap: clamp(2px, 0.55vw, 6px);
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  gap: 0.35rem;
+  gap: clamp(0.3rem, 1vh, 0.7rem);
   width: 100%;
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 0.5rem;
+  padding: clamp(0.4rem, 1.5vw, 0.9rem);
   position: relative;
+  isolation: isolate;
 }
 
+/* ── Waiting state ─────────────────────────────────────────── */
 .twelve-card-flip--waiting {
   align-items: center;
   justify-content: center;
@@ -3621,7 +3625,7 @@ select option {
 .twelve-card-flip__waiting {
   text-align: center;
   color: var(--text);
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .twelve-card-flip__waiting p {
@@ -3633,266 +3637,665 @@ select option {
   color: var(--gold);
 }
 
-/* Player sections — fill available height equally */
-.flip-player {
+/* ── Pre-game lobby roster ─────────────────────────────────── */
+.tcf-lobby__title {
+  margin: 0 0 0.15rem;
+  font-size: 1.3rem;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+
+.tcf-lobby__subtitle {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.tcf-lobby__roster {
+  display: flex;
+  justify-content: center;
+  gap: clamp(1rem, 6vw, 3rem);
+  margin: 0.8rem 0 1.1rem;
+}
+
+.tcf-lobby__player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tcf-lobby__player-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  max-width: 7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tcf-lobby__host-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #000;
+  background: var(--gold);
+  padding: 0.05rem 0.4rem;
+  border-radius: 5px;
+}
+
+.tcf-lobby__player--empty {
+  opacity: 0.5;
+}
+
+.tcf-lobby__empty-seat {
+  width: 48px;
+  height: 53px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+  animation: tcf-empty-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tcf-empty-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+.tcf-lobby__status {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0.4rem 0;
+}
+
+.tcf-lobby__start {
+  margin-top: 0.4rem;
+  padding: 0.55rem 1.8rem;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
+/* ── Tension vignette ──────────────────────────────────────── */
+.tcf-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+  box-shadow: inset 0 0 70px rgba(0, 0, 0, 0.55);
+}
+
+.twelve-card-flip--tense-mid .tcf-vignette {
+  opacity: 0.6;
+}
+
+.twelve-card-flip--tense-high .tcf-vignette {
+  opacity: 1;
+  box-shadow: inset 0 0 90px rgba(180, 30, 20, 0.55);
+  animation: tcf-tense-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tcf-tense-pulse {
+  0%, 100% { box-shadow: inset 0 0 80px rgba(180, 30, 20, 0.4); }
+  50%      { box-shadow: inset 0 0 110px rgba(210, 40, 25, 0.7); }
+}
+
+/* ── Player panels ─────────────────────────────────────────── */
+.tcf-player {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: rgba(255, 255, 255, 0.06);
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 0.5rem 0.75rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  border-radius: 12px;
+  padding: clamp(0.4rem, 1.2vw, 0.7rem) clamp(0.5rem, 1.5vw, 0.9rem);
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
 }
 
-.flip-player--active {
+.tcf-player--active {
   border-color: var(--gold);
-  box-shadow: 0 0 12px rgba(212, 175, 55, 0.3);
+  box-shadow: 0 0 16px rgba(212, 175, 55, 0.35);
 }
 
-.flip-player--lead {
+.tcf-player--lead {
   border-color: #4caf50;
-  box-shadow: 0 0 8px rgba(76, 175, 80, 0.25);
+  box-shadow: 0 0 14px rgba(76, 175, 80, 0.3);
 }
 
-.flip-player--winner {
+.tcf-player--winner {
   border-color: var(--gold);
-  background: rgba(212, 175, 55, 0.1);
-  box-shadow: 0 0 16px rgba(212, 175, 55, 0.5);
+  background: rgba(212, 175, 55, 0.12);
+  box-shadow: 0 0 26px rgba(212, 175, 55, 0.55);
+  animation: tcf-winner-glow 1.2s ease-in-out infinite;
 }
 
-.flip-player__header {
+@keyframes tcf-winner-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
+  50%      { box-shadow: 0 0 34px rgba(212, 175, 55, 0.75); }
+}
+
+.tcf-player__top {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  flex-direction: column;
+  gap: 0.3rem;
   flex-shrink: 0;
-  margin-bottom: 0.15rem;
-  flex-wrap: wrap;
 }
 
-.flip-player__name {
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.flip-player__stack {
-  color: var(--gold);
-  font-size: 0.8rem;
-  margin-right: auto;
-}
-
-.flip-player__turn-badge {
-  background: var(--gold);
-  color: #000;
-  padding: 0.15rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.flip-player__lead-badge {
-  padding: 0.15rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.flip-player__lead-badge.lead {
-  background: #4caf50;
-  color: #fff;
-}
-
-.flip-player__hand-info {
+.tcf-player__id {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex-shrink: 0;
-  min-height: 1.2rem;
-  margin-bottom: 0.1rem;
 }
 
-.flip-player__best-hand {
-  font-size: 0.875rem;
+.tcf-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a4252, #232834);
   color: var(--gold);
-  font-weight: 500;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.flip-player__best-hand--none {
+.tcf-player__id-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.tcf-player__name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tcf-player__stack {
+  color: var(--gold);
+  font-size: 0.8rem;
+}
+
+.tcf-player__tags {
+  display: flex;
+  gap: 0.35rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tcf-tag {
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.tcf-tag--turn {
+  background: var(--gold);
+  color: #000;
+}
+
+.tcf-tag--lead {
+  background: #4caf50;
+  color: #fff;
+  animation: tcf-lead-flash 0.5s ease;
+}
+
+@keyframes tcf-lead-flash {
+  0% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+.tcf-player__handline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-height: 1.1rem;
+}
+
+.tcf-player__besthand {
+  font-size: 0.85rem;
+  color: var(--gold);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tcf-player__besthand--none {
   color: rgba(255, 255, 255, 0.4);
   font-style: italic;
+  font-weight: 400;
 }
 
-.flip-player__remaining {
-  font-size: 0.75rem;
+.tcf-player__remaining {
+  margin-left: auto;
+  font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
 }
 
-/* Card area — fills remaining space and centers the grid */
-.flip-card-area {
+/* ── Hand-strength meter ───────────────────────────────────── */
+.tcf-meter {
+  display: flex;
+  gap: 2px;
+  height: 5px;
+}
+
+.tcf-meter__seg {
+  flex: 1;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.tcf-meter__seg--on {
+  background: linear-gradient(90deg, #6cc24a, var(--gold));
+}
+
+.tcf-meter__seg--peak {
+  box-shadow: 0 0 8px var(--gold);
+  animation: tcf-peak-pulse 1s ease-in-out infinite;
+}
+
+@keyframes tcf-peak-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
+}
+
+/* ── Card grid + 3D flip ───────────────────────────────────── */
+.tcf-player__cards {
   flex: 1;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem 0;
 }
 
-/* Card grid */
-.flip-card-grid {
+.tcf-grid {
   display: grid;
-  grid-template-columns: repeat(6, 44px);
-  gap: 3px;
-}
-
-.flip-card-slot {
-  width: 44px;
-  height: 62px;
-  display: flex;
-  align-items: center;
+  grid-template-columns: repeat(var(--cols, 6), minmax(0, var(--tcf-card-w)));
   justify-content: center;
+  gap: var(--tcf-gap);
+  width: 100%;
 }
 
-.flip-card-slot .playing-card {
+.tcf-card3d {
+  width: 100%;
+  max-width: var(--tcf-card-w);
+  aspect-ratio: 5 / 7;
+  perspective: 700px;
+}
+
+.tcf-card3d__inner {
+  position: relative;
   width: 100%;
   height: 100%;
-  font-size: 0.65rem;
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.3, 1.1);
+  transform: rotateY(0deg);
 }
 
-.flip-card-slot--hidden .playing-card.back {
-  opacity: 0.7;
+.tcf-card3d--flipped .tcf-card3d__inner {
+  transform: rotateY(180deg);
 }
 
-@keyframes flip-card-reveal {
-  0%   { transform: rotateY(90deg) scale(1.1); opacity: 0; }
-  50%  { transform: rotateY(0deg) scale(1.15); opacity: 1; }
-  100% { transform: rotateY(0deg) scale(1); opacity: 1; }
-}
-
-.flip-card-new {
-  animation: flip-card-reveal 0.45s ease-out forwards;
-}
-
-/* Center bar — compact, never grows */
-.flip-center {
+.tcf-card3d__face {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  border-radius: 5px;
+  overflow: hidden;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+}
+
+.tcf-card3d__back {
+  transform: rotateY(0deg);
+}
+
+.tcf-card3d__front {
+  transform: rotateY(180deg);
+}
+
+.tcf-card3d__face .playing-card {
+  width: 100%;
+  height: 100%;
+  font-size: calc(var(--tcf-card-w) * 0.3);
+  border-radius: 5px;
+}
+
+.tcf-card3d--best .tcf-card3d__front {
+  box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(212, 175, 55, 0.8);
+  z-index: 2;
+}
+
+.tcf-card3d--best {
+  transform: translateY(-3px);
+  transition: transform 0.3s;
+}
+
+.tcf-card3d--dim .tcf-card3d__front {
+  opacity: 0.42;
+  filter: grayscale(0.45);
+}
+
+.tcf-card3d--new .tcf-card3d__inner {
+  animation: tcf-card-pop 0.5s ease-out;
+}
+
+@keyframes tcf-card-pop {
+  0%   { transform: rotateY(180deg) scale(1.18); }
+  60%  { transform: rotateY(180deg) scale(1.08); }
+  100% { transform: rotateY(180deg) scale(1); }
+}
+
+/* Staggered deal-in at hand start */
+.tcf-grid--dealing .tcf-card3d {
+  animation: tcf-deal-in 0.4s backwards;
+  animation-delay: calc(var(--i) * 28ms);
+}
+
+@keyframes tcf-deal-in {
+  0%   { opacity: 0; transform: translateY(-40px) scale(0.6) rotate(-8deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+
+/* ── Center bar ────────────────────────────────────────────── */
+.tcf-center {
+  position: relative;
+  z-index: 1;
   flex-shrink: 0;
-  padding: 0.2rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
 }
 
-.flip-pot {
-  font-size: 1rem;
-  color: var(--text);
+.tcf-center__pot {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
 }
 
-.flip-pot strong {
+.tcf-center__pot-label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tcf-center__pot-value {
+  font-size: 1.3rem;
   color: var(--gold);
 }
 
-.flip-ante {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.55);
+.tcf-center__ante {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
 }
 
-.flip-ante strong {
-  color: rgba(255, 255, 255, 0.8);
+/* Tug-of-war momentum bar */
+.tcf-tug {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 520px;
 }
 
-.flip-tied-badge {
-  background: rgba(255, 200, 0, 0.2);
-  border: 1px solid rgba(255, 200, 0, 0.5);
-  color: #ffc800;
+.tcf-tug__end {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  max-width: 32%;
+  line-height: 1.1;
+}
+
+.tcf-tug__end--me {
+  align-items: flex-end;
+}
+
+.tcf-tug__end-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tcf-tug__pct {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tcf-tug__end--me .tcf-tug__pct {
+  color: var(--gold);
+}
+
+.tcf-tug__caption {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: -0.15rem;
+}
+
+.tcf-tug__track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tcf-tug__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 6px;
+  transition: left 0.45s ease, right 0.45s ease, background 0.3s;
+}
+
+.tcf-tug__fill--me {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.35), var(--gold));
+}
+
+.tcf-tug__fill--opp {
+  background: linear-gradient(90deg, var(--danger), rgba(200, 68, 68, 0.35));
+}
+
+.tcf-tug__knob {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5), 0 0 6px rgba(255, 255, 255, 0.6);
+  transition: left 0.45s cubic-bezier(0.2, 0.7, 0.3, 1.1);
+  z-index: 2;
+}
+
+.tcf-tug__center-mark {
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.tcf-center__status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  min-height: 1.6rem;
+}
+
+.tcf-status-badge {
   padding: 0.2rem 0.7rem;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
-.flip-intermission {
-  font-size: 0.85rem;
+.tcf-status-badge--tied {
+  background: rgba(255, 200, 0, 0.18);
+  border: 1px solid rgba(255, 200, 0, 0.5);
+  color: #ffc800;
 }
 
-.flip-complete-info {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.flip-result {
-  padding: 0.2rem 0.8rem;
+.tcf-result {
+  padding: 0.25rem 0.9rem;
   border-radius: 6px;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
 }
 
-.flip-result--win {
+.tcf-result--win {
   background: rgba(76, 175, 80, 0.25);
   border: 1px solid #4caf50;
   color: #81c784;
 }
 
-.flip-result--loss {
+.tcf-result--loss {
   background: rgba(200, 68, 68, 0.2);
   border: 1px solid var(--danger);
   color: #ef9a9a;
 }
 
-.flip-result--split {
+.tcf-result--split {
   background: rgba(212, 175, 55, 0.2);
   border: 1px solid var(--gold);
   color: var(--gold);
 }
 
-/* Deal again / waiting */
-.flip-deal-again-btn {
-  padding: 0.4rem 1.2rem;
-  font-size: 0.9rem;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+.tcf-intermission {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.65);
 }
 
-.flip-waiting-text {
+.tcf-waiting-text {
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.5);
   font-style: italic;
 }
 
-/* Flip button — anchored to bottom of my player section */
-.flip-btn {
+.tcf-deal-again {
+  padding: 0.4rem 1.3rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Exit Game — subdued secondary action available to both players */
+.tcf-exit-btn {
+  padding: 0.35rem 1rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.tcf-exit-btn:hover {
+  border-color: var(--danger);
+  color: #ef9a9a;
+  background: rgba(200, 68, 68, 0.12);
+}
+
+/* Flip button anchored at bottom of my panel */
+.tcf-flip-btn {
   flex-shrink: 0;
-  margin-top: 0.4rem;
   width: 100%;
-  padding: 0.5rem;
-  font-size: 0.95rem;
+  padding: 0.55rem;
+  font-size: 1rem;
   letter-spacing: 0.04em;
 }
 
-@media (max-width: 600px) {
-  .flip-card-grid {
-    grid-template-columns: repeat(6, 34px);
-    gap: 2px;
-  }
+/* ── Winner confetti ───────────────────────────────────────── */
+.tcf-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
 
-  .flip-card-slot {
-    width: 34px;
-    height: 48px;
-  }
+.tcf-confetti__piece {
+  position: absolute;
+  top: -12px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.9;
+  animation-name: tcf-confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
+}
 
-  .flip-card-slot .playing-card {
-    font-size: 0.52rem;
-  }
+@keyframes tcf-confetti-fall {
+  0%   { transform: translateY(0) translateX(0) rotate(0); opacity: 1; }
+  100% { transform: translateY(105%) translateX(var(--drift, 0)) rotate(540deg); opacity: 0; }
+}
 
+/* ── Mobile ────────────────────────────────────────────────── */
+@media (max-width: 640px) {
   .twelve-card-flip {
-    padding: 0.35rem;
+    --tcf-card-w: clamp(26px, min(13.5vw, 6.2vh), 46px);
+    gap: 0.3rem;
+  }
+
+  .tcf-player {
+    padding: 0.4rem 0.5rem;
     gap: 0.25rem;
   }
 
-  .flip-player {
-    padding: 0.4rem 0.5rem;
+  .tcf-player__name {
+    font-size: 0.82rem;
+  }
+
+  .tcf-center__pot-value {
+    font-size: 1.1rem;
+  }
+
+  .tcf-tug__end-name {
+    display: none;
+  }
+}
+
+/* Short / landscape screens: tighten vertical rhythm */
+@media (max-height: 560px) {
+  .twelve-card-flip {
+    --tcf-card-w: clamp(24px, 6.4vh, 40px);
   }
 }
 

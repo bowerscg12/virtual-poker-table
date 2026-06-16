@@ -1,4 +1,4 @@
-export type SoundType = 'click' | 'chip' | 'deal' | 'check' | 'fold' | 'allin' | 'win' | 'lose' | 'tick' | 'whisper' | 'reaction';
+export type SoundType = 'click' | 'chip' | 'deal' | 'check' | 'fold' | 'allin' | 'win' | 'lose' | 'tick' | 'whisper' | 'reaction' | 'flip' | 'lead';
 
 let ctx: AudioContext | null = null;
 
@@ -224,6 +224,56 @@ const SYNTHS: Record<SoundType, (ac: AudioContext) => void> = {
     osc.onended = cleanup(osc, gain);
     osc.start(t);
     osc.stop(t + 0.03);
+  },
+
+  flip(ac) {
+    // Crisp card "snap" — a short filtered noise burst with a soft woody knock.
+    const t = ac.currentTime;
+    const noise = makeNoise(ac, 1024);
+    const filter = ac.createBiquadFilter();
+    const noiseGain = ac.createGain();
+    filter.type = 'highpass';
+    filter.frequency.value = 1800;
+    noiseGain.gain.setValueAtTime(0.16, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ac.destination);
+    noise.onended = cleanup(noise, filter, noiseGain);
+    noise.start(t);
+    noise.stop(t + 0.08);
+
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(420, t);
+    osc.frequency.exponentialRampToValueAtTime(180, t + 0.06);
+    gain.gain.setValueAtTime(0.1, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.onended = cleanup(osc, gain);
+    osc.start(t);
+    osc.stop(t + 0.07);
+  },
+
+  lead(ac) {
+    // Bright rising two-tone sting when the lead changes hands.
+    const t = ac.currentTime;
+    ([587, 880] as const).forEach((freq, i) => {
+      const start = t + i * 0.08;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.12, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.onended = cleanup(osc, gain);
+      osc.start(start);
+      osc.stop(start + 0.18);
+    });
   },
 };
 

@@ -1255,9 +1255,12 @@ async function recoverHandLifecycle(lobbyId: string): Promise<void> {
   if (!lobby || lobby.status !== 'playing') return;
 
   // Schedule an intermission if the game is stuck between hands with no timer running.
+  // 12 Card Flip is exempt — its "complete" state is a normal rest between hands that
+  // waits for the host to deal, not a stuck lobby to recover.
   const isComplete = !game || game.street === 'complete' || game.street === 'waiting';
   if (
     isComplete &&
+    lobby.settings.game !== 'twelve_card_flip' &&
     !intermissionTimers.has(lobbyId) &&
     !activeRunouts.has(lobbyId) &&
     !bombPotPending.has(lobbyId) &&
@@ -1817,7 +1820,8 @@ async function finalizeFoldWin(
   if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
 
   const updatedLobby = await getLobbyById(lobbyId);
-  if (updatedLobby?.status === 'playing') {
+  // 12 Card Flip never auto-starts the next hand — the host deals each hand manually.
+  if (updatedLobby?.status === 'playing' && config.game !== 'twelve_card_flip') {
     scheduleIntermission(lobbyId, config);
   }
   // Stacks were synced in handleHandComplete before promptShowCards was called
@@ -2003,7 +2007,8 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
     const last = histories[histories.length - 1];
     if (last) broadcastLobby(lobbyId, () => ({ type: 'hand_history', entry: last }));
     const updatedLobby = await getLobbyById(lobbyId);
-    if (updatedLobby?.status === 'playing') {
+    // 12 Card Flip never auto-starts the next hand — the host deals each hand manually.
+    if (updatedLobby?.status === 'playing' && config.game !== 'twelve_card_flip') {
       scheduleIntermission(lobbyId, config);
     }
     // Prompt after stacks are synced so confirmed amount reflects post-hand chips
@@ -2266,6 +2271,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
 
       // Release any reserved seat in a different lobby before joining this one
       const priorSeat = await getActiveSeatForUser(st.userId);
+      // A player already holding a seat in THIS lobby is reconnecting, not newly joining.
+      const isNewJoin = priorSeat?.lobbyId !== msg.lobbyId;
       if (priorSeat && priorSeat.lobbyId !== msg.lobbyId) {
         const priorReleaseTimer = seatReleaseTimers.get(st.userId);
         if (priorReleaseTimer) {
@@ -2327,6 +2334,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (lobbyState) {
         broadcastLobby(msg.lobbyId, () => ({ type: 'lobby_state', lobby: lobbyState }));
         if (claimed) announceHostChange(msg.lobbyId, null, lobbyState);
+        // Announce genuinely new arrivals (not reconnects) so the table is notified.
+        if (isNewJoin) {
+          const joinMsg = addSystemChatMessage(msg.lobbyId, `${user.displayName} joined the table.`);
+          broadcastLobby(msg.lobbyId, () => ({ type: 'chat', message: joinMsg }));
+        }
       }
       for (const m of getChatHistory(msg.lobbyId, st.userId)) {
         send(ws, { type: 'chat', message: m });
@@ -2604,10 +2616,12 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         }
 
         // Recovery: if the game finished while paused (e.g., runout completed), start intermission.
+        // 12 Card Flip is exempt — it always waits for the host to deal the next hand.
         if (
           !intermissionTimers.has(st.lobbyId) &&
           !activeRunouts.has(st.lobbyId) &&
-          resumedLobby.status === 'playing'
+          resumedLobby.status === 'playing' &&
+          resumedLobby.settings.game !== 'twelve_card_flip'
         ) {
           const resumeCheckGame = await getActiveGame(st.lobbyId);
           if (resumeCheckGame?.street === 'complete') {

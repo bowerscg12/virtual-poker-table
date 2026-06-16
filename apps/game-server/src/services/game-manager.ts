@@ -249,7 +249,7 @@ export async function startHand(
   if (candidates.length < 2) return { error: 'Need at least 2 players' };
 
   if (config.game === 'twelve_card_flip' && candidates.length !== 2) {
-    return { error: '12 Card Flip requires exactly 2 players' };
+    return { error: 'Multi-Card Flip requires exactly 2 players' };
   }
 
   // Advance dealer through candidate seat indices; randomize on first hand
@@ -422,7 +422,7 @@ export async function processGameAction(
   let result: { ok: true; state: GameTableState } | { ok: false; error: string };
 
   if (config.game === 'twelve_card_flip') {
-    if (action !== 'flip_card') return { error: 'Only flip_card is allowed in 12 Card Flip' };
+    if (action !== 'flip_card') return { error: 'Only flip_card is allowed in Multi-Card Flip' };
     result = applyFlipCard(state, seat.seatIndex, actionId);
   } else {
     result = applyAction(state, config, seat.seatIndex, action, amount, actionId);

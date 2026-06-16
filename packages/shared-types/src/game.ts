@@ -84,6 +84,16 @@ export interface PublicTableState {
     revealedCards: Card[][];
     /** Best hand description per seat (null if no cards revealed yet) */
     bestHands: (string | null)[];
+    /** The 5 cards forming each seat's current best hand, parallel to seats (null if <1 revealed) */
+    bestFiveCards: (Card[] | null)[];
+    /** Best hand rank index per seat (0=high card … 9=royal flush; -1 if none) — drives the strength meter */
+    bestHandRanks: number[];
+    /**
+     * Estimated probability of winning per seat (parallel to seats, sums to 1),
+     * given only the currently-revealed cards — Monte-Carlo equity over the
+     * unseen cards. Drives the evaluation/tug-of-war bar.
+     */
+    winChances: number[];
     /** Seat index of the current leader, or null if tied / no cards revealed */
     leadingSeatIndex: number | null;
   };

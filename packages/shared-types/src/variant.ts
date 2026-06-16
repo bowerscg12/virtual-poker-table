@@ -2,6 +2,18 @@ export type GameVariant = 'holdem' | 'omaha' | 'plo8' | 'stud' | 'twelve_card_fl
 export type BettingLimit = 'no_limit' | 'pot_limit' | 'fixed';
 export type MaxPlayers = 2 | 6 | 8;
 
+/** Multi-Card Flip per-player card count bounds (2 players must fit in 52 cards). */
+export const FLIP_MIN_CARDS = 5;
+export const FLIP_MAX_CARDS = 26;
+export const FLIP_DEFAULT_CARDS = 12;
+
+/** Clamp a requested Multi-Card Flip per-player card count into the legal range. */
+export function clampFlipCardCount(count: number | undefined): number {
+  const n = Math.floor(count ?? FLIP_DEFAULT_CARDS);
+  if (!Number.isFinite(n)) return FLIP_DEFAULT_CARDS;
+  return Math.max(FLIP_MIN_CARDS, Math.min(FLIP_MAX_CARDS, n));
+}
+
 /** Valid action timer durations in seconds. 0 = no timer. */
 export const TIMER_STEPS_SEC = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180] as const;
 export type TimerStepSec = (typeof TIMER_STEPS_SEC)[number];
@@ -56,6 +68,12 @@ export interface VariantConfig {
   smallBlindAnte?: number;
   /** Bomb pot ante per player for twelve_card_flip (defaults to buyIn) */
   twelveCardFlipAnte?: number;
+  /**
+   * Number of private cards dealt to each player in Multi-Card Flip (formerly
+   * "12 Card Flip"). 2 players × this count must fit in a 52-card deck, so the
+   * range is {@link FLIP_MIN_CARDS}–{@link FLIP_MAX_CARDS}. Defaults to {@link FLIP_DEFAULT_CARDS}.
+   */
+  twelveCardFlipCardCount?: number;
   /**
    * Who sees 1v1 side-bet results when a bet settles. 'participants' (default) reveals
    * only to the two players; 'table' broadcasts the result to everyone.

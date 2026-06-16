@@ -139,10 +139,12 @@ export default function TablePage() {
     const incoming = chat.length - prevChatLengthRef.current;
     if (incoming > 0) {
       if (!chatOpen) setUnreadChat((n) => n + incoming);
-      const gotWhisper = chat
-        .slice(prevChatLengthRef.current)
-        .some((m) => m.isWhisper && m.recipientUserId === user?.id);
+      const newMessages = chat.slice(prevChatLengthRef.current);
+      const gotWhisper = newMessages.some((m) => m.isWhisper && m.recipientUserId === user?.id);
       if (gotWhisper) playSound(settings.soundEffects, 'whisper');
+      // Chime on system announcements (e.g. a player joining the table)
+      const gotSystem = newMessages.some((m) => m.isSystem);
+      if (gotSystem) playSound(settings.soundEffects, 'reaction');
     }
     prevChatLengthRef.current = chat.length;
   }, [chat, chatOpen, user?.id, settings.soundEffects]);
@@ -399,6 +401,8 @@ export default function TablePage() {
               anim={anim}
               isHost={isHost}
               onDealAgain={() => send({ type: 'host_start' })}
+              onExit={() => send({ type: 'cash_out' })}
+              soundEnabled={settings.soundEffects}
             />
           ) : (
             <PokerTable
@@ -609,7 +613,7 @@ export default function TablePage() {
       )}
 
       {cashOutSummary && (
-        <SessionResultsModal summary={cashOutSummary} onLeave={handleLeaveTable} />
+        <SessionResultsModal summary={cashOutSummary} onLeave={handleLeaveTable} game={headerLobby?.settings.game} />
       )}
 
       {/* ── Tournament overlays ──────────────────────────────────────── */}

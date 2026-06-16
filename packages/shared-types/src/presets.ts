@@ -38,8 +38,8 @@ export const RULES_PRESETS: RulesPreset[] = [
   },
   {
     id: 'twelve-card-flip',
-    name: '12 Card Flip',
-    description: 'Heads-up bomb-pot: 12 private cards, take turns revealing to beat opponent',
+    name: 'Multi-Card Flip',
+    description: 'Take turns flipping cards to see the best hand!',
     config: {
       game: 'twelve_card_flip',
       limit: 'no_limit',
@@ -49,6 +49,7 @@ export const RULES_PRESETS: RulesPreset[] = [
       minBuyIn: 500,
       maxBuyIn: 500,
       twelveCardFlipAnte: 500,
+      twelveCardFlipCardCount: 12,
     },
   },
   {

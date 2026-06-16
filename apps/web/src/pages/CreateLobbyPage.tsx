@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { LobbyTemplate, RulesPreset, VariantConfig } from '@vct/shared-types';
-import { TIMER_STEPS_SEC, formatTimerLabel } from '@vct/shared-types';
+import { TIMER_STEPS_SEC, formatTimerLabel, FLIP_MIN_CARDS, FLIP_MAX_CARDS, FLIP_DEFAULT_CARDS, clampFlipCardCount } from '@vct/shared-types';
 import { deleteMyTemplate, getMyTemplates, getPresets, saveTemplate } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
@@ -54,6 +54,7 @@ export default function CreateLobbyPage() {
   const [bjMaxBet, setBjMaxBet] = useState('500');
   const [bjNumDecks, setBjNumDecks] = useState<1 | 4 | 6 | 8>(6);
   const [bjSoftSeventeen, setBjSoftSeventeen] = useState<'hit' | 'stand'>('stand');
+  const [flipCardCount, setFlipCardCount] = useState(FLIP_DEFAULT_CARDS);
 
   const { user } = useAuth();
   const isRegistered = !!user && !user.isGuest;
@@ -112,6 +113,7 @@ export default function CreateLobbyPage() {
       setSevenDeuceRule,
       setActionTimerSec
     );
+    setFlipCardCount(clampFlipCardCount(selectedPreset?.config.twelveCardFlipCardCount));
   }, [presetId, selectedPreset]);
 
   useEffect(() => {
@@ -130,6 +132,7 @@ export default function CreateLobbyPage() {
     setStraddleAmount(String(s.straddleAmount ?? (s.blinds?.big ?? 10) * 2));
     setSevenDeuceRule(s.game === 'holdem' && !!s.sevenDeuceRule);
     setActionTimerSec(s.actionTimerSec ?? 0);
+    setFlipCardCount(clampFlipCardCount(s.twelveCardFlipCardCount));
     if (s.game === 'blackjack') {
       if (s.blackjackNumDecks) setBjNumDecks(s.blackjackNumDecks);
       if (s.blackjackMinBet) setBjMinBet(String(s.blackjackMinBet));
@@ -148,6 +151,7 @@ export default function CreateLobbyPage() {
         minBuyIn: parsedBuyIn,
         maxBuyIn: parsedBuyIn,
         twelveCardFlipAnte: parsedBuyIn,
+        twelveCardFlipCardCount: clampFlipCardCount(flipCardCount),
         actionTimerSec: actionTimerSec > 0 ? actionTimerSec : undefined,
       };
     }
@@ -335,9 +339,23 @@ export default function CreateLobbyPage() {
         </label>
 
         {isTwelveCardFlip && (
-          <p className="twelve-card-flip-note">
-            Heads-up bomb-pot: both players ante the buy-in amount before cards are dealt. No blinds, no folding.
-          </p>
+          <>
+            <label>
+              Cards per player: <strong>{flipCardCount}</strong>
+              <input
+                type="range"
+                min={FLIP_MIN_CARDS}
+                max={FLIP_MAX_CARDS}
+                step={1}
+                value={flipCardCount}
+                onChange={(e) => setFlipCardCount(clampFlipCardCount(Number(e.target.value)))}
+              />
+            </label>
+            <p className="twelve-card-flip-note">
+              Heads-up bomb-pot: each player is dealt {flipCardCount} private cards ({FLIP_MIN_CARDS}–{FLIP_MAX_CARDS})
+              and takes turns revealing them. Both players ante the buy-in amount before cards are dealt. No blinds, no folding.
+            </p>
+          </>
         )}
 
         {isBlackjack && (

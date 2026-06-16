@@ -217,6 +217,128 @@ export function evaluateBestAvailable(cards: Card[]): EvaluatedHand | null {
   return { rank: 'high_card', values, description: `High Card, ${rn(values[0])}`, bestFive: cards };
 }
 
+/**
+ * Fast O(n) score of the best 5-card poker hand contained in `cards`.
+ *
+ * Returns a single number where higher is strictly better and the ordering is
+ * consistent with `compareHands(bestHand(a), bestHand(b))`. Unlike `bestHand`,
+ * it does NOT enumerate C(n,5) combinations, so it is suitable for the millions
+ * of evaluations a Monte-Carlo equity estimate performs (see the 12 Card Flip
+ * win-chance estimator). It returns only a comparable score, not a full
+ * `EvaluatedHand` — use `bestHand` when you need the description / bestFive.
+ */
+const RANK_VAL: Record<string, number> = {
+  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+  T: 10, J: 11, Q: 12, K: 13, A: 14,
+};
+const SUIT_IDX: Record<string, number> = { c: 0, d: 1, h: 2, s: 3 };
+
+// Pack a category (0–8) and up to five tiebreak ranks (0–14) into one number.
+function packScore(cat: number, a = 0, b = 0, c = 0, d = 0, e = 0): number {
+  return ((((cat * 15 + a) * 15 + b) * 15 + c) * 15 + d) * 15 + e;
+}
+
+export function fastHandScore(cards: Card[]): number {
+  const rankCount = new Array(15).fill(0); // indices 2..14
+  const suitCount = [0, 0, 0, 0];
+  const suitMask = [0, 0, 0, 0]; // bitmask of ranks present per suit
+  let rankMask = 0; // bitmask of ranks present in any suit
+
+  for (const card of cards) {
+    const r = RANK_VAL[card[0]];
+    const s = SUIT_IDX[card[1]];
+    rankCount[r]++;
+    suitCount[s]++;
+    suitMask[s] |= 1 << r;
+    rankMask |= 1 << r;
+  }
+
+  // Highest straight contained in a rank bitmask (Ace plays high or low), else 0.
+  const straightHigh = (mask: number): number => {
+    let m = mask;
+    if (m & (1 << 14)) m |= 1 << 1; // wheel: Ace low
+    for (let hi = 14; hi >= 5; hi--) {
+      const run = (1 << hi) | (1 << (hi - 1)) | (1 << (hi - 2)) | (1 << (hi - 3)) | (1 << (hi - 4));
+      if ((m & run) === run) return hi;
+    }
+    return 0;
+  };
+
+  // Straight flush
+  let sfHigh = 0;
+  for (let s = 0; s < 4; s++) {
+    if (suitCount[s] >= 5) {
+      const h = straightHigh(suitMask[s]);
+      if (h > sfHigh) sfHigh = h;
+    }
+  }
+  if (sfHigh) return packScore(8, sfHigh);
+
+  // Group ranks by multiplicity (high → low within each group)
+  const quads: number[] = [];
+  const trips: number[] = [];
+  const pairs: number[] = [];
+  const ranksDesc: number[] = [];
+  for (let r = 14; r >= 2; r--) {
+    const n = rankCount[r];
+    if (n > 0) ranksDesc.push(r);
+    if (n === 4) quads.push(r);
+    else if (n === 3) trips.push(r);
+    else if (n === 2) pairs.push(r);
+  }
+  const kickers = (used: number[], count: number): number[] => {
+    const out: number[] = [];
+    for (const r of ranksDesc) {
+      if (used.includes(r)) continue;
+      out.push(r);
+      if (out.length === count) break;
+    }
+    while (out.length < count) out.push(0);
+    return out;
+  };
+
+  if (quads.length) {
+    return packScore(7, quads[0], kickers([quads[0]], 1)[0]);
+  }
+  // Full house: best trip + best remaining pair (a second trip counts as a pair)
+  if (trips.length) {
+    let pair = trips.length >= 2 ? trips[1] : 0;
+    if (pairs.length && pairs[0] > pair) pair = pairs[0];
+    if (pair) return packScore(6, trips[0], pair);
+  }
+  // Flush
+  let flushScore = 0;
+  for (let s = 0; s < 4; s++) {
+    if (suitCount[s] >= 5) {
+      const top: number[] = [];
+      for (let r = 14; r >= 2 && top.length < 5; r--) if (suitMask[s] & (1 << r)) top.push(r);
+      const sc = packScore(5, top[0], top[1], top[2], top[3], top[4]);
+      if (sc > flushScore) flushScore = sc;
+    }
+  }
+  if (flushScore) return flushScore;
+  // Straight
+  const sh = straightHigh(rankMask);
+  if (sh) return packScore(4, sh);
+  // Three of a kind
+  if (trips.length) {
+    const k = kickers([trips[0]], 2);
+    return packScore(3, trips[0], k[0], k[1]);
+  }
+  // Two pair
+  if (pairs.length >= 2) {
+    return packScore(2, pairs[0], pairs[1], kickers([pairs[0], pairs[1]], 1)[0]);
+  }
+  // One pair
+  if (pairs.length === 1) {
+    const k = kickers([pairs[0]], 3);
+    return packScore(1, pairs[0], k[0], k[1], k[2]);
+  }
+  // High card
+  const k = kickers([], 5);
+  return packScore(0, k[0], k[1], k[2], k[3], k[4]);
+}
+
 /** Hold'em: best 5 of 7 */
 export function evaluateHoldem(hole: Card[], board: Card[]): EvaluatedHand {
   return bestHand([...hole, ...board]);

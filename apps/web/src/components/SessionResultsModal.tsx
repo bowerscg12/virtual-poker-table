@@ -1,10 +1,11 @@
-import type { CashOutSummary } from '@vct/shared-types';
+import type { CashOutSummary, GameVariant } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { formatChips } from '../utils/formatChips';
 
 interface Props {
   summary: CashOutSummary;
   onLeave: () => void;
+  game?: GameVariant;
 }
 
 const HAND_RANK_LABELS: Record<string, string> = {
@@ -39,7 +40,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function SessionResultsModal({ summary, onLeave }: Props) {
+export function SessionResultsModal({ summary, onLeave, game }: Props) {
   const isProfit = summary.netProfit > 0;
   const isLoss = summary.netProfit < 0;
   const profitClass = isProfit ? 'profit' : isLoss ? 'loss' : '';
@@ -137,8 +138,8 @@ export function SessionResultsModal({ summary, onLeave }: Props) {
             </section>
           )}
 
-          {/* Most common starting hand */}
-          {summary.mostCommonStartingHand && summary.handsPlayed > 0 && (
+          {/* Most common starting hand — not meaningful for 12 Card Flip (12 dealt cards) */}
+          {game !== 'twelve_card_flip' && summary.mostCommonStartingHand && summary.handsPlayed > 0 && (
             <section className="results-section">
               <h3 className="results-section-title">Most Dealt Hand</h3>
               <p className="results-starting-hand">{summary.mostCommonStartingHand.key}</p>

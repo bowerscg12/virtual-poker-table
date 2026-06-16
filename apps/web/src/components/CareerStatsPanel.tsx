@@ -9,7 +9,7 @@ const GAME_MODE_LABELS: Record<string, string> = {
   holdem: 'Texas Hold\'em',
   omaha: 'Omaha',
   plo8: 'PLO Hi-Lo',
-  twelve_card_flip: '12-Card Flip',
+  twelve_card_flip: 'Multi-Card Flip',
   blackjack: 'Blackjack',
 };
 
