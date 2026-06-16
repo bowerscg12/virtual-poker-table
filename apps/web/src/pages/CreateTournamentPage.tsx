@@ -117,7 +117,8 @@ export default function CreateTournamentPage() {
 
   function loadTemplate(template: TournamentTemplate) {
     const s = template.settings;
-    setVariant(s.variant);
+    // Omaha (PLO) is hidden — coerce any legacy Omaha template back to Hold'em.
+    setVariant('holdem');
     setBuyIn(String(s.buyIn));
     setStartingStack(String(s.startingStack));
     setNumTables(String(s.numTables));
@@ -203,7 +204,7 @@ export default function CreateTournamentPage() {
         <div className="form-field">
           <label>Variant</label>
           <div className="radio-group">
-            {(['holdem', 'omaha'] as const).map((v) => (
+            {(['holdem'] as const).map((v) => (
               <label key={v} className="radio-label">
                 <input type="radio" value={v} checked={variant === v} onChange={() => setVariant(v)} />
                 {v === 'holdem' ? "Hold'em" : 'Omaha'}

@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import CreateLobbyPage from './pages/CreateLobbyPage';
 import JoinLobbyPage from './pages/JoinLobbyPage';
+import WatchLobbyPage from './pages/WatchLobbyPage';
 import NameSelectionPage from './pages/NameSelectionPage';
 import TablePage from './pages/TablePage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
@@ -34,6 +35,7 @@ export default function App() {
       <AppShell>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/watch/:code" element={<WatchLobbyPage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
         <Route path="/create" element={<ProtectedRoute><CreateLobbyPage /></ProtectedRoute>} />

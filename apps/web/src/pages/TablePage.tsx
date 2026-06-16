@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getTableBuyIn, type LobbySummary } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
 import { useAuth } from '../context/AuthContext';
@@ -38,6 +38,8 @@ import { SeatChangeModal } from '../components/SeatChangeModal';
 
 export default function TablePage() {
   const { lobbyId } = useParams<{ lobbyId: string }>();
+  const [searchParams] = useSearchParams();
+  const isSpectator = searchParams.get('spectate') === '1';
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [chatOpen, setChatOpen] = useState(false);
@@ -102,7 +104,7 @@ export default function TablePage() {
     bjRoundResults,
     clearBjRoundResults,
     send,
-  } = useGameSocket(token, lobbyId ?? null);
+  } = useGameSocket(token, lobbyId ?? null, isSpectator);
 
   const [bombPotChoice, setBombPotChoice] = useState<boolean | null>(null);
   useEffect(() => {
@@ -277,6 +279,11 @@ export default function TablePage() {
     navigator.clipboard.writeText(`${window.location.origin}/join/${headerLobby.inviteCode}`);
   }
 
+  function copyWatchLink() {
+    if (!headerLobby) return;
+    navigator.clipboard.writeText(`${window.location.origin}/watch/${headerLobby.inviteCode}`);
+  }
+
   function handleCashOutConfirm() { send({ type: 'cash_out' }); }
   function handleCancelQueue() { send({ type: 'cash_out_cancel' }); setCashOutOpen(false); }
   function handleLeaveTable() { clearCashOutSummary(); navigate('/'); }
@@ -301,6 +308,7 @@ export default function TablePage() {
         chatOpen={chatOpen}
         settings={settings}
         onCopyInvite={copyInvite}
+        onCopyWatchLink={copyWatchLink}
         onChatToggle={() => setChatOpen((o) => !o)}
         onSettingChange={updateSetting}
         lastHandSeed={table?.lastHandSeed}
@@ -427,7 +435,9 @@ export default function TablePage() {
 
           {!mySeat && headerLobby && token && connected && !isTcf && !isBlackjack && (
             <div className="sit-panel panel">
-              {tableFull ? (
+              {isSpectator ? (
+                <p>👁 Spectating — you're watching this table.</p>
+              ) : tableFull ? (
                 <p>Table is full. Wait for a seat to open.</p>
               ) : (
                 <p>Joining table... you will be seated automatically with {formatChips(buyIn)} chips.</p>

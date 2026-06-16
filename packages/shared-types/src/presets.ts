@@ -23,20 +23,6 @@ export const RULES_PRESETS: RulesPreset[] = [
     },
   },
   {
-    id: 'plo-standard',
-    name: 'Pot-Limit Omaha',
-    description: '4 hole cards, must use exactly 2',
-    config: {
-      game: 'omaha',
-      limit: 'pot_limit',
-      maxPlayers: 8,
-      blinds: { small: 5, big: 10 },
-      buyIn: 500,
-      minBuyIn: 500,
-      maxBuyIn: 2000,
-    },
-  },
-  {
     id: 'twelve-card-flip',
     name: 'Multi-Card Flip',
     description: 'Take turns flipping cards to see the best hand!',

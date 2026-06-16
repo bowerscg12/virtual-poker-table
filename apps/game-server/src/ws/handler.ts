@@ -68,7 +68,7 @@ import {
   updateLastHandHistoryFoldWin,
   updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
-import { addChatMessage, addSystemChatMessage, addWhisperMessage, canSendChat, canSendReaction, createReaction, getChatHistory } from '../services/chat.js';
+import { addChatMessage, addSystemChatMessage, addWhisperMessage, canSendChat, canSendReaction, clearChatRateLimit, createReaction, getChatHistory } from '../services/chat.js';
 import { getMemoryLobby } from '../services/lobby.js';
 import { deleteLobby } from '../services/lobby-cleanup.js';
 import { redisDel, keys } from '../store/redis.js';
@@ -2040,6 +2040,7 @@ export function registerClient(ws: WebSocket): void {
 
     if (st.userId && connectedUserSockets.get(st.userId) === ws) {
       connectedUserSockets.delete(st.userId);
+      clearChatRateLimit(st.userId);
     }
 
     // Start grace-period timers if this was a tracked session with a lobby
@@ -2352,6 +2353,48 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         await recoverHandLifecycle(msg.lobbyId);
         // A new seated player may satisfy the active-player threshold.
         await tryStartWaitingHand(msg.lobbyId);
+      }
+      return;
+    }
+
+    case 'watch_lobby': {
+      // Join a table as a read-only spectator: wire the socket to the lobby without
+      // ever taking a seat. Mirrors join_lobby's socket plumbing, minus seating,
+      // host-claiming, and the "joined the table" announcement.
+      if (!st.userId) {
+        send(ws, { type: 'error', message: 'Not authenticated' });
+        return;
+      }
+      const watchLobby = await getLobbyById(msg.lobbyId);
+      if (!watchLobby) {
+        send(ws, { type: 'error', message: 'Lobby not found' });
+        return;
+      }
+
+      if (st.lobbyId && st.lobbyId !== msg.lobbyId) {
+        lobbyClients.get(st.lobbyId)?.delete(ws);
+      }
+      st.lobbyId = msg.lobbyId;
+      st.isSpectator = true;
+      if (!lobbyClients.has(msg.lobbyId)) lobbyClients.set(msg.lobbyId, new Set());
+      lobbyClients.get(msg.lobbyId)!.add(ws);
+      cancelEmptyLobbyTimer(msg.lobbyId);
+
+      if (st.sessionId) {
+        await updateSessionLobby(st.sessionId, msg.lobbyId);
+      }
+
+      const watchLobbyState = await getLobbyById(msg.lobbyId, getConnectedSet(msg.lobbyId));
+      if (watchLobbyState) {
+        send(ws, { type: 'lobby_state', lobby: watchLobbyState });
+      }
+      for (const m of getChatHistory(msg.lobbyId, st.userId)) {
+        send(ws, { type: 'chat', message: m });
+      }
+      if (watchLobbyState?.settings.game === 'blackjack') {
+        await sendBjStateToClient(ws, msg.lobbyId, st.userId, bjDeps());
+      } else {
+        await broadcastTableState(msg.lobbyId);
       }
       return;
     }

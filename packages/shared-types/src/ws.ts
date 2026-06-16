@@ -13,6 +13,7 @@ export type ClientMessage =
   | { type: 'auth'; token: string }
   | { type: 'reconnect'; sessionId: string }
   | { type: 'join_lobby'; lobbyId: string }
+  | { type: 'watch_lobby'; lobbyId: string }
   | { type: 'chat'; text: string }
   | { type: 'whisper'; recipientUserId: string; text: string }
   | { type: 'reaction'; emoji: string }

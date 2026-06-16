@@ -161,12 +161,23 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/lobbies/:id/enter', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { id: lobbyId } = req.params as { id: string };
-    const body = z.object({ displayName: displayNameSchema.optional(), avatar: z.any().optional() }).parse(req.body);
+    const body = z.object({ displayName: displayNameSchema.optional(), avatar: z.any().optional(), spectate: z.boolean().optional() }).parse(req.body);
 
     const lobby = await getLobbyById(lobbyId);
     if (!lobby) return reply.status(404).send({ error: 'Lobby not found' });
 
     const authUser = await tryGetAuthUser(req);
+
+    // ── Spectator entry ──────────────────────────────────────────────────────
+    // Watch a table without taking a seat. No seat means no table-full check and
+    // no name-uniqueness check (those only govern seated players).
+    if (body.spectate) {
+      const spectator = authUser ?? (await guestLogin(body.displayName ?? 'Spectator', body.avatar));
+      const token = await reply.jwtSign({ sub: spectator.id });
+      const sessionId = await createSession(spectator.id, lobbyId);
+      const user = authUser && body.avatar ? { ...authUser, avatar: body.avatar } : spectator;
+      return { user, token, sessionId };
+    }
 
     if (authUser) {
       // Authenticated path — skip name uniqueness check, use existing identity

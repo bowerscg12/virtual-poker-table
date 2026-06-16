@@ -12,7 +12,7 @@ const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 const RECONNECT_MAX_ATTEMPTS = 12;
 
-export function useGameSocket(token: string | null, lobbyId: string | null) {
+export function useGameSocket(token: string | null, lobbyId: string | null, spectate = false) {
   const bj = useBlackjackState();
   const wsRef = useRef<WebSocket | null>(null);
   const pendingMessagesRef = useRef<ClientMessage[]>([]);
@@ -184,7 +184,11 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
             reconnectAttemptRef.current = 0;
             if (lobbyId && joinedLobbyId !== lobbyId) {
               joinedLobbyId = lobbyId;
-              ws.send(JSON.stringify({ type: 'join_lobby', lobbyId } satisfies ClientMessage));
+              // Spectators wire into the lobby without ever taking a seat.
+              const joinMsg: ClientMessage = spectate
+                ? { type: 'watch_lobby', lobbyId }
+                : { type: 'join_lobby', lobbyId };
+              ws.send(JSON.stringify(joinMsg));
             }
             break;
 
@@ -424,7 +428,7 @@ export function useGameSocket(token: string | null, lobbyId: string | null) {
       pendingMessagesRef.current = [];
       readyToFlushRef.current = false;
     };
-  }, [token, lobbyId]);
+  }, [token, lobbyId, spectate]);
 
   useEffect(() => {
     if (!error) return;

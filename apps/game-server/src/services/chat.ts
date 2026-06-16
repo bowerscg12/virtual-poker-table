@@ -82,14 +82,45 @@ export function getChatHistory(lobbyId: string, forUserId?: string): ChatMessage
   );
 }
 
-const lastMessageAt = new Map<string, number>();
+/**
+ * Per-user chat rate limit (token bucket). Allows a short burst of messages,
+ * then throttles to one message per refill interval — absorbs natural rapid-fire
+ * typing while blocking sustained flooding. Both knobs are env-configurable.
+ */
+export const CHAT_BURST =
+  Number(process.env.CHAT_BURST) > 0 ? Math.floor(Number(process.env.CHAT_BURST)) : 5;
+export const CHAT_REFILL_MS =
+  Number(process.env.CHAT_REFILL_MS) > 0 ? Number(process.env.CHAT_REFILL_MS) : 2000;
+
+interface ChatBucket {
+  tokens: number;
+  updatedAt: number;
+}
+
+const chatBuckets = new Map<string, ChatBucket>();
 
 export function canSendChat(userId: string): boolean {
   const now = Date.now();
-  const last = lastMessageAt.get(userId) ?? 0;
-  if (now - last < 500) return false;
-  lastMessageAt.set(userId, now);
+  const bucket = chatBuckets.get(userId) ?? { tokens: CHAT_BURST, updatedAt: now };
+
+  // Refill tokens proportionally to elapsed time, capped at burst capacity.
+  const refilled = (now - bucket.updatedAt) / CHAT_REFILL_MS;
+  bucket.tokens = Math.min(CHAT_BURST, bucket.tokens + refilled);
+  bucket.updatedAt = now;
+
+  if (bucket.tokens < 1) {
+    chatBuckets.set(userId, bucket);
+    return false;
+  }
+
+  bucket.tokens -= 1;
+  chatBuckets.set(userId, bucket);
   return true;
+}
+
+/** Drop a user's rate-limit state when they disconnect, so the map can't grow unbounded. */
+export function clearChatRateLimit(userId: string): void {
+  chatBuckets.delete(userId);
 }
 
 /** Minimum interval between reactions per player (server-enforced spam guard). */

@@ -4575,6 +4575,30 @@ select option {
   font-size: 0.85rem;
 }
 
+/* Spectator share link — copies a read-only /watch link */
+.table-header__watch {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(180, 200, 230, 0.85);
+  background: rgba(180, 200, 230, 0.08);
+  border: 1px solid rgba(180, 200, 230, 0.22);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.table-header__watch:hover {
+  background: rgba(180, 200, 230, 0.18);
+}
+
 /* Provably-fair seed chip — shown between hands */
 .table-header__seed {
   display: flex;

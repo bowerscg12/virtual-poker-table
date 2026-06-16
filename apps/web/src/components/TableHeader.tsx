@@ -11,6 +11,7 @@ interface Props {
   chatOpen: boolean;
   settings: AppSettings;
   onCopyInvite: () => void;
+  onCopyWatchLink: () => void;
   onChatToggle: () => void;
   onSettingChange: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   /** SHA-256 hex digest of the RNG seed for the last completed hand — provably fair. */
@@ -26,6 +27,7 @@ export function TableHeader({
   chatOpen,
   settings,
   onCopyInvite,
+  onCopyWatchLink,
   onChatToggle,
   onSettingChange,
   lastHandSeed,
@@ -60,6 +62,16 @@ export function TableHeader({
           >
             {lobby.inviteCode}
             <span className="table-header__copy-icon" aria-hidden="true">⎘</span>
+          </button>
+        )}
+        {lobby && (
+          <button
+            type="button"
+            className="table-header__watch"
+            onClick={onCopyWatchLink}
+            title="Copy a spectator link — opens the table in read-only watch mode"
+          >
+            👁 Watch link
           </button>
         )}
         {lastHandSeed && (

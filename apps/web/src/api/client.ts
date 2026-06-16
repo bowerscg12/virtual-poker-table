@@ -95,13 +95,18 @@ export async function createTableAndEnter(
  * If the user is already authenticated, their existing identity is reused.
  * Throws with code 'NAME_TAKEN' if the name is already in use (unauthenticated path only).
  */
-export async function enterLobby(lobbyId: string, displayName: string, avatar?: AvatarConfig): Promise<EnterLobbyResponse> {
+export async function enterLobby(
+  lobbyId: string,
+  displayName: string,
+  avatar?: AvatarConfig,
+  opts?: { spectate?: boolean }
+): Promise<EnterLobbyResponse> {
   let res: Response;
   try {
     res = await fetch(`${API}/lobbies/${lobbyId}/enter`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ displayName, avatar }),
+      body: JSON.stringify({ displayName, avatar, spectate: opts?.spectate }),
     });
   } catch {
     throw new Error('Cannot reach game server. Run: npm run dev -w @vct/game-server');
