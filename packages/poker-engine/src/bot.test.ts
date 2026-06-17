@@ -117,6 +117,29 @@ describe('decidePokerAction — legality & nut rule', () => {
     }
   });
 
+  it('never folds a weak hand when a check is available (checks instead)', () => {
+    // Trash hand, no bet to call → folding is strictly dominated by checking.
+    const state = makeState({
+      street: 'flop',
+      board: ['Ac', 'Kd', 'Qh'],
+      currentBet: 0,
+      minRaise: 10,
+      seats: [
+        seat(0, ['2h', '7d'], { betThisStreet: 0, totalBet: 10 }),
+        seat(1, ['9c', 'Tc'], { betThisStreet: 0, totalBet: 10 }),
+      ],
+      actionSeatIndex: 0,
+    });
+    for (const style of STYLES) {
+      for (const difficulty of DIFFICULTIES) {
+        for (let s = 1; s <= 20; s++) {
+          const decision = decidePokerAction(state, holdem, 0, { style, difficulty }, mulberry32(s * 13 + 5));
+          expect(decision.action, `${style}/${difficulty} folded when it could check`).not.toBe('fold');
+        }
+      }
+    }
+  });
+
   it('never folds the nuts even when it could check (bets/stays in)', () => {
     const state = makeState({
       street: 'river',

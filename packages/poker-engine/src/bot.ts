@@ -315,7 +315,8 @@ function randomNonFold(legal: LegalAction[], state: GameTableState, seatIndex: n
 }
 
 /**
- * Decide an action for an AI seat. Always returns a legal action; never folds the current nuts.
+ * Decide an action for an AI seat. Always returns a legal action; never folds the current nuts, and
+ * never folds when a check is available (folding for free is strictly dominated by checking).
  */
 export function decidePokerAction(
   state: GameTableState,
@@ -323,6 +324,22 @@ export function decidePokerAction(
   seatIndex: number,
   brain: BotBrain,
   rng: Rng = Math.random
+): BotDecision {
+  const decision = decidePokerActionInner(state, config, seatIndex, brain, rng);
+  // Hard rule: a bot never folds when it could check instead.
+  if (decision.action === 'fold') {
+    const legal = getLegalActionsForSeat(state, config, seatIndex);
+    if (find(legal, 'check')) return { action: 'check' };
+  }
+  return decision;
+}
+
+function decidePokerActionInner(
+  state: GameTableState,
+  config: VariantConfig,
+  seatIndex: number,
+  brain: BotBrain,
+  rng: Rng
 ): BotDecision {
   const legal = getLegalActionsForSeat(state, config, seatIndex);
   if (legal.length === 0) return { action: 'fold' };

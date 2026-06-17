@@ -21,6 +21,7 @@ import {
   setSeatBotFields,
   sitAtSeat,
 } from './lobby.js';
+import { initSession } from './session-stats.js';
 
 /** Variants that support AI opponents. */
 const BOT_VARIANTS: ReadonlySet<GameVariant> = new Set(['holdem', 'omaha', 'plo8', 'twelve_card_flip']);
@@ -52,10 +53,18 @@ export function unregisterBotUser(userId: string): void {
   botUserIds.delete(userId);
 }
 
-/** Re-sync the bot-id cache from a lobby's seats (call wherever a lobby is loaded for play). */
+/**
+ * Re-sync the bot-id cache from a lobby's seats (call wherever a lobby is loaded for play) and
+ * ensure each bot has a session-stats accumulator. Bots never connect/reconnect, so this is the
+ * only place their stats get initialized — without it they accrue no VPIP/aggression/etc. data and
+ * only stack-derived badges (big stack / short stack) ever appear on them. initSession is idempotent.
+ */
 export function registerLobbyBots(lobby: LobbySummary): void {
   for (const seat of lobby.seats) {
-    if (seat.isBot && seat.userId) botUserIds.add(seat.userId);
+    if (seat.isBot && seat.userId) {
+      botUserIds.add(seat.userId);
+      initSession(lobby.id, seat.userId, seat.displayName ?? 'Bot', seat.stack);
+    }
   }
 }
 

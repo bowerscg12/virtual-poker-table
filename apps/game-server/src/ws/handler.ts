@@ -555,9 +555,14 @@ async function startBombPotOptIn(lobbyId: string, config: VariantConfig): Promis
   });
 
   const eligible = await eligibleBombPotPlayers(lobbyId);
+  const bpPending = bombPotPending.get(lobbyId)!;
   for (const userId of eligible) {
-    const ws = connectedUserSockets.get(userId);
-    if (ws) send(ws, { type: 'bomb_pot_prompt', deadline, amount: bp.amount, doubleBoard: bp.doubleBoard });
+    if (isBotUser(userId)) {
+      bpPending.joined.add(userId);
+    } else {
+      const ws = connectedUserSockets.get(userId);
+      if (ws) send(ws, { type: 'bomb_pot_prompt', deadline, amount: bp.amount, doubleBoard: bp.doubleBoard });
+    }
   }
 
   bombPotTimers.set(lobbyId, setTimeout(() => {
@@ -714,9 +719,14 @@ async function startPineappleOptIn(lobbyId: string, _config: VariantConfig): Pro
   pineappleOptInPending.set(lobbyId, { deadline, gen, joined: new Set() });
 
   const eligible = await eligibleBombPotPlayers(lobbyId); // reuse: seated, chips, not sitting out
+  const ppPending = pineappleOptInPending.get(lobbyId)!;
   for (const userId of eligible) {
-    const ws = connectedUserSockets.get(userId);
-    if (ws) send(ws, { type: 'pineapple_prompt', deadline });
+    if (isBotUser(userId)) {
+      ppPending.joined.add(userId);
+    } else {
+      const ws = connectedUserSockets.get(userId);
+      if (ws) send(ws, { type: 'pineapple_prompt', deadline });
+    }
   }
 
   pineappleOptInTimers.set(lobbyId, setTimeout(() => {
@@ -787,7 +797,17 @@ async function startPineappleDiscardPhase(
 
   // All seated (non-folded) players must discard
   const pendingUserIds = new Set(state.seats.map((s) => s.userId));
-  pineappleDiscardData.set(lobbyId, { deadline, gen, discards: new Map(), pending: pendingUserIds });
+  const discardMap = new Map<string, number>();
+
+  // Pre-register bot discards immediately — they have no WS and will never send pineapple_discard
+  for (const s of state.seats) {
+    if (isBotUser(s.userId)) {
+      discardMap.set(s.userId, autoDiscardIndex(s.holeCards));
+      pendingUserIds.delete(s.userId);
+    }
+  }
+
+  pineappleDiscardData.set(lobbyId, { deadline, gen, discards: discardMap, pending: pendingUserIds });
 
   // Broadcast state with no legal actions (discard phase active), then send discard prompt
   await broadcastTableState(lobbyId);
@@ -795,6 +815,12 @@ async function startPineappleDiscardPhase(
   for (const userId of pendingUserIds) {
     const ws = connectedUserSockets.get(userId);
     if (ws) send(ws, { type: 'pineapple_discard_phase', deadline });
+  }
+
+  // If only bots were at the table, all discards are already in — resolve right away
+  if (pendingUserIds.size === 0) {
+    resolvePineappleDiscard(lobbyId, config).catch(() => {});
+    return;
   }
 
   pineappleDiscardTimers.set(lobbyId, setTimeout(() => {
@@ -1385,10 +1411,9 @@ function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: Game
   actionTimers.set(lobbyId, timer);
 }
 
-/** Randomized "thinking" delay before a bot acts, so play feels human-paced. */
-function botThinkDelayMs(config: VariantConfig): number {
-  if (config.game === 'twelve_card_flip') return 500 + Math.floor(Math.random() * 900);
-  return 700 + Math.floor(Math.random() * 1700);
+/** Fixed "thinking" delay before a bot acts, so every AI move is paced at 3 seconds. */
+function botThinkDelayMs(_config: VariantConfig): number {
+  return 3000;
 }
 
 /**
@@ -1922,7 +1947,9 @@ async function processBotRebuys(lobbyId: string): Promise<void> {
     if (stack > 0) continue;
     await rebuyPlayer(lobbyId, seat.userId, buyIn);
     await updateSeatStackAfterRebuy(lobbyId, seat.userId, buyIn);
-    await setWaitingForReentryBlind(lobbyId, seat.userId, true);
+    // Bots buy back in immediately: clear any re-entry deferral so they're dealt into the very
+    // next hand rather than sitting out ("Waiting for BB") until they reach the big blind.
+    await setWaitingForReentryBlind(lobbyId, seat.userId, false);
     recordRebuy(lobbyId, seat.userId, buyIn);
   }
 }
@@ -2906,6 +2933,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         send(ws, { type: 'error', message: result.error });
         return;
       }
+      // Start a stats accumulator for the bot so it earns the same session badges as humans
+      // (bots never connect/reconnect, so they're never otherwise initSession'd).
+      const botSeat = result.lobby.seats.find((s) => s.userId === result.userId);
+      if (botSeat) initSession(st.lobbyId, result.userId, botSeat.displayName ?? 'Bot', botSeat.stack);
       broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result.lobby }));
       // If a hand is already running, the bot is dealt in next hand (like a human sit).
       // If the table is idle between Multi-Card-Flip hands or waiting, no action needed here.
