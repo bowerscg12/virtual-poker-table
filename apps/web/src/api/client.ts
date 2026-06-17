@@ -9,6 +9,13 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return headers;
 }
 
+function authOnlyHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem('vct_token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
 export async function guestLogin(displayName: string): Promise<AuthResponse> {
   let res: Response;
   try {
@@ -181,7 +188,7 @@ export async function getActiveSeat(): Promise<{ seat: ActiveSeatInfo | null }> 
 
 export async function releaseActiveSeat(): Promise<void> {
   try {
-    await fetch(`${API}/me/seat`, { method: 'DELETE', headers: authHeaders() });
+    await fetch(`${API}/me/seat`, { method: 'DELETE', headers: authOnlyHeaders() });
   } catch {
     // ignore — seat will be released by server-side timer anyway
   }
@@ -214,7 +221,7 @@ export async function saveTemplate(req: CreateTemplateRequest): Promise<LobbyTem
 export async function deleteMyTemplate(templateId: string): Promise<void> {
   const res = await fetch(`${API}/templates/${templateId}`, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authOnlyHeaders(),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
@@ -286,7 +293,7 @@ export async function registerForTournament(id: string): Promise<void> {
 export async function unregisterFromTournament(id: string): Promise<void> {
   const res = await fetch(`${API}/tournaments/${id}/register`, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authOnlyHeaders(),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
@@ -308,7 +315,7 @@ export async function hostStartTournament(id: string): Promise<void> {
 export async function hostCancelTournament(id: string): Promise<void> {
   const res = await fetch(`${API}/tournaments/${id}`, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authOnlyHeaders(),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
@@ -337,7 +344,7 @@ export async function saveTournamentTemplate(name: string, settings: TournamentS
 }
 
 export async function deleteTournamentTemplate(id: string): Promise<void> {
-  await fetch(`${API}/tournament-templates/${id}`, { method: 'DELETE', headers: authHeaders() });
+  await fetch(`${API}/tournament-templates/${id}`, { method: 'DELETE', headers: authOnlyHeaders() });
 }
 
 export function getWsUrl(): string {

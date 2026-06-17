@@ -214,11 +214,12 @@ export default function CreateLobbyPage() {
 
   async function handleDeleteTemplate(id: string) {
     setDeletingId(id);
+    setTemplateError(null);
     try {
       await deleteMyTemplate(id);
       setTemplates((prev) => prev.filter((t) => t.id !== id));
-    } catch {
-      // silent
+    } catch (err) {
+      setTemplateError(err instanceof Error ? err.message : 'Could not delete template');
     } finally {
       setDeletingId(null);
     }

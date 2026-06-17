@@ -260,7 +260,7 @@ export default function TablePage() {
   const gameStarted = headerLobby?.status === 'playing' || headerLobby?.status === 'paused';
 
   const totalPot = table
-    ? table.pots.reduce((s, p) => s + p.amount, 0) + table.seats.reduce((s, seat) => s + seat.betThisStreet, 0)
+    ? table.pots.reduce((s, p) => s + p.amount, 0)
     : 0;
 
   const maxSeats = headerLobby?.settings.maxPlayers ?? 8;

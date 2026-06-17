@@ -284,7 +284,6 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
 
   const totalPot = table
     ? table.pots.reduce((s, p) => s + p.amount, 0)
-      + table.seats.reduce((s, seat) => s + seat.betThisStreet, 0)
     : 0;
   const buyIn = lobby?.settings.buyIn ?? 0;
   const isDistributing = !!anim.winnerBanner;
