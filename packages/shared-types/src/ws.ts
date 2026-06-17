@@ -7,6 +7,7 @@ import type { BlindLevel, LeaderboardEntry, PublicTournamentState } from './tour
 import type { TableReaction } from './reaction.js';
 import type { Suit } from './cards.js';
 import type { SideBetChallenge, SideBetResult, SideBetType } from './side-bets.js';
+import type { BotDifficulty } from './bot.js';
 
 /** Client -> Server */
 export type ClientMessage =
@@ -34,6 +35,7 @@ export type ClientMessage =
   | { type: 'host_start' }
   | { type: 'host_pause'; paused: boolean }
   | { type: 'host_kick'; seatIndex: number }
+  | { type: 'host_add_bot'; seatIndex: number; difficulty: BotDifficulty }
   | { type: 'host_transfer'; seatIndex: number }
   | { type: 'host_move_player'; fromSeatIndex: number; toSeatIndex: number }
   | { type: 'host_approve_rebuy'; seatIndex: number; amount: number }

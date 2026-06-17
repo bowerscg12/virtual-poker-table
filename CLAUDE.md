@@ -20,6 +20,8 @@ Multiplayer browser card game app. Guest-first identity (display name at join/cr
 | Cleanup | `apps/game-server/src/services/guest-cleanup.ts` | Purges guest accounts >48h old |
 | Cleanup | `apps/game-server/src/services/lobby-cleanup.ts` | Purges abandoned lobbies >20 min |
 | Poker engine | `packages/poker-engine/src/game-table.ts` | `createInitialTable`, `applyAction` |
+| Bot engine | `packages/poker-engine/src/bot.ts` | Pure AI decision logic: `decidePokerAction`, `holdsCurrentNuts`, `estimateEquity` |
+| Bot identity | `apps/game-server/src/services/bots.ts` | Bot users, seating (`addBot`), brain lookup, `isBotUser`, cleanup |
 | Blackjack engine | `packages/blackjack-engine/src/game.ts` | Round lifecycle, `game.ts`, `hand.ts`, `shoe.ts`, `dealer.ts`, `settlement.ts` |
 | Shared types | `packages/shared-types/src/` | `ws.ts`, `game.ts`, `lobby.ts`, `variant.ts`, `blackjack.ts`, `avatar.ts` |
 | Table UI | `apps/web/src/components/PokerTable.tsx` | Felt, seats, cards, badges |
@@ -64,9 +66,9 @@ Multiplayer browser card game app. Guest-first identity (display name at join/cr
 
 | Table | Key columns |
 |---|---|
-| `users` | id, display_name, is_guest |
+| `users` | id, display_name, is_guest, is_bot |
 | `lobbies` | id, host_user_id, invite_code, status, settings (JSONB) |
-| `table_seats` | lobby_id, seat_index, user_id, stack, sitting_out |
+| `table_seats` | lobby_id, seat_index, user_id, stack, sitting_out, is_bot, bot_difficulty, bot_style |
 | `hand_histories` | lobby_id, hand_number, data (JSONB) |
 | `player_sessions` | id, user_id, lobby_id, disconnected_at, expires_at |
 
@@ -91,6 +93,7 @@ Multiplayer browser card game app. Guest-first identity (display name at join/cr
 | `rabbit_hunt` | — (reveal unseen burn cards after hand) |
 | `host_start` / `host_pause` | `{ paused: boolean }` for pause |
 | `host_kick` | `{ seatIndex }` |
+| `host_add_bot` | `{ seatIndex, difficulty }` (host adds an AI opponent; cash games + flip only) |
 | `host_approve_rebuy` | `{ seatIndex, amount }` |
 | `host_adjust_blinds` | `{ small, big }` |
 | `host_set_action_timer` | `{ seconds }` |
@@ -180,6 +183,14 @@ Notable `VariantConfig` fields: `nextHandBombPot`, `runItOut` (1/2/3 runs), `str
 
 **Animations**: `useTableAnimations` returns `{ dealingHandNum, boardDealFromIndex, recentBetSeat, winningSeats, winnerBanner }`. Chip flights driven in `PokerTable.tsx` via ref callbacks + CSS custom properties.
 
+**AI Opponents (Bots)**: Host-only feature for **cash games (holdem/omaha/plo8) and twelve_card_flip only** — not tournaments or blackjack. A bot is a normal seat occupant: a synthetic `users` row flagged `is_bot`, plus a persisted brain on the seat (`is_bot`/`bot_difficulty`/`bot_style` columns on `table_seats`) so behavior survives restarts. Bots have **no WebSocket connection** — the server drives their turns.
+
+- **Difficulty** (`beginner`/`intermediate`/`pro`) = execution quality (Monte-Carlo equity accuracy, pot-odds discipline, mistake rate). **Style** (`tag`/`lag`/`nit`/`station`/`maniac`, randomly assigned) = personality. Types in `shared-types/src/bot.ts`.
+- **Decision logic** is pure in `poker-engine/src/bot.ts` (`decidePokerAction`) — unit-tested in `bot.test.ts`. Hard rule: `holdsCurrentNuts` makes a bot **never fold the best possible hand for the visible board**, at any difficulty.
+- **Turn driver** (`handler.ts`): `driveTurn` routes the next actor to `scheduleBotTurn` (AI, randomized "thinking" delay) or `scheduleActionTimer` (human). `scheduleBotTurn` shares the action-timer slot + generation counter, so the two are mutually exclusive. All action paths (human `game_action`, timer auto-act, bot turn) funnel through `afterActionApplied`, which chains consecutive bots. `scheduleActionTimer` early-returns for bot seats (`isBotUser`).
+- **Add flow**: client `host_add_bot` → `addBot()` in `bots.ts` creates the user, picks a random style + name + avatar, seats via `sitAtSeat`, persists the brain via `setSeatBotFields`. Cash games show a difficulty modal (`AddBotPrompt.tsx`); flip adds directly (no betting decisions there).
+- **Lifecycle**: busted bots auto-rebuy to the buy-in at hand end (`processBotRebuys`); occasional emoji reactions (`maybeBotReactions`); bot `users` rows are deleted on kick and on lobby teardown (`deleteBotUsersForLobby`). Bots show `isConnected: true` in `toSummary` so they don't render as disconnected.
+
 **Cleanup Services** (started at boot):
 
 - `guest-cleanup.ts`: deletes guest accounts older than `GUEST_EXPIRY_HOURS` (default 48h) with no active sessions.
@@ -198,6 +209,7 @@ Notable `VariantConfig` fields: `nextHandBombPot`, `runItOut` (1/2/3 runs), `str
 | Action timer | `scheduleActionTimer`/`cancelActionTimer` in `handler.ts`; `getAutoAction` in `game-manager.ts` |
 | Action badges | `seatLastActions` in `game-manager.ts`; CSS in `styles.css` |
 | Player badges | `session-stats.ts`, badge types in `shared-types/src/game.ts` |
+| AI opponents (bots) | Decision logic `poker-engine/src/bot.ts`; identity/seating `services/bots.ts`; turn driver (`driveTurn`/`scheduleBotTurn`/`afterActionApplied`) + `host_add_bot` in `ws/handler.ts`; UI `AddBotPrompt.tsx` + `PokerTable.tsx`/`TwelveCardFlip.tsx` |
 | Chat | `services/chat.ts`, `components/ChatPanel.tsx` |
 | Run It Out | `game-manager.ts` (`applyMultipleRunouts`), `RunItOutPrompt.tsx` |
 | DB schema | `db/schema.ts` + `migrate.ts` |

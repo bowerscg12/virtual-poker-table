@@ -26,6 +26,7 @@ import { SideBetChallengePrompt } from '../components/SideBetChallengePrompt';
 import { SideBetResultModal } from '../components/SideBetResultModal';
 import { ShowCardsModal } from '../components/ShowCardsModal';
 import { BombPotPrompt } from '../components/BombPotPrompt';
+import { AddBotPrompt } from '../components/AddBotPrompt';
 import { PineapplePrompt } from '../components/PineapplePrompt';
 import { RunItOutPrompt } from '../components/RunItOutPrompt';
 import { SessionResultsModal } from '../components/SessionResultsModal';
@@ -56,6 +57,8 @@ export default function TablePage() {
   const [donationNotice, setDonationNotice] = useState<string | null>(null);
   const [cardsRevealed, setCardsRevealed] = useState(false);
   const [sideBetTarget, setSideBetTarget] = useState<{ seatIndex: number; displayName: string } | null>(null);
+  // Seat index for which the host is choosing a bot difficulty (null = modal closed).
+  const [addBotSeat, setAddBotSeat] = useState<number | null>(null);
 
   const {
     connected,
@@ -409,6 +412,7 @@ export default function TablePage() {
               anim={anim}
               isHost={isHost}
               onDealAgain={() => send({ type: 'host_start' })}
+              onAddBot={isHost ? (seatIndex) => send({ type: 'host_add_bot', seatIndex, difficulty: 'intermediate' }) : undefined}
               onExit={() => send({ type: 'cash_out' })}
               soundEnabled={settings.soundEffects}
             />
@@ -425,6 +429,7 @@ export default function TablePage() {
               onMoveSeat={(from, to) => send({ type: 'host_move_player', fromSeatIndex: from, toSeatIndex: to })}
               onWhisper={handleWhisperRequest}
               onSideBetChallenge={mySeat ? (seatIndex, displayName) => setSideBetTarget({ seatIndex, displayName }) : undefined}
+              onAddBot={isHost ? (seatIndex) => setAddBotSeat(seatIndex) : undefined}
               myBlindRevealed={cardsRevealed}
             />
           )}
@@ -585,6 +590,17 @@ export default function TablePage() {
             send({ type: 'donate_chips', recipientSeatIndex, amount, donationId: crypto.randomUUID() })
           }
           onClose={() => setDonateOpen(false)}
+        />
+      )}
+
+      {addBotSeat !== null && (
+        <AddBotPrompt
+          seatIndex={addBotSeat}
+          onSelect={(difficulty) => {
+            send({ type: 'host_add_bot', seatIndex: addBotSeat, difficulty });
+            setAddBotSeat(null);
+          }}
+          onCancel={() => setAddBotSeat(null)}
         />
       )}
 

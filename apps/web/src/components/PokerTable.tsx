@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import type { BadgeType, Card, LobbySummary, PublicTableState, ChatMessage, PlayerActionType, TableReaction } from '@vct/shared-types';
+import { BOT_STYLE_LABELS } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ChipStack } from './ChipStack';
 import { WinnerBanner } from './WinnerBanner';
@@ -68,6 +69,8 @@ interface Props {
   onMoveSeat?: (fromSeatIndex: number, toSeatIndex: number) => void;
   onWhisper?: (userId: string, displayName: string) => void;
   onSideBetChallenge?: (seatIndex: number, displayName: string) => void;
+  /** Host-only: open the add-bot flow for an empty seat. */
+  onAddBot?: (seatIndex: number) => void;
   myBlindRevealed?: boolean;
 }
 
@@ -94,8 +97,11 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, isHost, handActive, onMoveSeat, onWhisper, onSideBetChallenge, myBlindRevealed }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, isHost, handActive, onMoveSeat, onWhisper, onSideBetChallenge, onAddBot, myBlindRevealed }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 8;
+  // Host may drop AI opponents into empty seats (cash games only; never tournaments/blackjack).
+  const botsAllowed = !!isHost && !!onAddBot && !lobby?.tournamentId
+    && lobby?.settings.game !== 'blackjack' && lobby?.settings.game !== 'twelve_card_flip';
   const seats = lobby?.seats ?? Array.from({ length: maxSeats }, (_, i) => ({
     seatIndex: i,
     userId: null,
@@ -501,6 +507,17 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
                   {seat.displayName ?? (occupied ? 'Player' : `Seat ${seat.seatIndex + 1}`)}
                 </strong>
 
+                {occupied && seat.isBot && (
+                  <span
+                    className="bot-tag"
+                    role="img"
+                    aria-label={seat.botStyle ? `AI opponent — ${BOT_STYLE_LABELS[seat.botStyle]}` : 'AI opponent'}
+                    title={seat.botStyle ? `AI — ${BOT_STYLE_LABELS[seat.botStyle]}` : 'AI opponent'}
+                  >
+                    🤖
+                  </span>
+                )}
+
                 {activeStatsTip === seat.seatIndex && occupied && (gs?.sessionStats || (!isMe && (onWhisper || onSideBetChallenge))) && (
                   <div className="seat-stats-overlay">
                     {gs?.sessionStats && (
@@ -551,6 +568,19 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
                 )}
                 {occupied && stack > 0 && <ChipStack amount={stack} />}
                 {!occupied && <span className="seat-empty-label">Open</span>}
+                {!occupied && botsAllowed && (
+                  <button
+                    type="button"
+                    className="add-bot-btn"
+                    title="Add AI opponent"
+                    aria-label={`Add AI opponent to seat ${seat.seatIndex + 1}`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onAddBot!(seat.seatIndex); }}
+                  >
+                    <span aria-hidden="true">🤖</span>
+                    <span className="add-bot-btn__label">Add bot</span>
+                  </button>
+                )}
                 {gs?.betThisStreet ? (
                   <span
                     key={`bet-${seat.seatIndex}-${gs.betThisStreet}`}

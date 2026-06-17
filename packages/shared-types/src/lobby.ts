@@ -1,5 +1,6 @@
 import type { VariantConfig } from './variant.js';
 import type { AvatarConfig } from './avatar.js';
+import type { BotStyle } from './bot.js';
 
 export type LobbyStatus = 'open' | 'playing' | 'paused' | 'closed';
 
@@ -25,6 +26,10 @@ export interface TableSeat {
   waitingForReentryBlind: boolean;
   /** Player has opted to play their next dealt hand without seeing their hole cards */
   nextHandBlind: boolean;
+  /** True when this seat is occupied by an AI opponent (server-driven, no socket). */
+  isBot?: boolean;
+  /** Playstyle of the bot in this seat — exposed so the UI can label it. Difficulty stays server-side. */
+  botStyle?: BotStyle;
 }
 
 export interface LobbySummary {

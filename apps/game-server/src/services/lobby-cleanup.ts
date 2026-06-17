@@ -4,6 +4,7 @@ import { handHistories, lobbies, playerSessions, tableSeats } from '../db/schema
 import { keys, redisDel } from '../store/redis.js';
 import { memoryStore } from '../store/memory-fallback.js';
 import { isMemoryMode } from './lobby.js';
+import { deleteBotUsersForLobby, unregisterBotUser } from './bots.js';
 import { SEAT_RELEASE_MS } from './session.js';
 
 /**
@@ -15,6 +16,9 @@ import { SEAT_RELEASE_MS } from './session.js';
  * intermission timer, etc.) before calling this.
  */
 export async function deleteLobby(lobbyId: string): Promise<void> {
+  // Remove the lobby's bot user rows first (while its seats still exist).
+  await deleteBotUsersForLobby(lobbyId);
+
   await Promise.all([
     redisDel(keys.tableState(lobbyId)),
     redisDel(keys.presence(lobbyId)),
@@ -121,6 +125,7 @@ export async function cleanupAbandonedLobbies(): Promise<number> {
   let count = 0;
   for (let i = 0; i < toDelete.length; i += BATCH) {
     const batch = toDelete.slice(i, i + BATCH);
+    await Promise.all(batch.map((id) => deleteBotUsersForLobby(id)));
     await Promise.all(
       batch.flatMap(id => [
         redisDel(keys.tableState(id)),
@@ -178,6 +183,16 @@ function cleanupAbandonedLobbiesMemory(): number {
 }
 
 function purgeMemoryLobby(lobbyId: string, inviteCode: string): void {
+  // Remove the lobby's bot user rows (and their cache entries) before dropping the lobby.
+  const lobby = memoryStore.lobbies.get(lobbyId);
+  if (lobby) {
+    for (const seat of lobby.seats) {
+      if (seat.isBot && seat.userId) {
+        unregisterBotUser(seat.userId);
+        memoryStore.users.delete(seat.userId);
+      }
+    }
+  }
   memoryStore.lobbies.delete(lobbyId);
   memoryStore.inviteIndex.delete(inviteCode);
   memoryStore.handHistories = memoryStore.handHistories.filter(h => h.lobbyId !== lobbyId);

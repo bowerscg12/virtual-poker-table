@@ -61,6 +61,10 @@ async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS waiting_for_reentry_blind BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS next_hand_blind BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS seated_at TIMESTAMP;
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS bot_difficulty VARCHAR(16);
+      ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS bot_style VARCHAR(16);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT false;
     `);
   } catch (err) {
     console.error('[schema] Failed to apply column updates:', err);
@@ -111,11 +115,13 @@ function toSummary(lobby: MemoryLobby, connected: Set<string> = new Set()): Lobb
         avatar: u?.avatar,
         stack: s.stack,
         sittingOut: s.sittingOut,
-        isConnected: s.userId ? connected.has(s.userId) : false,
+        isConnected: s.isBot ? true : s.userId ? connected.has(s.userId) : false,
         sitOutNextHand: s.sitOutNextHand,
         sitOutBlindOwed: s.sitOutBlindOwed,
         waitingForReentryBlind: s.waitingForReentryBlind,
         nextHandBlind: s.nextHandBlind,
+        isBot: s.isBot ?? false,
+        botStyle: s.botStyle,
       };
     }),
     createdAt: lobby.createdAt,
@@ -206,11 +212,13 @@ async function pgToSummary(lobbyId: string, connected: Set<string> = new Set()):
       avatar,
       stack: s.stack,
       sittingOut: s.sittingOut,
-      isConnected: s.userId ? connected.has(s.userId) : false,
+      isConnected: s.isBot ? true : s.userId ? connected.has(s.userId) : false,
       sitOutNextHand: s.sitOutNextHand,
       sitOutBlindOwed: s.sitOutBlindOwed,
       waitingForReentryBlind: s.waitingForReentryBlind,
       nextHandBlind: s.nextHandBlind ?? false,
+      isBot: s.isBot ?? false,
+      botStyle: (s.botStyle as TableSeat['botStyle']) ?? undefined,
     });
   }
   return {
@@ -669,6 +677,33 @@ export async function sitAtSeat(
   return (await getLobbyById(lobbyId))!;
 }
 
+/**
+ * Mark a freshly-seated occupant as an AI opponent and persist its brain (difficulty + style).
+ * Call immediately after {@link sitAtSeat} succeeds for a bot user.
+ */
+export async function setSeatBotFields(
+  lobbyId: string,
+  userId: string,
+  difficulty: import('@vct/shared-types').BotDifficulty,
+  style: import('@vct/shared-types').BotStyle
+): Promise<void> {
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    const seat = mem?.seats.find((s) => s.userId === userId);
+    if (seat) {
+      seat.isBot = true;
+      seat.botDifficulty = difficulty;
+      seat.botStyle = style;
+    }
+    return;
+  }
+  const db = getDb();
+  await db
+    .update(tableSeats)
+    .set({ isBot: true, botDifficulty: difficulty, botStyle: style })
+    .where(and(eq(tableSeats.lobbyId, lobbyId), eq(tableSeats.userId, userId)));
+}
+
 /** Seat a player in a tournament table, bypassing the cash-game buy-in validation. */
 export async function sitTournamentPlayer(
   lobbyId: string,
@@ -730,6 +765,9 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
       seat.waitingForReentryBlind = false;
       seat.nextHandBlind = false;
       seat.seatedAt = null;
+      seat.isBot = false;
+      seat.botDifficulty = undefined;
+      seat.botStyle = undefined;
     }
     if (kickedUserId) reassignMemoryHostIfLeft(lobby, kickedUserId);
     return toSummary(lobby);
@@ -739,7 +777,7 @@ export async function kickSeat(lobbyId: string, seatIndex: number): Promise<Lobb
   const seat = seats.find((s) => s.seatIndex === seatIndex);
   const kickedUserId = seat?.userId ?? null;
   if (seat) {
-    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, nextHandBlind: false, seatedAt: null }).where(eq(tableSeats.id, seat.id));
+    await db.update(tableSeats).set({ userId: null, stack: 0, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, nextHandBlind: false, seatedAt: null, isBot: false, botDifficulty: null, botStyle: null }).where(eq(tableSeats.id, seat.id));
     if (kickedUserId) {
       const [lobbyRow] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
       if (lobbyRow?.hostUserId === kickedUserId) {
@@ -954,6 +992,9 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
       seat.waitingForReentryBlind = false;
       seat.nextHandBlind = false;
       seat.seatedAt = null;
+      seat.isBot = false;
+      seat.botDifficulty = undefined;
+      seat.botStyle = undefined;
     }
     reassignMemoryHostIfLeft(mem, userId);
     return toSummary(mem);
@@ -964,7 +1005,7 @@ export async function removeSeat(lobbyId: string, userId: string): Promise<Lobby
   if (seat) {
     await db
       .update(tableSeats)
-      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, nextHandBlind: false, seatedAt: null })
+      .set({ userId: null, stack: 0, sittingOut: false, sitOutNextHand: false, sitOutBlindOwed: false, waitingForReentryBlind: false, nextHandBlind: false, seatedAt: null, isBot: false, botDifficulty: null, botStyle: null })
       .where(eq(tableSeats.id, seat.id));
     const [lobbyRow] = await db.select().from(lobbies).where(eq(lobbies.id, lobbyId));
     if (lobbyRow?.hostUserId === userId) {

@@ -1,7 +1,16 @@
 import type { WebSocket } from 'ws';
-import type { Card, ClientMessage, ServerMessage, VariantConfig } from '@vct/shared-types';
+import type { Card, ClientMessage, PlayerActionType, ServerMessage, VariantConfig } from '@vct/shared-types';
 import { getTableBuyIn, isReactionEmoji } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
+import { decidePokerAction } from '@vct/poker-engine';
+import {
+  addBot,
+  deleteBotUser,
+  getSeatBotBrain,
+  isBotUser,
+  registerLobbyBots,
+  variantSupportsBots,
+} from '../services/bots.js';
 import {
   cancelAllBjTimers,
   handleBjMessage,
@@ -1337,6 +1346,9 @@ function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: Game
   const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
   if (!seat || seat.folded || seat.allIn) return;
 
+  // AI seats are driven by scheduleBotTurn, never the human action/grace timer.
+  if (isBotUser(seat.userId)) return;
+
   const timerSec = config.actionTimerSec;
   const isConnected = connectedUserSockets.has(seat.userId);
 
@@ -1371,6 +1383,124 @@ function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: Game
   }, durationMs);
 
   actionTimers.set(lobbyId, timer);
+}
+
+/** Randomized "thinking" delay before a bot acts, so play feels human-paced. */
+function botThinkDelayMs(config: VariantConfig): number {
+  if (config.game === 'twelve_card_flip') return 500 + Math.floor(Math.random() * 900);
+  return 700 + Math.floor(Math.random() * 1700);
+}
+
+/**
+ * Schedule an AI seat's move after a short, randomized delay. Shares the action-timer slot and
+ * generation counter with {@link scheduleActionTimer} so the human timer and bot turn are mutually
+ * exclusive and cancel cleanly (cancelActionTimer invalidates either).
+ */
+function scheduleBotTurn(lobbyId: string, config: VariantConfig, state: GameTableState): void {
+  cancelActionTimer(lobbyId); // increments generation; clears any pending human/bot timer
+  if (state.actionSeatIndex === null) return;
+  if (state.street === 'complete' || state.street === 'waiting') return;
+  const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
+  if (!seat) return;
+  const { userId, seatIndex } = seat;
+  const gen = actionTimerGenerations.get(lobbyId) ?? 0;
+  const timer = setTimeout(() => {
+    if ((actionTimerGenerations.get(lobbyId) ?? 0) !== gen) return;
+    runBotTurn(lobbyId, userId, seatIndex, config).catch(() => {});
+  }, botThinkDelayMs(config));
+  actionTimers.set(lobbyId, timer);
+}
+
+/**
+ * Compute and apply an AI seat's action via the pure decision engine, then route the result through
+ * {@link afterActionApplied} (which chains the next actor — possibly another bot). Any decision error
+ * falls back to a safe check/fold so a bug can never stall the table.
+ */
+async function runBotTurn(
+  lobbyId: string,
+  userId: string,
+  seatIndex: number,
+  config: VariantConfig
+): Promise<void> {
+  actionTimers.delete(lobbyId);
+  const state = await getActiveGame(lobbyId);
+  if (!state || state.actionSeatIndex !== seatIndex) return; // someone/something else moved
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.status !== 'playing') return;
+
+  const preBoardCount = state.board.length;
+  const preActionStreet = state.street;
+
+  let decision: { action: PlayerActionType; amount?: number };
+  if (config.game === 'twelve_card_flip') {
+    decision = { action: 'flip_card' };
+  } else {
+    const brain = await getSeatBotBrain(lobbyId, seatIndex);
+    if (!brain) {
+      decision = { action: getAutoAction(state, config, seatIndex) };
+    } else {
+      try {
+        decision = decidePokerAction(state, config, seatIndex, brain);
+      } catch (err) {
+        console.error(`[bot] decision error lobby=${lobbyId} seat=${seatIndex}:`, err);
+        decision = { action: getAutoAction(state, config, seatIndex) };
+      }
+    }
+  }
+
+  let result = await processGameAction(lobbyId, config, userId, crypto.randomUUID(), decision.action, decision.amount);
+  if ('error' in result) {
+    // The chosen action was illegal in the live state — never stall: take the safe auto-action.
+    const fallback = getAutoAction(state, config, seatIndex);
+    result = await processGameAction(lobbyId, config, userId, crypto.randomUUID(), fallback);
+    if ('error' in result) {
+      console.error(`[bot] stuck turn lobby=${lobbyId} seat=${seatIndex} (${result.error})`);
+      return;
+    }
+    recordAction(lobbyId, userId, fallback, preActionStreet);
+  } else {
+    recordAction(lobbyId, userId, decision.action, preActionStreet);
+  }
+  await afterActionApplied(lobbyId, config, result.state, preBoardCount);
+}
+
+/** Hand the next turn to the bot driver (AI seat) or the human action timer. */
+function driveTurn(lobbyId: string, config: VariantConfig, state: GameTableState): void {
+  if (state.actionSeatIndex === null) {
+    scheduleActionTimer(lobbyId, config, state);
+    return;
+  }
+  const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
+  if (seat && isBotUser(seat.userId)) {
+    scheduleBotTurn(lobbyId, config, state);
+  } else {
+    scheduleActionTimer(lobbyId, config, state);
+  }
+}
+
+/**
+ * Unified post-action routing shared by all action paths (human game_action, timer auto-act, and
+ * bot turns). Advances the hand: multi-runout prompt, all-in runout, hand completion, or the next
+ * turn (bot or human) plus a state broadcast.
+ */
+async function afterActionApplied(
+  lobbyId: string,
+  config: VariantConfig,
+  state: GameTableState,
+  preBoardCount: number
+): Promise<void> {
+  if (state.pendingMultiRunout) {
+    await startRunItOutPrompt(lobbyId, state, config);
+  } else if (state.street === 'complete') {
+    if (isAllInRunoutTrigger(state, preBoardCount)) {
+      await startAllInRunout(lobbyId, state, config, preBoardCount);
+    } else {
+      await handleHandComplete(lobbyId, state, config);
+    }
+  } else {
+    driveTurn(lobbyId, config, state);
+    await broadcastTableState(lobbyId);
+  }
 }
 
 /** Cancel any running between-hand countdown. Increments generation to invalidate stale callbacks. */
@@ -1430,7 +1560,8 @@ async function onIntermissionExpired(lobbyId: string, _config: VariantConfig): P
   rabbitHuntPending.delete(lobbyId);
   await applyBlindHandFlags(lobbyId, result);
   recordHandStart(lobbyId, result);
-  scheduleActionTimer(lobbyId, lobby.settings, result);
+  registerLobbyBots(lobby);
+  driveTurn(lobbyId, lobby.settings, result);
   const connectedPlayers = getConnectedSet(lobbyId);
   const startedLobby = await getLobbyById(lobbyId, connectedPlayers);
   if (startedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));
@@ -1462,18 +1593,7 @@ async function onActionTimerExpired(
 
   recordAction(lobbyId, userId, action, preActionStreet);
 
-  if (result.state.pendingMultiRunout) {
-    await startRunItOutPrompt(lobbyId, result.state, config);
-  } else if (result.state.street === 'complete') {
-    if (isAllInRunoutTrigger(result.state, preBoardCount)) {
-      await startAllInRunout(lobbyId, result.state, config, preBoardCount);
-    } else {
-      await handleHandComplete(lobbyId, result.state, config);
-    }
-  } else {
-    scheduleActionTimer(lobbyId, config, result.state);
-    await broadcastTableState(lobbyId);
-  }
+  await afterActionApplied(lobbyId, config, result.state, preBoardCount);
 }
 
 /**
@@ -1786,6 +1906,58 @@ async function processPendingRebuys(lobbyId: string): Promise<void> {
 }
 
 /**
+ * Auto-rebuy any busted bot back to the table buy-in so the table stays full without host action.
+ * Mirrors a human rebuy (re-entry blind owed). Skipped for Multi-Card Flip, which has no rebuys.
+ */
+async function processBotRebuys(lobbyId: string): Promise<void> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby || lobby.status !== 'playing') return;
+  if (lobby.settings.game === 'twelve_card_flip') return;
+  const buyIn = getTableBuyIn(lobby.settings);
+  const game = await getActiveGame(lobbyId);
+  for (const seat of lobby.seats) {
+    if (!seat.isBot || !seat.userId) continue;
+    const gameSeat = game?.seats.find((s) => s.userId === seat.userId);
+    const stack = gameSeat ? gameSeat.stack : seat.stack;
+    if (stack > 0) continue;
+    await rebuyPlayer(lobbyId, seat.userId, buyIn);
+    await updateSeatStackAfterRebuy(lobbyId, seat.userId, buyIn);
+    await setWaitingForReentryBlind(lobbyId, seat.userId, true);
+    recordRebuy(lobbyId, seat.userId, buyIn);
+  }
+}
+
+const BOT_WIN_EMOJIS = ['😎', '🔥', '💯', '🎉', '🙌', '👏'] as const;
+const BOT_LOSS_EMOJIS = ['😭', '😡', '🤯', '👎'] as const;
+
+/**
+ * Occasionally fire an emoji reaction for a bot at hand end — a win celebration for big winners or
+ * a groan for big losers — so AI seats feel alive. Transient (never stored/replayed), low frequency.
+ */
+async function maybeBotReactions(lobbyId: string, state: GameTableState): Promise<void> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return;
+  const pot = state.seats.reduce((a, s) => a + s.totalBet, 0);
+  if (pot <= 0) return;
+  const winners = new Set(state.lastWinningSeatIndices);
+
+  for (const seat of lobby.seats) {
+    if (!seat.isBot || !seat.userId) continue;
+    const won = seat.seatIndex !== undefined && winners.has(seat.seatIndex);
+    const payout = state.winnerPayouts.filter((p) => p.seatIndex === seat.seatIndex).reduce((a, p) => a + p.amount, 0);
+    let emoji: string | null = null;
+    if (won && payout >= pot * 0.5 && Math.random() < 0.25) {
+      emoji = BOT_WIN_EMOJIS[Math.floor(Math.random() * BOT_WIN_EMOJIS.length)];
+    } else if (!won && pot >= getTableBuyIn(lobby.settings) && Math.random() < 0.12) {
+      emoji = BOT_LOSS_EMOJIS[Math.floor(Math.random() * BOT_LOSS_EMOJIS.length)];
+    }
+    if (!emoji || !isReactionEmoji(emoji)) continue;
+    const reaction = createReaction(seat.userId, seat.displayName ?? 'Bot', emoji, seat.seatIndex);
+    broadcastLobby(lobbyId, () => ({ type: 'reaction', reaction }));
+  }
+}
+
+/**
  * Apply a show/muck decision for a fold-win hand, broadcast the outcome,
  * record hand history, and finally start the between-hand intermission.
  */
@@ -1966,8 +2138,12 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
     broadcastLobby(lobbyId, () => ({ type: 'hand_complete', winners: payouts }));
   }
 
+  // Bot personality: occasional emoji reaction to the result (transient, low frequency).
+  await maybeBotReactions(lobbyId, state);
+
   await broadcastTableState(lobbyId);
   await processPendingRebuys(lobbyId);
+  await processBotRebuys(lobbyId);
 
   // Sync final chip counts to the lobby store (both in-memory and Postgres) so that:
   //   1. seatedPlayers() in the next startHand correctly excludes zero-stack players.
@@ -2569,7 +2745,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       await applyBlindHandFlags(st.lobbyId, result);
       recordHandStart(st.lobbyId, result);
       if (isFirstStart) await updateLobbyStatus(st.lobbyId, 'playing');
-      scheduleActionTimer(st.lobbyId, lobby.settings, result);
+      registerLobbyBots(lobby);
+      driveTurn(st.lobbyId, lobby.settings, result);
       const startedLobby = await getLobbyById(st.lobbyId);
       if (startedLobby) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));
       await broadcastTableState(st.lobbyId);
@@ -2635,7 +2812,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
             state.street !== 'waiting'
           ) {
             const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
-            if (seat && !seat.folded && !seat.allIn && (resumedLobby.settings.actionTimerSec ?? 0) > 0) {
+            if (seat && isBotUser(seat.userId)) {
+              // Resume the AI seat's turn through the bot driver (it owns bot timers).
+              registerLobbyBots(resumedLobby);
+              scheduleBotTurn(resumeLobbyId, resumedLobby.settings, state);
+            } else if (seat && !seat.folded && !seat.allIn && (resumedLobby.settings.actionTimerSec ?? 0) > 0) {
               // Use frozen remaining, or fall back to the full configured duration
               const durationMs =
                 actionRemaining !== undefined
@@ -2688,20 +2869,46 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!lobby || lobby.hostUserId !== st.userId) return;
       // Cancel any seat release timer for the kicked player
       const kickedSeat = lobby.seats.find((s) => s.seatIndex === msg.seatIndex);
-      if (kickedSeat?.userId) {
-        const kickReleaseTimer = seatReleaseTimers.get(kickedSeat.userId);
+      const kickedWasBot = !!kickedSeat?.isBot;
+      const kickedUserId = kickedSeat?.userId ?? null;
+      if (kickedUserId && !kickedWasBot) {
+        const kickReleaseTimer = seatReleaseTimers.get(kickedUserId);
         if (kickReleaseTimer) {
           clearTimeout(kickReleaseTimer);
-          seatReleaseTimers.delete(kickedSeat.userId);
+          seatReleaseTimers.delete(kickedUserId);
         }
-        await deleteSessionsByUserId(kickedSeat.userId);
+        await deleteSessionsByUserId(kickedUserId);
       }
       const prevHost = lobby.hostUserId;
       const updated = await kickSeat(st.lobbyId, msg.seatIndex);
+      // Remove the synthetic bot user once its seat is freed.
+      if (kickedUserId && kickedWasBot) await deleteBotUser(kickedUserId);
       if (updated) {
         broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: updated }));
         announceHostChange(st.lobbyId, prevHost, updated);
       }
+      return;
+    }
+
+    case 'host_add_bot': {
+      if (!st.userId || !st.lobbyId) return;
+      const lobby = await getLobbyById(st.lobbyId);
+      if (!lobby || lobby.hostUserId !== st.userId) {
+        send(ws, { type: 'error', message: 'Only the host can add a bot' });
+        return;
+      }
+      if (lobby.tournamentId || !variantSupportsBots(lobby.settings.game)) {
+        send(ws, { type: 'error', message: 'Bots are not available for this table' });
+        return;
+      }
+      const result = await addBot(st.lobbyId, msg.seatIndex, msg.difficulty);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result.lobby }));
+      // If a hand is already running, the bot is dealt in next hand (like a human sit).
+      // If the table is idle between Multi-Card-Flip hands or waiting, no action needed here.
       return;
     }
 
@@ -2778,18 +2985,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       }
       recordAction(st.lobbyId, st.userId, msg.action, preActionStreet);
 
-      if (result.state.pendingMultiRunout) {
-        await startRunItOutPrompt(st.lobbyId, result.state, lobby.settings);
-      } else if (result.state.street === 'complete') {
-        if (isAllInRunoutTrigger(result.state, preBoardCount)) {
-          await startAllInRunout(st.lobbyId, result.state, lobby.settings, preBoardCount);
-        } else {
-          await handleHandComplete(st.lobbyId, result.state, lobby.settings);
-        }
-      } else {
-        scheduleActionTimer(st.lobbyId, lobby.settings, result.state);
-        await broadcastTableState(st.lobbyId);
-      }
+      await afterActionApplied(st.lobbyId, lobby.settings, result.state, preBoardCount);
       return;
     }
 

@@ -224,6 +224,12 @@ CREATE INDEX IF NOT EXISTS idx_player_game_mode_stats_user ON player_game_mode_s
 
 -- The 5 cards (Card[]) making up the best hand a player has ever made.
 ALTER TABLE player_lifetime_stats ADD COLUMN IF NOT EXISTS best_hand_cards JSONB;
+
+-- AI opponents (bots): flag on users, brain (difficulty + style) on the seat they occupy.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS bot_difficulty VARCHAR(16);
+ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS bot_style VARCHAR(16);
 `;
 
 async function main() {

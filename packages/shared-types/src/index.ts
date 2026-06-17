@@ -13,3 +13,4 @@ export * from './tournament.js';
 export * from './reaction.js';
 export * from './career-stats.js';
 export * from './side-bets.js';
+export * from './bot.js';

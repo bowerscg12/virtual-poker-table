@@ -7,6 +7,7 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash'),
   avatarUrl: text('avatar_url'),
   isGuest: boolean('is_guest').default(false).notNull(),
+  isBot: boolean('is_bot').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   chipBalance: integer('chip_balance').notNull().default(5000),
   lastDailyClaim: timestamp('last_daily_claim'),
@@ -34,6 +35,9 @@ export const tableSeats = pgTable('table_seats', {
   waitingForReentryBlind: boolean('waiting_for_reentry_blind').default(false).notNull(),
   nextHandBlind: boolean('next_hand_blind').default(false).notNull(),
   seatedAt: timestamp('seated_at'),
+  isBot: boolean('is_bot').default(false).notNull(),
+  botDifficulty: varchar('bot_difficulty', { length: 16 }),
+  botStyle: varchar('bot_style', { length: 16 }),
 });
 
 export const handHistories = pgTable('hand_histories', {

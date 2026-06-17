@@ -24,6 +24,8 @@ interface Props {
   anim: TableAnimState;
   isHost: boolean;
   onDealAgain: () => void;
+  /** Host-only: add an AI opponent to the open seat (difficulty is irrelevant in flip). */
+  onAddBot?: (seatIndex: number) => void;
   onExit: () => void;
   soundEnabled?: boolean;
 }
@@ -135,6 +137,7 @@ export function TwelveCardFlip({
   anim,
   isHost,
   onDealAgain,
+  onAddBot,
   onExit,
   soundEnabled = false,
 }: Props) {
@@ -255,6 +258,18 @@ export function TwelveCardFlip({
               <div className="tcf-lobby__player tcf-lobby__player--empty">
                 <div className="tcf-lobby__empty-seat">?</div>
                 <span className="tcf-lobby__player-name">Waiting…</span>
+                {isHost && onAddBot && (
+                  <button
+                    type="button"
+                    className="btn small tcf-lobby__add-bot"
+                    onClick={() => {
+                      const openSeat = (lobby?.seats ?? []).find((s) => !s.userId);
+                      if (openSeat) onAddBot(openSeat.seatIndex);
+                    }}
+                  >
+                    🤖 Add bot opponent
+                  </button>
+                )}
               </div>
             )}
           </div>

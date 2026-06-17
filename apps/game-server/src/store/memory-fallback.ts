@@ -1,4 +1,4 @@
-import type { AvatarConfig, VariantConfig } from '@vct/shared-types';
+import type { AvatarConfig, BotDifficulty, BotStyle, VariantConfig } from '@vct/shared-types';
 import type { LobbyStatus } from '@vct/shared-types';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
@@ -13,6 +13,8 @@ export interface MemoryUser {
   avatarUrl?: string;
   avatar?: AvatarConfig;
   isGuest: boolean;
+  /** True for AI opponents (no socket; server-driven). */
+  isBot?: boolean;
   createdAt: string;
   chipBalance: number;
   lastDailyClaim: string | null;
@@ -29,6 +31,10 @@ export interface MemorySeat {
   nextHandBlind: boolean;
   /** ISO timestamp when the current occupant took this seat — null when empty. Drives host-succession join order. */
   seatedAt: string | null;
+  /** Bot brain — set only when this seat is occupied by an AI opponent. Cleared when the seat frees. */
+  isBot?: boolean;
+  botDifficulty?: BotDifficulty;
+  botStyle?: BotStyle;
 }
 
 export interface MemoryLobby {
@@ -100,6 +106,7 @@ export function memoryCreateLobby(hostUserId: string, settings: VariantConfig, t
       waitingForReentryBlind: false,
       nextHandBlind: false,
       seatedAt: null,
+      isBot: false,
     })),
     createdAt: new Date().toISOString(),
     tournamentId,
