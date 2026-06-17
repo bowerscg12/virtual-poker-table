@@ -27,6 +27,11 @@ export function formatTimerLabel(sec: number): string {
   return `${m}m ${s}s`;
 }
 
+/** Seconds added to the running action timer each time a player taps their time bank. */
+export const TIME_BANK_EXTENSION_SEC = 30;
+/** Time-bank extensions a player may use per sit-down session (does not refill until they re-sit). */
+export const TIME_BANK_MAX_USES = 3;
+
 export interface BlindsConfig {
   small: number;
   big: number;
@@ -58,6 +63,12 @@ export interface VariantConfig {
   minBuyIn: number;
   maxBuyIn: number;
   actionTimerSec?: number;
+  /**
+   * When true (and an action timer is set), each player may tap a "time bank" during their turn to
+   * extend the running countdown by {@link TIME_BANK_EXTENSION_SEC}s, up to {@link TIME_BANK_MAX_USES}
+   * times per sit-down. Poker variants only (blackjack uses its own handler).
+   */
+  timeBankEnabled?: boolean;
   /** When true, each player is dealt 3 hole cards and must discard one before preflop betting. holdem only. */
   pineapple?: boolean;
   /** Extra community cards dealt in one street (house preset) */

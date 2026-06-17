@@ -18,24 +18,28 @@ const BADGE_ICON: Record<BadgeType, string> = {
   big_stack:       '👑',
   short_stack:     '💸',
   hot_streak:      '🔥',
+  ice_cold:        '🧊',
   calling_station: '📞',
   charlie:         '✂',
   whale:           '🐋',
   maniac:          '💣',
   loose_cannon:    '🎯',
   most_blind_wins: '🙈',
+  chatbot:         '💬',
 };
 
 const BADGE_LABEL: Record<BadgeType, string> = {
   big_stack:       'Big Stack — chip leader at the table',
   short_stack:     'Short Stack — fewest chips at the table',
   hot_streak:      'Hot Streak — 3+ wins in a row',
+  ice_cold:        'Ice Cold — no pot won in 10+ hands',
   calling_station: 'Calling Station — calls the most per hand',
   charlie:         'Charlie — folds preflop the most',
   whale:           'Whale — biggest chip loss this session',
   maniac:          'Maniac — raises the most this session',
   loose_cannon:    'Loose Cannon — plays the most hands (VPIP)',
   most_blind_wins: 'Blind Baller — most hands won while playing blind',
+  chatbot:         'Chatbot — most chat messages & reactions',
 };
 
 function formatActionBadge(action: PlayerActionType, amount?: number): string {
@@ -116,6 +120,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
   const intermissionRemaining = useActionTimer(table?.paused ? undefined : table?.intermissionDeadline);
   const timerSec = lobby?.settings.actionTimerSec ?? 0;
   const isUrgent = remaining !== null && remaining <= 10;
+
+  const dealerSpin = anim.dealerSpin;
 
   const [activeBadgeTip, setActiveBadgeTip] = useState<string | null>(null);
   const [activeStatsTip, setActiveStatsTip] = useState<number | null>(null);
@@ -309,7 +315,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
 
   return (
     <div
-      className={`felt${isRunoutActive ? ' runout-active' : ''}`}
+      className={`felt${isRunoutActive ? ' runout-active' : ''}${dealerSpin ? ' dealer-spin-active' : ''}`}
       ref={feltRef}
       role="region"
       aria-label="Poker table"
@@ -324,6 +330,12 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
             ? <span>Run {table.runout.currentRun ?? 1} of {table.runout.totalRuns}</span>
             : <span>All-In Showdown</span>
           }
+        </div>
+      )}
+
+      {dealerSpin && (
+        <div className="dealer-spin-overlay" aria-live="polite">
+          <span className="dealer-spin-overlay__label">Picking the dealer…</span>
         </div>
       )}
 
@@ -422,6 +434,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
           // Position is always derived from the seat's own index, never the array position
           const x = 50 + 46 * Math.cos(angleStep * seat.seatIndex - Math.PI / 2);
           const y = 50 + 42 * Math.sin(angleStep * seat.seatIndex - Math.PI / 2);
+          // Seats near the top edge can't fit a popup above them — drop it below instead.
+          const statsBelow = y < 40;
 
           const isDraggable = !!(canDragSeats && occupied);
           const isDragTarget = !!(canDragSeats && dragFromSeat !== null && seat.seatIndex !== dragFromSeat);
@@ -437,12 +451,15 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
             isDraggable ? 'host-draggable' : '',
             dragFromSeat === seat.seatIndex ? 'dragging' : '',
             isDragTarget && dragOverSeat === seat.seatIndex ? 'drag-over' : '',
+            dealerSpin && occupied ? 'dealer-spin-dim' : '',
+            dealerSpin?.highlightSeatIndex === seat.seatIndex ? 'dealer-spin-pick' : '',
           ].filter(Boolean).join(' ');
 
           const bubble = seat.userId ? activeBubbles.get(seat.userId) : undefined;
 
-          // Show face-down backs for opponents during active hand (not folded, not complete)
-          const showFaceDownBacks = !isMe && gs && !gs.folded && table?.street !== 'complete' && occupied;
+          // Show face-down backs for opponents during active hand (not folded, not complete).
+          // Suppressed during the dealer spin so the cards appear to be dealt *after* it lands.
+          const showFaceDownBacks = !isMe && gs && !gs.folded && table?.street !== 'complete' && occupied && !dealerSpin;
 
           return (
             <li
@@ -518,7 +535,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
                 )}
 
                 {activeStatsTip === seat.seatIndex && occupied && (gs?.sessionStats || (!isMe && (onWhisper || onSideBetChallenge))) && (
-                  <div className="seat-stats-overlay">
+                  <div className={`seat-stats-overlay${statsBelow ? ' seat-stats-overlay--below' : ''}`}>
                     {gs?.sessionStats && (
                       <>
                         <div className="seat-stats-title">Player Stats</div>
@@ -660,8 +677,9 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
         })}
       </ul>
 
-      {/* Dealer / blind buttons on the felt — physical poker-table style */}
-      {seats.map((seat, i) => {
+      {/* Dealer / blind buttons on the felt — physical poker-table style.
+          Hidden during the dealer spin so they don't reveal the result early. */}
+      {!dealerSpin && seats.map((seat, i) => {
         const gs = table?.seats.find((s) => s.seatIndex === seat.seatIndex);
         if (!gs || (!gs.isDealer && !gs.isSmallBlind && !gs.isBigBlind)) return null;
         const angle = angleStep * i - Math.PI / 2;

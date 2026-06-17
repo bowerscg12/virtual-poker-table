@@ -1287,6 +1287,56 @@ select option {
   background: rgba(74, 144, 226, 0.2) !important;
 }
 
+/* ── First-hand dealer spin (slot-machine spotlight) ─────────────────────── */
+
+/* Non-selected seats recede while the spotlight hops around the table. */
+.seat.dealer-spin-dim {
+  opacity: 0.4;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* The seat the spotlight is currently on: bright, lifted, gold halo. Defined after
+   .dealer-spin-dim so it wins for seats that carry both classes. */
+.seat.dealer-spin-pick {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.12);
+  z-index: 30;
+}
+
+.seat.dealer-spin-pick .seat-info {
+  background: rgba(212, 175, 55, 0.45);
+  border-color: #ffd860;
+  box-shadow: 0 0 14px 4px rgba(255, 216, 96, 0.85), 0 0 40px 8px rgba(255, 216, 96, 0.35);
+}
+
+.dealer-spin-overlay {
+  position: absolute;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+}
+
+.dealer-spin-overlay__label {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 216, 96, 0.6);
+  border-radius: 8px;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 224, 150, 0.97);
+  animation: dealer-spin-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes dealer-spin-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
 /* ── Chat bubbles — appear above each speaking player's seat ─ */
 
 .chat-bubble {
@@ -2645,12 +2695,14 @@ select option {
 .seat-badge--big_stack       { background: rgba(212, 175, 55, 0.85); }
 .seat-badge--short_stack     { background: rgba(180, 55, 55, 0.85); }
 .seat-badge--hot_streak      { background: rgba(220, 95, 0, 0.85); }
+.seat-badge--ice_cold        { background: rgba(70, 150, 210, 0.85); }
 .seat-badge--calling_station { background: rgba(45, 115, 195, 0.85); }
 .seat-badge--charlie         { background: rgba(90, 90, 90, 0.85); }
 .seat-badge--whale           { background: rgba(25, 75, 155, 0.85); }
 .seat-badge--maniac          { background: rgba(175, 35, 55, 0.85); }
 .seat-badge--loose_cannon    { background: rgba(115, 50, 175, 0.85); }
 .seat-badge--most_blind_wins { background: rgba(109, 40, 217, 0.85); }
+.seat-badge--chatbot         { background: rgba(20, 160, 130, 0.85); }
 
 /* Tooltip */
 .seat-badge-tip {
@@ -3604,6 +3656,19 @@ select option {
   border-top-color: rgba(255, 255, 255, 0.18);
 }
 
+/* Top-row seats can't fit the popup above them — drop it below with the arrow flipped up. */
+.seat-stats-overlay--below {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+
+.seat-stats-overlay--below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: rgba(255, 255, 255, 0.18);
+}
+
 .seat-stats-title {
   color: rgba(255, 255, 255, 0.55);
   font-size: 0.58rem;
@@ -3657,10 +3722,40 @@ select option {
 
 /* ── 12 Card Flip ────────────────────────────────────────────────────────── */
 
-/* Let table-main hand its height down to the flip layout */
+/* Let table-main hand its height down to the flip layout.
+   Pin it to the full viewport (minus the 48px header) so the gameplay always
+   fills the visible screen and the host controls sit below the fold. */
+/* Track the table header's height (it shrinks at narrow widths / short heights)
+   so the gameplay can fill exactly the space below it. The override order below
+   mirrors the actual .table-header media queries. */
+.table-layout--tcf {
+  --tcf-header-h: 48px;
+}
+
 .table-layout--tcf .table-main {
   display: flex;
   flex-direction: column;
+  /* min-height (not height) overrides both the flex-basis:0 from .table-main
+     and the flip layout's min-content floor, so the gameplay always fills the
+     viewport below the header and the host controls sit below the fold. */
+  min-height: calc(100dvh - var(--tcf-header-h));
+}
+
+/* Make the felt wrapper a flex column so the flip layout's flex:1 expands to
+   fill the full gameplay height (no dead space below the hands). */
+.table-layout--tcf .table-felt-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Header shrinks to 40px on short screens, then 44px at ≤640px wide — keep this
+   order so the narrow override wins when both match (matches .table-header). */
+@media (max-height: 500px) {
+  .table-layout--tcf { --tcf-header-h: 40px; }
+}
+@media (max-width: 640px) {
+  .table-layout--tcf { --tcf-header-h: 44px; }
 }
 
 .twelve-card-flip {
@@ -3812,11 +3907,36 @@ select option {
   50%      { box-shadow: inset 0 0 110px rgba(210, 40, 25, 0.7); }
 }
 
+/* ── Header (pot + status) ─────────────────────────────────── */
+.tcf-header {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.1rem;
+  padding: 0.1rem 0.3rem;
+}
+
+/* ── Arena — two hands side-by-side, split by the eval bar ───── */
+.tcf-arena {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: clamp(0.3rem, 1vw, 0.7rem);
+}
+
 /* ── Player panels ─────────────────────────────────────────── */
 .tcf-player {
   position: relative;
   z-index: 1;
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -3843,6 +3963,21 @@ select option {
   background: rgba(212, 175, 55, 0.12);
   box-shadow: 0 0 26px rgba(212, 175, 55, 0.55);
   animation: tcf-winner-glow 1.2s ease-in-out infinite;
+}
+
+/* Dealer spin: the spotlight ping-pongs between the two panels and lands on the
+   player who goes first. Defined after --spin-dim so the pick wins when both apply. */
+.tcf-player--spin-dim {
+  opacity: 0.4;
+  transition: opacity 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.tcf-player--spin-pick {
+  opacity: 1;
+  border-color: #ffd860;
+  background: rgba(212, 175, 55, 0.18);
+  box-shadow: 0 0 22px 4px rgba(255, 216, 96, 0.7);
+  transition: opacity 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
 }
 
 @keyframes tcf-winner-glow {
@@ -4084,18 +4219,7 @@ select option {
   100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
 }
 
-/* ── Center bar ────────────────────────────────────────────── */
-.tcf-center {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.5rem;
-}
-
+/* ── Pot / status (live in the slim header) ────────────────── */
 .tcf-center__pot {
   display: flex;
   align-items: baseline;
@@ -4119,98 +4243,92 @@ select option {
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* Tug-of-war momentum bar */
-.tcf-tug {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  max-width: 520px;
-}
-
-.tcf-tug__end {
+/* ── Vertical evaluation bar (divides the two hands) ─────────── */
+.tcf-evalbar {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  font-size: 0.7rem;
+  align-items: center;
+  gap: 0.3rem;
+  width: clamp(40px, 8vw, 60px);
+}
+
+.tcf-evalbar__end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.68rem;
   color: rgba(255, 255, 255, 0.6);
-  white-space: nowrap;
-  max-width: 32%;
   line-height: 1.1;
+  max-width: 100%;
+  flex-shrink: 0;
 }
 
-.tcf-tug__end--me {
-  align-items: flex-end;
-}
-
-.tcf-tug__end-name {
+.tcf-evalbar__name {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.tcf-tug__pct {
+.tcf-evalbar__pct {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);
 }
 
-.tcf-tug__end--me .tcf-tug__pct {
+.tcf-evalbar__end--me .tcf-evalbar__pct {
   color: var(--gold);
 }
 
-.tcf-tug__caption {
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.4);
-  margin-top: -0.15rem;
-}
-
-.tcf-tug__track {
+.tcf-evalbar__track {
   position: relative;
   flex: 1;
-  height: 8px;
+  min-height: 0;
+  width: 8px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.1);
 }
 
-.tcf-tug__fill {
+.tcf-evalbar__fill {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  left: 0;
+  right: 0;
   border-radius: 6px;
-  transition: left 0.45s ease, right 0.45s ease, background 0.3s;
+  transition: top 0.45s ease, bottom 0.45s ease, background 0.3s;
 }
 
-.tcf-tug__fill--me {
-  background: linear-gradient(90deg, rgba(212, 175, 55, 0.35), var(--gold));
+.tcf-evalbar__fill--me {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.35), var(--gold));
 }
 
-.tcf-tug__fill--opp {
-  background: linear-gradient(90deg, var(--danger), rgba(200, 68, 68, 0.35));
+.tcf-evalbar__fill--opp {
+  background: linear-gradient(180deg, var(--danger), rgba(200, 68, 68, 0.35));
 }
 
-.tcf-tug__knob {
+.tcf-evalbar__knob {
   position: absolute;
-  top: 50%;
+  left: 50%;
   width: 16px;
   height: 16px;
   border-radius: 50%;
   background: #fff;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.5), 0 0 6px rgba(255, 255, 255, 0.6);
-  transition: left 0.45s cubic-bezier(0.2, 0.7, 0.3, 1.1);
+  transition: top 0.45s cubic-bezier(0.2, 0.7, 0.3, 1.1);
   z-index: 2;
 }
 
-.tcf-tug__center-mark {
+.tcf-evalbar__center-mark {
   position: absolute;
-  left: 50%;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  transform: translateX(-50%);
+  top: 50%;
+  left: -3px;
+  right: -3px;
+  height: 2px;
+  transform: translateY(-50%);
   background: rgba(255, 255, 255, 0.25);
 }
 
@@ -4351,8 +4469,20 @@ select option {
     font-size: 1.1rem;
   }
 
-  .tcf-tug__end-name {
+  .tcf-arena {
+    gap: 0.25rem;
+  }
+
+  .tcf-evalbar {
+    width: clamp(28px, 9vw, 40px);
+  }
+
+  .tcf-evalbar__name {
     display: none;
+  }
+
+  .tcf-evalbar__pct {
+    font-size: 0.78rem;
   }
 }
 
@@ -5016,6 +5146,25 @@ select option {
 .hero-panel__actions .action-bar__btns .btn {
   padding: 0.55rem 1.05rem;
   font-size: 0.92rem;
+}
+
+/* Time-bank extension button — sits beneath the action bar during the hero's turn */
+.time-bank-btn {
+  align-self: center;
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.08);
+  white-space: nowrap;
+}
+
+.time-bank-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.time-bank-btn__count {
+  opacity: 0.7;
+  font-size: 0.85em;
 }
 
 /* ═══════════════════════════════════════════════════════════

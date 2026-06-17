@@ -32,11 +32,16 @@ interface Props {
 
 const RANK_RUNGS = 10; // high card … royal flush
 
-/** Lay the grid out in a roughly even 1–3 rows depending on the card count (5–26). */
+/**
+ * Choose a column count for a roughly square grid. The two hands now sit
+ * side-by-side, so each grid lives in a tall, narrow (portrait) half of the
+ * table — a square-ish layout (cols ≈ rows) makes the cards as large as
+ * possible while still fitting the available height without scrolling, even
+ * at the 26-card maximum.
+ */
 function gridColumns(total: number): number {
-  if (total <= 6) return total;
-  if (total <= 16) return Math.ceil(total / 2);
-  return Math.ceil(total / 3);
+  if (total <= 4) return total;
+  return Math.ceil(Math.sqrt(total));
 }
 
 function vibrate(ms: number) {
@@ -142,6 +147,7 @@ export function TwelveCardFlip({
   soundEnabled = false,
 }: Props) {
   const seats = table?.seats ?? [];
+  const dealerSpin = anim.dealerSpin;
   const flipReveal = table?.flipReveal;
   const pot = (table?.pots ?? []).reduce((s, p) => s + p.amount, 0);
   const isComplete = table?.street === 'complete';
@@ -380,6 +386,8 @@ export function TwelveCardFlip({
     const isTurn = isMe ? isMyTurn : isOpponentTurn;
     const isLead = isMe ? isMeLead : isOpponentLead;
     const didWin = isMe ? myWin : opponentWin;
+    const isSpinPick = !!dealerSpin && data != null && dealerSpin.highlightSeatIndex === data.seatIndex;
+    const isSpinDim = !!dealerSpin && !isSpinPick;
 
     return (
       <div
@@ -389,6 +397,8 @@ export function TwelveCardFlip({
           isTurn && !isComplete ? 'tcf-player--active' : '',
           isLead && !isComplete ? 'tcf-player--lead' : '',
           isComplete && didWin ? 'tcf-player--winner' : '',
+          isSpinPick ? 'tcf-player--spin-pick' : '',
+          isSpinDim ? 'tcf-player--spin-dim' : '',
         ]
           .filter(Boolean)
           .join(' ')}
@@ -425,7 +435,7 @@ export function TwelveCardFlip({
           />
         </div>
 
-        {isMe && canFlip && !isComplete && (
+        {isMe && canFlip && !isComplete && !dealerSpin && (
           <button type="button" className="btn primary tcf-flip-btn" onClick={() => onAction('flip_card')}>
             Flip Card
           </button>
@@ -466,10 +476,14 @@ export function TwelveCardFlip({
 
       {anim.winnerBanner && <WinnerBanner data={anim.winnerBanner} />}
 
-      {renderPanel('opp')}
+      {dealerSpin && (
+        <div className="dealer-spin-overlay" aria-live="polite">
+          <span className="dealer-spin-overlay__label">Picking who goes first…</span>
+        </div>
+      )}
 
-      {/* Center — pot, tug-of-war, status */}
-      <div className="tcf-center">
+      {/* Header — pot + status (slim, so the hands get the vertical space) */}
+      <div className="tcf-header">
         <div className="tcf-center__pot">
           <span className="tcf-center__pot-label">Pot</span>
           <strong className="tcf-center__pot-value">{formatChips(pot)}</strong>
@@ -477,23 +491,6 @@ export function TwelveCardFlip({
             <span className="tcf-center__ante">Ante {formatChips(anteAmount)}</span>
           )}
         </div>
-
-        <div className="tcf-tug" aria-hidden>
-          <span className="tcf-tug__end tcf-tug__end--opp">
-            <span className="tcf-tug__end-name">{opponentSeatData?.displayName ?? 'Opponent'}</span>
-            {myWinPct != null && <span className="tcf-tug__pct">{100 - myWinPct}%</span>}
-          </span>
-          <div className="tcf-tug__track">
-            <div className={`tcf-tug__fill ${tugPos >= 50 ? 'tcf-tug__fill--me' : 'tcf-tug__fill--opp'}`} style={{ left: `${Math.min(tugPos, 50)}%`, right: `${Math.min(100 - tugPos, 50)}%` }} />
-            <div className="tcf-tug__knob" style={{ left: `${tugPos}%` }} />
-            <div className="tcf-tug__center-mark" />
-          </div>
-          <span className="tcf-tug__end tcf-tug__end--me">
-            <span className="tcf-tug__end-name">You</span>
-            {myWinPct != null && <span className="tcf-tug__pct">{myWinPct}%</span>}
-          </span>
-        </div>
-        <div className="tcf-tug__caption" aria-hidden>Win chance</div>
 
         <div className="tcf-center__status">
           {isTied && !isComplete && <span className="tcf-status-badge tcf-status-badge--tied">Tied</span>}
@@ -525,7 +522,35 @@ export function TwelveCardFlip({
         </div>
       </div>
 
-      {renderPanel('me')}
+      {/* Arena — the two hands side-by-side, split by the vertical eval bar */}
+      <div className="tcf-arena">
+        {renderPanel('opp')}
+
+        <div className="tcf-evalbar" aria-hidden>
+          <span className="tcf-evalbar__end tcf-evalbar__end--opp">
+            {myWinPct != null && <span className="tcf-evalbar__pct">{100 - myWinPct}%</span>}
+            <span className="tcf-evalbar__name">{opponentSeatData?.displayName ?? 'Opp'}</span>
+          </span>
+          <div className="tcf-evalbar__track">
+            <div
+              className={`tcf-evalbar__fill ${tugPos >= 50 ? 'tcf-evalbar__fill--me' : 'tcf-evalbar__fill--opp'}`}
+              style={
+                tugPos >= 50
+                  ? { top: '50%', bottom: `${100 - tugPos}%` }
+                  : { top: `${tugPos}%`, bottom: '50%' }
+              }
+            />
+            <div className="tcf-evalbar__knob" style={{ top: `${tugPos}%` }} />
+            <div className="tcf-evalbar__center-mark" />
+          </div>
+          <span className="tcf-evalbar__end tcf-evalbar__end--me">
+            <span className="tcf-evalbar__name">You</span>
+            {myWinPct != null && <span className="tcf-evalbar__pct">{myWinPct}%</span>}
+          </span>
+        </div>
+
+        {renderPanel('me')}
+      </div>
     </div>
   );
 }

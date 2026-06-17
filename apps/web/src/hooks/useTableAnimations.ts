@@ -27,9 +27,15 @@ export interface TableAnimState {
    * PokerTable uses reference equality to avoid replaying stale entries.
    */
   potFlightBatch: ReadonlyArray<{ id: string; seatIndex: number; isAllIn: boolean; delay: number }> | null;
+  /**
+   * First-hand "slot machine" dealer selection. Non-null only while the spin is running;
+   * `highlightSeatIndex` is the seat the spotlight is currently on. The spin decelerates
+   * and lands on the (server-decided) dealer, then the hole-card deal is released.
+   */
+  dealerSpin: { highlightSeatIndex: number } | null;
 }
 
-type WinnerEntry = { seatIndex: number; amount: number; handDescription: string };
+type WinnerEntry = { seatIndex: number; amount: number; handDescription: string; isContested: boolean };
 
 function emptyAnim(): TableAnimState {
   return {
@@ -41,7 +47,50 @@ function emptyAnim(): TableAnimState {
     allInShakeTrigger: 0,
     runoutHoleRevealTrigger: 0,
     potFlightBatch: null,
+    dealerSpin: null,
   };
+}
+
+// ── Dealer-selection spin tuning ──────────────────────────────────────────────
+const SPIN_STEP_START = 70;   // ms between spotlight hops at the start (fast)
+const SPIN_DECEL = 1.14;      // each hop interval grows by this factor (ease-out)
+const SPIN_MIN_TIME = 2100;   // keep hopping at least this long before landing
+const SPIN_LAND_HOLD = 700;   // pause on the dealer before releasing the deal
+
+/**
+ * Build a decelerating sequence of spotlight hops around `order` (seat indices in
+ * seat order) that is guaranteed to finish on `dealerSeat`. Returns the per-hop
+ * schedule (ms offsets) and the total duration including the final hold.
+ */
+function buildSpinSchedule(
+  order: number[],
+  dealerSeat: number,
+): { steps: { seat: number; at: number }[]; total: number } {
+  const n = order.length;
+  if (n === 0) return { steps: [{ seat: dealerSeat, at: 0 }], total: SPIN_LAND_HOLD };
+
+  const steps: { seat: number; at: number }[] = [];
+  let idx = Math.max(0, order.indexOf(dealerSeat));
+  let t = 0;
+  let interval = SPIN_STEP_START;
+
+  // Phase 1: hop quickly, slowing each step, until the minimum spin time elapses.
+  while (t < SPIN_MIN_TIME) {
+    steps.push({ seat: order[idx % n], at: t });
+    t += interval;
+    interval *= SPIN_DECEL;
+    idx++;
+  }
+  // Phase 2: keep slowing until the next hop would land on the dealer.
+  let guard = 0;
+  while (order[idx % n] !== dealerSeat && guard++ <= n) {
+    steps.push({ seat: order[idx % n], at: t });
+    t += interval;
+    interval *= SPIN_DECEL;
+    idx++;
+  }
+  steps.push({ seat: dealerSeat, at: t });
+  return { steps, total: t + SPIN_LAND_HOLD };
 }
 
 /** Detects game-state transitions and returns which animation classes should be applied. */
@@ -53,6 +102,10 @@ export function useTableAnimations(
   const prevHandCompleteRef = useRef<WinnerEntry[] | null>(null);
   const [anim, setAnim] = useState<TableAnimState>(emptyAnim);
   const tidQueueRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Dealer spin fires once per table session (reset when the table tears down) and,
+  // while running, gates all other transition animations so the deal lands after it.
+  const dealerSpinFiredRef = useRef(false);
+  const dealerSpinActiveRef = useRef(false);
 
   // Cancel all pending timeouts on unmount to avoid setState after unmount
   useEffect(() => {
@@ -69,6 +122,8 @@ export function useTableAnimations(
 
     if (!table) {
       setAnim(emptyAnim());
+      dealerSpinFiredRef.current = false;
+      dealerSpinActiveRef.current = false;
       return;
     }
 
@@ -76,6 +131,48 @@ export function useTableAnimations(
       const tid = setTimeout(fn, ms);
       tidQueueRef.current.push(tid);
     }
+
+    // Release the hole-card deal animation for hand `hn` (mirrors the normal new-hand
+    // trigger). Used both inline and after the dealer spin finishes.
+    function startDeal(hn: number, t: PublicTableState) {
+      const blindSeats = t.seats.filter(s => s.betThisStreet > 0);
+      const ts = Date.now();
+      const batch = blindSeats.length > 0
+        ? blindSeats.map((s, i) => ({ id: `pf-blind-${ts}-${s.seatIndex}`, seatIndex: s.seatIndex, isAllIn: s.allIn, delay: i * 130 }))
+        : null;
+      setAnim(a => ({ ...a, dealingHandNum: hn, boardDealFromIndex: null, ...(batch ? { potFlightBatch: batch } : {}) }));
+      schedule(() => setAnim(a => (a.dealingHandNum === hn ? { ...a, dealingHandNum: null } : a)), 1200);
+    }
+
+    // ── First-hand dealer spin ──────────────────────────────────────────────
+    // The first hand (and only the first) randomizes the dealer server-side. Reveal
+    // it with a decelerating "slot machine" spotlight that lands on the chosen seat,
+    // gating the deal until it finishes. Fires once; a late joiner mid-hand-1 may see
+    // it, which is acceptable since hand 1 is short-lived.
+    const dealtStreet = table.street === 'preflop' || table.street === 'reveal';
+    if (!dealerSpinFiredRef.current && table.handNumber === 1 && dealtStreet && table.seats.length >= 2) {
+      dealerSpinFiredRef.current = true;
+      dealerSpinActiveRef.current = true;
+      const order = table.seats.map(s => s.seatIndex).sort((a, b) => a - b);
+      const { steps, total } = buildSpinSchedule(order, table.dealerSeatIndex);
+      const hn = table.handNumber;
+      const dealtTable = table;
+
+      setAnim(a => ({ ...a, dealerSpin: { highlightSeatIndex: steps[0].seat }, dealingHandNum: null, winnerBanner: null, winningSeats: new Set() }));
+      for (const step of steps) {
+        schedule(() => setAnim(a => (a.dealerSpin ? { ...a, dealerSpin: { highlightSeatIndex: step.seat } } : a)), step.at);
+      }
+      schedule(() => {
+        dealerSpinActiveRef.current = false;
+        setAnim(a => ({ ...a, dealerSpin: null }));
+        startDeal(hn, dealtTable);
+      }, total);
+      return;
+    }
+
+    // While the spin is running, hold back every other transition animation so the
+    // deal (and any early action) doesn't visually precede the dealer reveal.
+    if (dealerSpinActiveRef.current) return;
 
     // On first arrival (no previous state): skip transition animations, but still
     // trigger the deal animation if this looks like a fresh preflop hand.
@@ -169,13 +266,31 @@ export function useTableAnimations(
 
     // ── Hand complete: winner banner + seat glow ────────────
     if (handComplete && handComplete !== prevHC) {
-      const winners = handComplete.map(w => ({
-        ...w,
-        displayName:
-          table.seats.find(s => s.seatIndex === w.seatIndex)?.displayName ??
-          `Seat ${w.seatIndex + 1}`,
-      }));
-      const banner: WinnerBannerData = { winners, isSplit: handComplete.length > 1 };
+      // winnerPayouts has one entry per pot/return (main + side pots + uncalled-chip
+      // returns), so a single winner often yields multiple entries. Collapse to one
+      // row per seat (summing amounts) for display.
+      const bySeat = new Map<number, WinnerBannerData['winners'][number]>();
+      for (const w of handComplete) {
+        const existing = bySeat.get(w.seatIndex);
+        if (existing) {
+          existing.amount += w.amount;
+          if (!existing.handDescription) existing.handDescription = w.handDescription;
+        } else {
+          bySeat.set(w.seatIndex, {
+            seatIndex: w.seatIndex,
+            amount: w.amount,
+            handDescription: w.handDescription,
+            displayName:
+              table.seats.find(s => s.seatIndex === w.seatIndex)?.displayName ??
+              `Seat ${w.seatIndex + 1}`,
+          });
+        }
+      }
+      const winners = [...bySeat.values()];
+      // A true split is 2+ distinct seats winning a *contested* pot — not merely
+      // multiple payout entries (e.g. an uncalled-chip return alongside a single win).
+      const contestedSeats = new Set(handComplete.filter(w => w.isContested).map(w => w.seatIndex));
+      const banner: WinnerBannerData = { winners, isSplit: contestedSeats.size > 1 };
       updates.winnerBanner = banner;
       updates.winningSeats = new Set(handComplete.map(w => w.seatIndex));
 

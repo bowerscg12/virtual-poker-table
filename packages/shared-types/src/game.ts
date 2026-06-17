@@ -10,12 +10,14 @@ export type BadgeType =
   | 'big_stack'       // current chip leader
   | 'short_stack'     // current lowest chip count
   | 'hot_streak'      // 3+ consecutive hand wins
+  | 'ice_cold'        // 10+ consecutive hands without winning a pot
   | 'calling_station' // highest calls-per-hand rate this session
   | 'charlie'         // highest preflop fold rate this session
   | 'whale'           // largest net chip loss this session
   | 'maniac'          // most raises this session
   | 'loose_cannon'    // highest VPIP rate this session
-  | 'most_blind_wins'; // most hands won while playing blind this session
+  | 'most_blind_wins' // most hands won while playing blind this session
+  | 'chatbot';        // most chat messages + emoji reactions this session
 
 export interface PotInfo {
   amount: number;
@@ -110,6 +112,8 @@ export interface PublicTableState {
 export interface PrivateTableState {
   holeCards: Card[];
   legalActions: LegalAction[];
+  /** Remaining time-bank extensions this viewer may use this sit-down (only when timeBankEnabled). */
+  timeBankUses?: number;
 }
 
 export interface LegalAction {

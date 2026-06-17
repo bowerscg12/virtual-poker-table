@@ -17,9 +17,14 @@ export function createTwelveCardFlipState(
   seated: { seatIndex: number; userId: string; displayName: string; stack: number }[],
   config: VariantConfig,
   handNumber: number,
+  dealerSeatIndex: number = seated[0]?.seatIndex ?? 0,
   rng: () => number = Math.random,
 ): GameTableState {
   if (seated.length !== 2) throw new Error('Multi-Card Flip requires exactly 2 players');
+  // The dealer flips first. Fall back to the first seat if an unseated index slips through.
+  const firstSeat = seated.some((s) => s.seatIndex === dealerSeatIndex)
+    ? dealerSeatIndex
+    : seated[0].seatIndex;
 
   const cardCount = clampFlipCardCount(config.twelveCardFlipCardCount);
   const deck = shuffleDeck(createDeck(), rng);
@@ -56,8 +61,8 @@ export function createTwelveCardFlipState(
     board: [],
     seats,
     pots,
-    dealerSeatIndex: seated[0].seatIndex,
-    actionSeatIndex: seated[0].seatIndex,
+    dealerSeatIndex: firstSeat,
+    actionSeatIndex: firstSeat,
     currentBet: 0,
     minRaise: 0,
     lastAggressorSeat: null,

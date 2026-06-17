@@ -386,6 +386,9 @@ export default function TablePage() {
             pineappleDiscardDeadline={pineappleDiscardPhase?.deadline}
             onPineappleDiscard={(cardIndex) => send({ type: 'pineapple_discard', cardIndex })}
             showPotOdds={settings.showPotOdds}
+            timeBankEnabled={!!headerLobby?.settings.timeBankEnabled && (headerLobby?.settings.actionTimerSec ?? 0) > 0}
+            timeBankUses={privateState?.timeBankUses ?? 0}
+            onTimeBank={() => send({ type: 'time_bank' })}
           />
         )}
         <div className="table-felt-wrapper">
@@ -486,6 +489,7 @@ export default function TablePage() {
             onTransferHost={(seatIndex) => send({ type: 'host_transfer', seatIndex })}
             onSetBuyIn={(amount) => send({ type: 'host_set_buy_in', buyIn: amount })}
             onSetActionTimer={(seconds) => send({ type: 'host_set_action_timer', seconds })}
+            onSetTimeBank={(enabled) => send({ type: 'host_set_time_bank', enabled })}
             onSetFlipAnte={(ante) => send({ type: 'host_set_flip_ante', ante })}
             onSetBombPot={(value) => send({ type: 'host_set_bomb_pot', ...value })}
             onSetRunItOut={(times) => send({ type: 'host_set_run_it_out', times })}

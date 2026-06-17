@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { Card, ClientMessage, PlayerActionType, ServerMessage, VariantConfig } from '@vct/shared-types';
-import { getTableBuyIn, isReactionEmoji } from '@vct/shared-types';
+import { getTableBuyIn, isReactionEmoji, TIME_BANK_EXTENSION_SEC, TIME_BANK_MAX_USES } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
 import { decidePokerAction } from '@vct/poker-engine';
 import {
@@ -31,6 +31,7 @@ import {
   rebuyPlayer,
   removeSeat,
   setActionTimerSetting,
+  setTimeBankSetting,
   setFlipAnte,
   setNextHandBombPot,
   clearNextHandBombPot,
@@ -98,6 +99,7 @@ import {
   finalizeCashOut,
   initSession,
   recordAction,
+  recordChatActivity,
   recordFoldWinChoice,
   recordHandEnd,
   recordHandStart,
@@ -149,6 +151,33 @@ const actionTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * can detect they were superseded and bail without acting.
  */
 const actionTimerGenerations = new Map<string, number>();
+
+/**
+ * lobbyId → (userId → remaining time-bank extensions). Granted lazily at the configured max on
+ * first read and decremented per use; does not refill until the player re-sits (entry cleared on
+ * stand/spectate). In-memory only — a server restart resets budgets to full, which favors players.
+ */
+const timeBankBudgets = new Map<string, Map<string, number>>();
+
+function getTimeBankRemaining(lobbyId: string, userId: string): number {
+  const lobbyMap = timeBankBudgets.get(lobbyId);
+  if (!lobbyMap || !lobbyMap.has(userId)) return TIME_BANK_MAX_USES;
+  return lobbyMap.get(userId)!;
+}
+
+function setTimeBankRemaining(lobbyId: string, userId: string, remaining: number): void {
+  let lobbyMap = timeBankBudgets.get(lobbyId);
+  if (!lobbyMap) {
+    lobbyMap = new Map();
+    timeBankBudgets.set(lobbyId, lobbyMap);
+  }
+  lobbyMap.set(userId, Math.max(0, remaining));
+}
+
+/** Reset a player's time-bank budget so a re-sit starts fresh (called when they leave their seat). */
+function clearTimeBankForUser(lobbyId: string, userId: string): void {
+  timeBankBudgets.get(lobbyId)?.delete(userId);
+}
 
 /** lobbyId → between-hand countdown timer (fires to auto-start next hand) */
 const intermissionTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -257,6 +286,7 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelPineappleDiscard(lobbyId);
   cancelRunItOut(lobbyId);
   cancelAllBjTimers(lobbyId);
+  timeBankBudgets.delete(lobbyId);
   waitingForPlayers.delete(lobbyId);
 
   clearGame(lobbyId);
@@ -1222,6 +1252,7 @@ async function broadcastTableState(lobbyId: string): Promise<void> {
       lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline,
       visibleBoardCount, runoutActive, revealHoleCards,
       runoutCurrentRun, runoutTotalRuns, suppressLegalActions,
+      userId ? getTimeBankRemaining(lobbyId, userId) : undefined,
     );
     return {
       type: 'table_state',
@@ -1408,6 +1439,35 @@ function scheduleActionTimer(lobbyId: string, config: VariantConfig, state: Game
     onActionTimerExpired(lobbyId, userId, seatIndex, config).catch(() => {});
   }, durationMs);
 
+  actionTimers.set(lobbyId, timer);
+}
+
+/**
+ * Extend the running action timer for the current action seat by {@code extraMs}, preserving the
+ * time already remaining. Used by the time-bank feature. No-op if no countdown is active, the seat
+ * can't act, or it's a bot seat. Shares the generation counter so any in-flight expiry callback is
+ * invalidated when the timer is rescheduled.
+ */
+function extendActionTimer(lobbyId: string, config: VariantConfig, state: GameTableState, extraMs: number): void {
+  if (state.actionSeatIndex === null) return;
+  const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
+  if (!seat || seat.folded || seat.allIn) return;
+  if (isBotUser(seat.userId)) return;
+
+  const prevDeadline = getActionDeadline(lobbyId);
+  const baseMs = prevDeadline ? Math.max(0, new Date(prevDeadline).getTime() - Date.now()) : 0;
+  const durationMs = baseMs + extraMs;
+
+  cancelActionTimer(lobbyId); // clears old timeout + deadline and increments the generation
+  const deadline = new Date(Date.now() + durationMs).toISOString();
+  setActionDeadline(lobbyId, deadline);
+
+  const { userId, seatIndex } = seat;
+  const gen = actionTimerGenerations.get(lobbyId) ?? 0;
+  const timer = setTimeout(() => {
+    if ((actionTimerGenerations.get(lobbyId) ?? 0) !== gen) return;
+    onActionTimerExpired(lobbyId, userId, seatIndex, config).catch(() => {});
+  }, durationMs);
   actionTimers.set(lobbyId, timer);
 }
 
@@ -2605,6 +2665,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
     case 'spectate': {
       if (!st.userId || !st.lobbyId) return;
       st.isSpectator = true;
+      // Leaving the seat ends the time-bank session; a re-sit starts with a fresh budget.
+      clearTimeBankForUser(st.lobbyId, st.userId);
       await broadcastTableState(st.lobbyId);
       return;
     }
@@ -2622,6 +2684,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         msg.text,
         isHost
       );
+      recordChatActivity(st.lobbyId, st.userId);
       broadcastLobby(st.lobbyId, () => ({ type: 'chat', message: chatMsg }));
       return;
     }
@@ -2635,6 +2698,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const lobby = await getLobbyById(st.lobbyId);
       const seatIndex = lobby?.seats.find((s) => s.userId === st.userId)?.seatIndex ?? null;
       const reaction = createReaction(st.userId, user?.displayName ?? 'Player', msg.emoji, seatIndex);
+      recordChatActivity(st.lobbyId, st.userId);
       // Transient by design: broadcast to all lobby sockets (players + spectators),
       // never stored, so it cannot replay on reconnect or leak into hand history.
       broadcastLobby(st.lobbyId, () => ({ type: 'reaction', reaction }));
@@ -2904,6 +2968,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           clearTimeout(kickReleaseTimer);
           seatReleaseTimers.delete(kickedUserId);
         }
+        clearTimeBankForUser(st.lobbyId, kickedUserId);
         await deleteSessionsByUserId(kickedUserId);
       }
       const prevHost = lobby.hostUserId;
@@ -3020,6 +3085,24 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       return;
     }
 
+    case 'time_bank': {
+      if (!st.userId || !st.lobbyId) return;
+      const lobby = await getLobbyById(st.lobbyId);
+      if (!lobby || !lobby.settings.timeBankEnabled || !(lobby.settings.actionTimerSec ?? 0)) return;
+      // Only the player currently on the clock, with a running countdown, may extend.
+      if (!getActionDeadline(st.lobbyId)) return;
+      const state = await getActiveGame(st.lobbyId);
+      if (!state || state.actionSeatIndex === null) return;
+      const seat = state.seats.find((s) => s.userId === st.userId);
+      if (!seat || seat.seatIndex !== state.actionSeatIndex || seat.folded || seat.allIn) return;
+      const remaining = getTimeBankRemaining(st.lobbyId, st.userId);
+      if (remaining <= 0) return;
+      setTimeBankRemaining(st.lobbyId, st.userId, remaining - 1);
+      extendActionTimer(st.lobbyId, lobby.settings, state, TIME_BANK_EXTENSION_SEC * 1000);
+      await broadcastTableState(st.lobbyId);
+      return;
+    }
+
     case 'run_it_out_choice': {
       if (!st.userId || !st.lobbyId) return;
       const pending = runItOutPending.get(st.lobbyId);
@@ -3060,6 +3143,18 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
         scheduleActionTimer(st.lobbyId, result.settings, state);
       } else {
         cancelActionTimer(st.lobbyId);
+      }
+      broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
+      await broadcastTableState(st.lobbyId);
+      return;
+    }
+
+    case 'host_set_time_bank': {
+      if (!st.userId || !st.lobbyId) return;
+      const result = await setTimeBankSetting(st.lobbyId, st.userId, msg.enabled);
+      if ('error' in result) {
+        send(ws, { type: 'error', message: result.error });
+        return;
       }
       broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: result }));
       await broadcastTableState(st.lobbyId);

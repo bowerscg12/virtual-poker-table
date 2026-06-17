@@ -84,6 +84,24 @@ describe('Multi-Card Flip — configurable card count', () => {
     });
   }
 
+  it('seats the dealer (and first actor) at the requested index', () => {
+    const config = { game: 'twelve_card_flip', buyIn: 500, twelveCardFlipAnte: 500 } as never;
+    const onSeat1 = createTwelveCardFlipState(SEATED, config, 1, 1);
+    expect(onSeat1.dealerSeatIndex).toBe(1);
+    expect(onSeat1.actionSeatIndex).toBe(1);
+
+    const onSeat0 = createTwelveCardFlipState(SEATED, config, 1, 0);
+    expect(onSeat0.dealerSeatIndex).toBe(0);
+    expect(onSeat0.actionSeatIndex).toBe(0);
+  });
+
+  it('falls back to the first seat when the dealer index is not seated', () => {
+    const config = { game: 'twelve_card_flip', buyIn: 500 } as never;
+    const state = createTwelveCardFlipState(SEATED, config, 1, 7);
+    expect(state.dealerSeatIndex).toBe(0);
+    expect(state.actionSeatIndex).toBe(0);
+  });
+
   it('clamps an out-of-range card count into 5–26', () => {
     const tooMany = createTwelveCardFlipState(
       SEATED,

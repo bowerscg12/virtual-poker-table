@@ -85,6 +85,12 @@ export function removeBlindHandSeat(lobbyId: string, seatIndex: number): void {
 /** Consecutive hand wins, keyed lobbyId → userId → streak count. Persists across hands. */
 const consecutiveWins = new Map<string, Map<string, number>>();
 
+/**
+ * Consecutive hands played without winning a pot, keyed lobbyId → userId → count.
+ * Persists across hands; reset to 0 whenever the player wins (split pots count as a win).
+ */
+const handsSinceWin = new Map<string, Map<string, number>>();
+
 function recordSeatLastAction(lobbyId: string, seatIndex: number, action: PlayerActionType, amount?: number): void {
   let m = seatLastActions.get(lobbyId);
   if (!m) { m = new Map(); seatLastActions.set(lobbyId, m); }
@@ -300,7 +306,7 @@ export async function startHand(
 
   const state =
     config.game === 'twelve_card_flip'
-      ? createTwelveCardFlipState(players, config, handNumber, rng)
+      ? createTwelveCardFlipState(players, config, handNumber, nextDealerIdx, rng)
       : createInitialTable(players, config, handNumber, nextDealerIdx, rng);
 
   // Clear blind-owed flag for any sit-out player who just posted their final blind cycle
@@ -494,16 +500,21 @@ export function getHandHistories(lobbyId: string): HandHistoryEntry[] {
   return handHistories.get(lobbyId) ?? [];
 }
 
-/** Called when a hand completes; updates each player's consecutive-win streak. */
+/** Called when a hand completes; updates each player's consecutive-win and cold streaks. */
 function updateConsecutiveWins(lobbyId: string, state: GameTableState): void {
   let m = consecutiveWins.get(lobbyId);
   if (!m) { m = new Map(); consecutiveWins.set(lobbyId, m); }
+  let cold = handsSinceWin.get(lobbyId);
+  if (!cold) { cold = new Map(); handsSinceWin.set(lobbyId, cold); }
+  // Split pots count as a win — lastWinningSeatIndices includes every seat that took a share.
   const winners = new Set(state.lastWinningSeatIndices ?? []);
   for (const seat of state.seats) {
     if (winners.has(seat.seatIndex)) {
       m.set(seat.userId, (m.get(seat.userId) ?? 0) + 1);
+      cold.set(seat.userId, 0);
     } else {
       m.set(seat.userId, 0);
+      cold.set(seat.userId, (cold.get(seat.userId) ?? 0) + 1);
     }
   }
 }
@@ -539,6 +550,14 @@ function computeBadges(lobbyId: string, state: GameTableState): Map<number, Badg
   if (streaks) {
     for (const seat of state.seats) {
       if ((streaks.get(seat.userId) ?? 0) >= 3) award(seat.seatIndex, 'hot_streak');
+    }
+  }
+
+  // ── Ice cold (individual threshold) — 10+ hands without winning a pot ──
+  const cold = handsSinceWin.get(lobbyId);
+  if (cold) {
+    for (const seat of state.seats) {
+      if ((cold.get(seat.userId) ?? 0) >= 10) award(seat.seatIndex, 'ice_cold');
     }
   }
 
@@ -586,6 +605,9 @@ function computeBadges(lobbyId: string, state: GameTableState): Map<number, Badg
   // most_blind_wins: most hands won while playing blind (minimum 1 to qualify)
   awardLeader((d) => d.handsWonBlind, 0, 'most_blind_wins');
 
+  // chatbot: most chat messages + emoji reactions sent (minimum 1 to qualify)
+  awardLeader((d) => d.chatCount, 0, 'chatbot');
+
   // whale: largest net chip loss (total invested − current stack)
   const withLoss = seated.map((d) => {
     const currentStack = state.seats.find((s) => s.userId === d.userId)?.stack ?? 0;
@@ -618,7 +640,8 @@ export function toPublicState(
   runoutCurrentRun?: number,
   runoutTotalRuns?: number,
   suppressLegalActions?: boolean,
-): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[] } } {
+  timeBankUses?: number,
+): { public: PublicTableState; private?: { holeCards: Card[]; legalActions: import('@vct/shared-types').LegalAction[]; timeBankUses?: number } } {
   const viewerSeat = state.seats.find((s) => s.userId === viewerUserId);
 
   const isTwelveCardFlip = config.game === 'twelve_card_flip';
@@ -813,6 +836,7 @@ export function toPublicState(
     private: {
       holeCards: viewerSeat.holeCards,
       legalActions,
+      timeBankUses: config.timeBankEnabled ? timeBankUses : undefined,
     },
   };
 }
@@ -895,6 +919,7 @@ export function clearGame(lobbyId: string): void {
   activeGames.delete(lobbyId);
   seatLastActions.delete(lobbyId);
   consecutiveWins.delete(lobbyId);
+  handsSinceWin.delete(lobbyId);
   blindHandSeats.delete(lobbyId);
 }
 

@@ -26,6 +26,8 @@ interface StatsAccumulator {
   preflopFoldsCount: number;
   /** Hands where this player voluntarily put chips in preflop (call/raise/all_in) */
   vpipHands: number;
+  /** Chat messages + emoji reactions sent this session */
+  chatCount: number;
 }
 
 /** Raw stats used to compute session-based superlative badges. */
@@ -38,6 +40,7 @@ export interface SessionBadgeData {
   totalRaises: number;
   totalChipsPurchased: number;
   handsWonBlind: number;
+  chatCount: number;
 }
 
 /** lobbyId → userId → accumulator */
@@ -103,7 +106,15 @@ export function initSession(
     foldWinsMucked: 0,
     preflopFoldsCount: 0,
     vpipHands: 0,
+    chatCount: 0,
   });
+}
+
+/** Call when a player sends a chat message or emoji reaction. No-op if the user has no session. */
+export function recordChatActivity(lobbyId: string, userId: string): void {
+  const acc = sessions.get(lobbyId)?.get(userId);
+  if (!acc) return;
+  acc.chatCount++;
 }
 
 /** Call immediately after startHand() to snapshot stacks and record hole card combos. */
@@ -319,6 +330,7 @@ export function getSessionBadgeData(lobbyId: string): SessionBadgeData[] {
     totalRaises: acc.actionCounts.raise + acc.actionCounts.all_in,
     totalChipsPurchased: acc.totalChipsPurchased,
     handsWonBlind: acc.handsWonBlind,
+    chatCount: acc.chatCount,
   }));
 }
 

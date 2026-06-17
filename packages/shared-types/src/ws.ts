@@ -21,6 +21,8 @@ export type ClientMessage =
   | { type: 'sit'; seatIndex?: number; buyIn?: number }
   | { type: 'host_set_buy_in'; buyIn: number }
   | { type: 'host_set_action_timer'; seconds: number }
+  | { type: 'host_set_time_bank'; enabled: boolean }
+  | { type: 'time_bank' }
   | { type: 'host_set_flip_ante'; ante: number }
   | { type: 'host_set_bomb_pot'; enabled: boolean; amount?: number; doubleBoard?: boolean }
   | { type: 'bomb_pot_join'; join: boolean }
@@ -79,11 +81,11 @@ export type ServerMessage =
   | { type: 'session_invalid' }
   | { type: 'error'; message: string; code?: string }
   | { type: 'lobby_state'; lobby: LobbySummary }
-  | { type: 'table_state'; public: PublicTableState; private?: { holeCards: Card[]; legalActions: LegalAction[] } }
+  | { type: 'table_state'; public: PublicTableState; private?: { holeCards: Card[]; legalActions: LegalAction[]; timeBankUses?: number } }
   | { type: 'chat'; message: ChatMessage }
   /** Transient emoji reaction — display-only, never persisted or replayed. */
   | { type: 'reaction'; reaction: TableReaction }
-  | { type: 'hand_complete'; winners: { seatIndex: number; amount: number; handDescription: string }[] }
+  | { type: 'hand_complete'; winners: { seatIndex: number; amount: number; handDescription: string; isContested: boolean }[] }
   | { type: 'hand_history'; entry: import('./game.js').HandHistoryEntry }
   | { type: 'cash_out_queued' }
   | { type: 'cash_out_cancelled' }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Card, LegalAction, PlayerActionType, TableSeat } from '@vct/shared-types';
-import { cardToString } from '@vct/shared-types';
+import { cardToString, TIME_BANK_EXTENSION_SEC } from '@vct/shared-types';
 import { CardView } from './CardView';
 import { ActionBar } from './ActionBar';
 import { formatChips } from '../utils/formatChips';
@@ -54,6 +54,11 @@ interface Props {
 
   // Settings pass-through
   showPotOdds: boolean;
+
+  // Time bank
+  timeBankEnabled: boolean;
+  timeBankUses: number;
+  onTimeBank: () => void;
 }
 
 export function HeroActionPanel({
@@ -90,9 +95,19 @@ export function HeroActionPanel({
   pineappleDiscardDeadline,
   onPineappleDiscard,
   showPotOdds,
+  timeBankEnabled,
+  timeBankUses,
+  onTimeBank,
 }: Props) {
   const { t } = useTranslation();
   const announceRef = useRef<HTMLSpanElement>(null);
+
+  // Guard against a double-tap burning two time-bank uses on one turn: disable the button until the
+  // server echoes the new (decremented) remaining count.
+  const [timeBankPending, setTimeBankPending] = useState(false);
+  useEffect(() => {
+    setTimeBankPending(false);
+  }, [timeBankUses]);
 
   const showBlindCards = isBlindThisHand && !cardsRevealed;
 
@@ -333,6 +348,21 @@ export function HeroActionPanel({
             onAction={onAction}
             showPotOdds={showPotOdds}
           />
+        )}
+        {legalActions.length > 0 && timeBankEnabled && timeBankUses > 0 && (
+          <button
+            type="button"
+            className="btn small time-bank-btn"
+            disabled={timeBankPending}
+            onClick={() => {
+              if (timeBankPending) return;
+              setTimeBankPending(true);
+              onTimeBank();
+            }}
+            title="Add time to your action clock"
+          >
+            ⏱ +{TIME_BANK_EXTENSION_SEC}s <span className="time-bank-btn__count">({timeBankUses} left)</span>
+          </button>
         )}
       </div>
 

@@ -920,6 +920,32 @@ export async function setActionTimerSetting(
   return (await getLobbyById(lobbyId))!;
 }
 
+export async function setTimeBankSetting(
+  lobbyId: string,
+  hostUserId: string,
+  enabled: boolean
+): Promise<LobbySummary | { error: string }> {
+  const lobby = await getLobbyById(lobbyId);
+  if (!lobby) return { error: 'Lobby not found' };
+  if (lobby.hostUserId !== hostUserId) return { error: 'Only the host can change the time bank' };
+
+  const settings: VariantConfig = {
+    ...lobby.settings,
+    timeBankEnabled: enabled || undefined,
+  };
+
+  if (useMemory) {
+    const mem = memoryStore.lobbies.get(lobbyId);
+    if (!mem) return { error: 'Lobby not found' };
+    mem.settings = settings;
+    return toSummary(mem);
+  }
+
+  const db = getDb();
+  await db.update(lobbies).set({ settings }).where(eq(lobbies.id, lobbyId));
+  return (await getLobbyById(lobbyId))!;
+}
+
 /**
  * Add chips to a busted player's seat. Only valid when the player is at 0 chips.
  * In Postgres mode we set stack = amount directly since table_seats.stack lags behind the game engine.

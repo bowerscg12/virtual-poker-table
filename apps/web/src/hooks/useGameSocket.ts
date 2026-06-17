@@ -28,14 +28,14 @@ export function useGameSocket(token: string | null, lobbyId: string | null, spec
   const [reconnecting, setReconnecting] = useState(false);
   const [lobby, setLobby] = useState<LobbySummary | null>(null);
   const [table, setTable] = useState<PublicTableState | null>(null);
-  const [privateState, setPrivateState] = useState<{ holeCards: Card[]; legalActions: LegalAction[] } | null>(null);
+  const [privateState, setPrivateState] = useState<{ holeCards: Card[]; legalActions: LegalAction[]; timeBankUses?: number } | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [reactions, setReactions] = useState<TableReaction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cashOutQueued, setCashOutQueued] = useState(false);
   const [cashOutConfirmPending, setCashOutConfirmPending] = useState<{ amount: number; deadline: string } | null>(null);
   const [cashOutSummary, setCashOutSummary] = useState<CashOutSummary | null>(null);
-  const [handComplete, setHandComplete] = useState<{ seatIndex: number; amount: number; handDescription: string }[] | null>(null);
+  const [handComplete, setHandComplete] = useState<{ seatIndex: number; amount: number; handDescription: string; isContested: boolean }[] | null>(null);
   const [rebuyAvailable, setRebuyAvailable] = useState<{ amount: number } | null>(null);
   const [rebuyQueued, setRebuyQueued] = useState(false);
   const [showCardsPrompt, setShowCardsPrompt] = useState<{ deadline: string } | null>(null);

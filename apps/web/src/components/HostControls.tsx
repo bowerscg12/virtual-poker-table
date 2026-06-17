@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { LobbySummary } from '@vct/shared-types';
-import { TIMER_STEPS_SEC, formatTimerLabel, getTableBuyIn } from '@vct/shared-types';
+import { TIMER_STEPS_SEC, TIME_BANK_EXTENSION_SEC, TIME_BANK_MAX_USES, formatTimerLabel, getTableBuyIn } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
 
 function AnteInput({ label, current, onSet }: { label: string; current: number; onSet: (amount: number) => void }) {
@@ -83,6 +83,7 @@ interface Props {
   onTransferHost: (seatIndex: number) => void;
   onSetBuyIn: (amount: number) => void;
   onSetActionTimer: (seconds: number) => void;
+  onSetTimeBank: (enabled: boolean) => void;
   onSetFlipAnte?: (ante: number) => void;
   onSetBombPot?: (value: { enabled: boolean; amount?: number; doubleBoard?: boolean }) => void;
   onSetRunItOut?: (times: number) => void;
@@ -91,7 +92,7 @@ interface Props {
   onSetSmallBlindAnte?: (amount: number) => void;
 }
 
-export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetFlipAnte, onSetBombPot, onSetRunItOut, onSetPineapple, onSetBigBlindAnte, onSetSmallBlindAnte }: Props) {
+export function HostControls({ lobby, handActive, intermissionDeadline, onStart, onPause, onKick, onTransferHost, onSetBuyIn, onSetActionTimer, onSetTimeBank, onSetFlipAnte, onSetBombPot, onSetRunItOut, onSetPineapple, onSetBigBlindAnte, onSetSmallBlindAnte }: Props) {
   const isTcf = lobby.settings.game === 'twelve_card_flip';
   const isBlackjack = lobby.settings.game === 'blackjack';
   const currentBuyIn = getTableBuyIn(lobby.settings);
@@ -215,6 +216,23 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
         </select>
       </label>
       <p className="field-hint">Takes effect on the next action. Changing to "No Timer" cancels any running countdown.</p>
+
+      {!isBlackjack && currentTimerSec > 0 && (
+        <>
+          <label className="checkbox-row time-bank-row">
+            <input
+              type="checkbox"
+              checked={!!lobby.settings.timeBankEnabled}
+              onChange={(e) => onSetTimeBank(e.target.checked)}
+            />
+            Time bank
+          </label>
+          <p className="field-hint">
+            Lets each player add {TIME_BANK_EXTENSION_SEC}s to their clock up to {TIME_BANK_MAX_USES} times per
+            sit-down, preventing rage-folds on a bad connection.
+          </p>
+        </>
+      )}
 
       {!isTcf && !isBlackjack && onSetBombPot && (
         <fieldset className="settings-group bomb-pot-controls">
