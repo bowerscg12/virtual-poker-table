@@ -2,7 +2,7 @@ import type { WebSocket } from 'ws';
 import type { Card, ClientMessage, PlayerActionType, ServerMessage, VariantConfig } from '@vct/shared-types';
 import { getTableBuyIn, isReactionEmoji, TIME_BANK_EXTENSION_SEC, TIME_BANK_MAX_USES } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
-import { decidePokerAction } from '@vct/poker-engine';
+import { decidePokerAction, decidePineappleDiscard } from '@vct/poker-engine';
 import {
   addBot,
   deleteBotUser,
@@ -832,7 +832,7 @@ async function startPineappleDiscardPhase(
   // Pre-register bot discards immediately — they have no WS and will never send pineapple_discard
   for (const s of state.seats) {
     if (isBotUser(s.userId)) {
-      discardMap.set(s.userId, autoDiscardIndex(s.holeCards));
+      discardMap.set(s.userId, decidePineappleDiscard(s.holeCards));
       pendingUserIds.delete(s.userId);
     }
   }
@@ -878,7 +878,7 @@ async function resolvePineappleDiscard(lobbyId: string, config: VariantConfig): 
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return;
 
-  scheduleActionTimer(lobbyId, config, state);
+  driveTurn(lobbyId, config, state);
   await broadcastTableState(lobbyId);
 }
 
@@ -1564,6 +1564,31 @@ function driveTurn(lobbyId: string, config: VariantConfig, state: GameTableState
 }
 
 /**
+ * On the very first hand the client plays a ~3–4 s "slot machine" dealer-pick animation,
+ * during which it gates every deal/action animation. The server, however, would otherwise
+ * start acting (and bots would fire their 3 s timers) immediately — so when the spin ends the
+ * client snaps to a state where bots have already acted, looking instantaneous, and any bot that
+ * folded during the spin appears greyed-out the moment the hand visually begins. Hold off driving
+ * the first turn until the spin has finished so the first action lands naturally after the deal.
+ */
+const FIRST_HAND_SPIN_DELAY_MS = 4000;
+
+function scheduleFirstHandDrive(lobbyId: string, config: VariantConfig): void {
+  cancelActionTimer(lobbyId); // claim the timer slot + bump generation so stale callbacks no-op
+  const gen = actionTimerGenerations.get(lobbyId) ?? 0;
+  const timer = setTimeout(() => {
+    if ((actionTimerGenerations.get(lobbyId) ?? 0) !== gen) return;
+    void (async () => {
+      const state = await getActiveGame(lobbyId);
+      if (!state) return;
+      driveTurn(lobbyId, config, state);
+      await broadcastTableState(lobbyId);
+    })();
+  }, FIRST_HAND_SPIN_DELAY_MS);
+  actionTimers.set(lobbyId, timer);
+}
+
+/**
  * Unified post-action routing shared by all action paths (human game_action, timer auto-act, and
  * bot turns). Advances the hand: multi-runout prompt, all-in runout, hand completion, or the next
  * turn (bot or human) plus a state broadcast.
@@ -2097,6 +2122,17 @@ async function promptShowCards(lobbyId: string, state: GameTableState, config: V
   const winner = state.seats.find((s) => s.seatIndex === winningSeatIndex);
   if (!winner) {
     await finalizeFoldWin(lobbyId, false, null, config);
+    return;
+  }
+
+  // Bots always show their winning hand.
+  if (isBotUser(winner.userId)) {
+    await finalizeFoldWin(lobbyId, true, {
+      winnerId: winner.userId,
+      winnerSeatIndex: winner.seatIndex,
+      holeCards: [...winner.holeCards],
+      config,
+    }, config);
     return;
   }
 
@@ -2837,7 +2873,12 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       recordHandStart(st.lobbyId, result);
       if (isFirstStart) await updateLobbyStatus(st.lobbyId, 'playing');
       registerLobbyBots(lobby);
-      driveTurn(st.lobbyId, lobby.settings, result);
+      // Hand 1 plays the client-side dealer-pick spin; defer the first turn until it finishes.
+      if (result.handNumber === 1) {
+        scheduleFirstHandDrive(st.lobbyId, lobby.settings);
+      } else {
+        driveTurn(st.lobbyId, lobby.settings, result);
+      }
       const startedLobby = await getLobbyById(st.lobbyId);
       if (startedLobby) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: startedLobby }));
       await broadcastTableState(st.lobbyId);
@@ -3438,6 +3479,17 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       if (!created.ok) { send(ws, { type: 'error', message: created.reason }); return; }
 
       sideBetCreateAt.set(userId, Date.now());
+
+      // Bots have no WebSocket to prompt, and always accept. Resolve the challenge server-side
+      // immediately (stacks were just validated above) and notify the human challenger.
+      if (isBotUser(targetSeat.userId)) {
+        const accepted = acceptChallenge(lobbyId, created.challenge.id, targetSeat.userId);
+        if (accepted.ok) {
+          sendToUser(accepted.challenge.challengerUserId, { type: 'side_bet_accepted', challenge: accepted.challenge });
+        }
+        return;
+      }
+
       // Deliver the challenge to the target; the challenger sees it as pending via accepted/declined replies.
       sendToUser(targetSeat.userId, { type: 'side_bet_challenge', challenge: created.challenge });
       return;

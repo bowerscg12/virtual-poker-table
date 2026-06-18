@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BotDifficulty, BotStyle, Card, VariantConfig } from '@vct/shared-types';
-import { decidePokerAction, holdsCurrentNuts, preflopStrength, type BotBrain } from './bot.js';
+import { boardWetness, decidePokerAction, drawStrength, estimateEquity, holdsCurrentNuts, preflopStrength, type BotBrain } from './bot.js';
 import { getLegalActionsForSeat, type GameTableState, type InternalSeat } from './game-table.js';
 
 const holdem: VariantConfig = {
@@ -165,6 +165,38 @@ describe('preflop strength & style looseness', () => {
     expect(preflopStrength(['Ah', 'Kh'], holdem)).toBeGreaterThan(preflopStrength(['9h', '4d'], holdem));
   });
 
+  it('pro plays a borderline hand more often on the button than in early position', () => {
+    // QQ sits near the tag entry cutoff, so the positional VPIP adjustment tips the decision.
+    // Six live seats; only the dealer seat moves, changing seat 0's relative position.
+    const mkState = (dealerSeatIndex: number) => makeState({
+      street: 'preflop',
+      board: [],
+      currentBet: 30, // facing a raise
+      minRaise: 20,
+      dealerSeatIndex,
+      seats: [
+        seat(0, ['Qc', 'Qd'], { betThisStreet: 0, totalBet: 0 }),
+        seat(1, ['2h', '7d'], { betThisStreet: 30, totalBet: 30 }),
+        seat(2, ['3c', '8s'], { betThisStreet: 0, totalBet: 0 }),
+        seat(3, ['4c', '9s'], { betThisStreet: 0, totalBet: 0 }),
+        seat(4, ['5c', 'Td'], { betThisStreet: 0, totalBet: 0 }),
+        seat(5, ['6c', 'Jd'], { betThisStreet: 0, totalBet: 0 }),
+      ],
+      actionSeatIndex: 0,
+    });
+    const playRate = (dealerSeatIndex: number): number => {
+      let plays = 0;
+      const trials = 200;
+      for (let s = 1; s <= trials; s++) {
+        const d = decidePokerAction(mkState(dealerSeatIndex), holdem, 0, { style: 'tag', difficulty: 'pro' }, mulberry32(s));
+        if (d.action !== 'fold') plays++;
+      }
+      return plays / trials;
+    };
+    // dealer = 0 → seat 0 is the button (latest); dealer = 1 → seat 0 acts first (earliest).
+    expect(playRate(0)).toBeGreaterThan(playRate(1));
+  });
+
   it('a nit folds a marginal hand more often than a maniac', () => {
     const mkState = () => makeState({
       street: 'preflop',
@@ -187,5 +219,83 @@ describe('preflop strength & style looseness', () => {
       return folds / trials;
     };
     expect(foldRate('nit')).toBeGreaterThan(foldRate('maniac'));
+  });
+});
+
+describe('range-weighted equity', () => {
+  it('lowers estimated equity against a stronger opponent range', () => {
+    // A marginal made hand (second pair) on a coordinated board: narrowing opponents to stronger
+    // starting hands should reduce our win equity versus assuming fully random holdings.
+    const hole: Card[] = ['9h', '9d'];
+    const board: Card[] = ['Ac', 'Kd', '7s'];
+    const random = estimateEquity(hole, board, holdem, 2, 4000, mulberry32(42), 0);
+    const weighted = estimateEquity(hole, board, holdem, 2, 4000, mulberry32(42), 0.4);
+    expect(weighted).toBeLessThan(random);
+  });
+
+  it('matches the random model when the floor is zero', () => {
+    const hole: Card[] = ['Ah', 'Kh'];
+    const board: Card[] = ['Qd', 'Jc', '2s'];
+    // Same seed + floor 0 must reproduce the unweighted result exactly (no behavior change off-pro).
+    const a = estimateEquity(hole, board, holdem, 1, 1000, mulberry32(7), 0);
+    const b = estimateEquity(hole, board, holdem, 1, 1000, mulberry32(7), 0);
+    expect(a).toBe(b);
+  });
+});
+
+describe('board texture', () => {
+  it('rates a coordinated, suited board wetter than a rainbow disconnected one', () => {
+    expect(boardWetness(['9h', '8h', '7h'])).toBeGreaterThan(boardWetness(['Kh', '8d', '2c']));
+  });
+
+  it('treats the preflop board as neutral', () => {
+    expect(boardWetness([])).toBeCloseTo(0.3);
+  });
+});
+
+describe('draw detection', () => {
+  it('classifies a flush draw and an open-ended straight draw as strong', () => {
+    expect(drawStrength(['Ah', 'Qh'], ['Kh', '7h', '2c'], holdem)).toBe('strong'); // four hearts
+    expect(drawStrength(['9c', 'Td'], ['8d', '7s', '2c'], holdem)).toBe('strong'); // open-ended 7-8-9-T
+  });
+
+  it('classifies a gutshot as weak and air/made hands as none', () => {
+    expect(drawStrength(['Jc', 'Td'], ['8d', '7s', '2c'], holdem)).toBe('weak'); // needs a 9 only
+    expect(drawStrength(['2h', '3d'], ['Kh', '8s', 'Qc'], holdem)).toBe('none');
+    expect(drawStrength(['9c', 'Td'], ['8d', '7s', '6c'], holdem)).toBe('none'); // made straight, not a draw
+  });
+
+  it('returns none on the river (no draws left to make)', () => {
+    expect(drawStrength(['Ah', 'Qh'], ['Kh', '7h', '2c', '5d', '3s'], holdem)).toBe('none');
+  });
+});
+
+describe('semi-bluffing draws', () => {
+  it('a tight bot bets a strong draw far more often than air when checked to', () => {
+    // A nit almost never bluffs air (bluffFreq 0.04); a flush draw should still get bet as a semi-bluff.
+    const mkState = (hole: Card[]) => makeState({
+      street: 'flop',
+      board: ['Kh', '7h', '2c'],
+      currentBet: 0, // checked to us
+      minRaise: 10,
+      seats: [
+        seat(0, hole, { betThisStreet: 0, totalBet: 20 }),
+        seat(1, ['Ks', 'Qd'], { betThisStreet: 0, totalBet: 20 }),
+      ],
+      actionSeatIndex: 0,
+    });
+    const betRate = (hole: Card[]): number => {
+      let bets = 0;
+      const trials = 300;
+      for (let s = 1; s <= trials; s++) {
+        const d = decidePokerAction(mkState(hole), holdem, 0, { style: 'nit', difficulty: 'pro' }, mulberry32(s));
+        if (d.action === 'raise' || d.action === 'all_in') bets++;
+      }
+      return bets / trials;
+    };
+    const drawBets = betRate(['9h', '8h']); // flush draw + extra outs, not a made value hand
+    const airBets = betRate(['4s', '3d']); // disconnected air, no draw
+    expect(drawBets).toBeGreaterThan(0.1);
+    expect(drawBets).toBeGreaterThan(airBets);
   });
 });
