@@ -95,6 +95,39 @@ describe('decidePokerAction — legality & nut rule', () => {
     }
   });
 
+  it('caps sized raises to keep chips behind instead of jamming on a low-SPR street', () => {
+    // A bot betting for value into a pot that has outgrown its stack used to auto-shove every time
+    // (a pot-fraction raise clamps to the full stack). The commitment cap should keep it a sized
+    // raise that leaves chips behind in the large majority of those spots.
+    const state = makeState({
+      street: 'turn',
+      board: ['Kh', '7d', '2c', '9s'], // dry-ish, bot flopped a set of 7s (strong, not the nuts)
+      currentBet: 0, // checked to the bot
+      minRaise: 10,
+      seats: [
+        seat(0, ['7h', '7s'], { betThisStreet: 0, totalBet: 600, stack: 700 }), // pot already > stack
+        seat(1, ['As', 'Qd'], { betThisStreet: 0, totalBet: 600, stack: 700 }),
+      ],
+      actionSeatIndex: 0,
+    });
+    let raises = 0;
+    let shoves = 0;
+    const trials = 300;
+    for (let s = 1; s <= trials; s++) {
+      const d = decidePokerAction(state, holdem, 0, { style: 'lag', difficulty: 'pro' }, mulberry32(s));
+      if (d.action === 'raise') {
+        raises++;
+        // A capped raise must leave chips behind — strictly below the all-in total.
+        expect(d.amount!).toBeLessThan(700);
+      } else if (d.action === 'all_in') {
+        shoves++;
+      }
+    }
+    // The bot still bets this set aggressively, but as a sized raise rather than a jam.
+    expect(raises).toBeGreaterThan(0);
+    expect(raises).toBeGreaterThan(shoves * 3);
+  });
+
   it('never folds the current nuts facing a bet — any difficulty or style', () => {
     const state = makeState({
       street: 'river',

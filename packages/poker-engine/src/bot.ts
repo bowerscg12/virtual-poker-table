@@ -62,7 +62,7 @@ const STYLE_PROFILES: Record<BotStyle, StyleProfile> = {
   // Calling Station: limps almost every hand; folds only garbage to a raise.
   station: { vpip: 0.82, vpipUnraised: 0.93, pfrBias: 0.14, aggression: 0.2, bluffFreq: 0.04, callThreshold: 0.3, raiseThreshold: 0.74, betSizePot: 0.5 },
   // Maniac: plays everything unraised; almost never folds even to a raise.
-  maniac: { vpip: 0.88, vpipUnraised: 0.97, pfrBias: 0.9, aggression: 0.9, bluffFreq: 0.6, callThreshold: 0.28, raiseThreshold: 0.46, betSizePot: 0.95 },
+  maniac: { vpip: 0.88, vpipUnraised: 0.97, pfrBias: 0.9, aggression: 0.9, bluffFreq: 0.6, callThreshold: 0.28, raiseThreshold: 0.46, betSizePot: 0.8 },
 };
 
 /** Execution quality per difficulty. Beginners misread hands and ignore pot odds; Pros do not. */
@@ -361,7 +361,7 @@ function textureBetFraction(style: StyleProfile, board: Card[], rng: Rng): numbe
   const wet = boardWetness(board);
   const base = style.betSizePot * (0.8 + 0.5 * wet);
   const jitter = 1 + (rng() - 0.5) * 0.3;
-  return Math.max(0.3, Math.min(1.25, base * jitter));
+  return Math.max(0.3, Math.min(1.0, base * jitter));
 }
 
 /** Count of distinct ranks whose arrival completes a 5-card straight (0 if none, or already made). */
@@ -470,7 +470,13 @@ function buildRaise(
     const potAfterCall = pot + toCall;
     // Target total bet this street: current bet plus a pot-fraction sizing.
     const target = Math.round(state.currentBet + Math.max(state.minRaise, fraction * potAfterCall));
-    const clamped = Math.max(raise.minAmount, Math.min(raise.maxAmount, target));
+    // Commitment cap: `raise.maxAmount` is the full stack, so a sized raise that reaches it would
+    // auto-convert to a shove — which happens on every low-SPR street and makes bots jam far too
+    // often. Cap a sized raise ~65% of the way from calling to all-in so it always keeps chips
+    // behind and stays a raise, not a shove. Deliberate shoves still come from `jamChance` above;
+    // a genuine forced jam (the min legal raise already exceeds the cap) is handled below.
+    const cappedTarget = Math.min(target, Math.round(state.currentBet + 0.65 * (raise.maxAmount - state.currentBet)));
+    const clamped = Math.max(raise.minAmount, Math.min(raise.maxAmount, cappedTarget));
     if (clamped >= raise.maxAmount && allIn) return { action: 'all_in' };
     return { action: 'raise', amount: clamped };
   }
@@ -560,7 +566,7 @@ function decidePokerActionInner(
     const slowPlay = rng() < nutsTrapChance(state);
     if (canRaise && !slowPlay && rng() < Math.max(0.5, style.aggression)) {
       const frac = textureBetFraction(style, board, rng) * 1.05;
-      return buildRaise(legal, state, seatIndex, frac, brain.style === 'maniac' ? 0.4 : 0.15, rng);
+      return buildRaise(legal, state, seatIndex, frac, brain.style === 'maniac' ? 0.2 : 0.06, rng);
     }
     // Trap / pot-control line: stay in cheaply and let opponents catch up or bluff into us.
     if (toCall > 0 && find(legal, 'call')) return { action: 'call' };
@@ -602,13 +608,13 @@ function decidePokerActionInner(
     if (toCall === 0) {
       // In for free (BB walked or all limps): raise for value or check. Never fold.
       if (canRaise && wantsToPlay && rng() < style.pfrBias) {
-        return buildRaise(legal, state, seatIndex, style.betSizePot, brain.style === 'maniac' ? 0.15 : 0.05, rng);
+        return buildRaise(legal, state, seatIndex, style.betSizePot, brain.style === 'maniac' ? 0.08 : 0.02, rng);
       }
       return canCheck ? { action: 'check' } : { action: 'call' };
     }
     if (!wantsToPlay) return { action: 'fold' };
     if (canRaise && equity >= style.raiseThreshold && rng() < style.pfrBias) {
-      return buildRaise(legal, state, seatIndex, style.betSizePot, 0.05, rng);
+      return buildRaise(legal, state, seatIndex, style.betSizePot, 0.02, rng);
     }
     return find(legal, 'call') ? { action: 'call' } : canCheck ? { action: 'check' } : { action: 'fold' };
   }
@@ -622,16 +628,16 @@ function decidePokerActionInner(
   if (toCall === 0) {
     // No bet to call: bet for value (mixed near threshold for pro), semi-bluff draws, or barrel.
     if (canRaise && rng() < valueBetChance(equity, style.raiseThreshold, style, brain.difficulty)) {
-      return buildRaise(legal, state, seatIndex, betFrac(), 0.12, rng);
+      return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
     }
     // Semi-bluff: bet a draw for its fold equity even though it isn't yet a made value hand.
     if (canRaise && draw !== 'none' && equity < style.raiseThreshold) {
       const sbChance = (draw === 'strong' ? 0.6 : 0.3) * Math.max(style.aggression, 0.4);
-      if (rng() < sbChance) return buildRaise(legal, state, seatIndex, betFrac(), 0.12, rng);
+      if (rng() < sbChance) return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
     }
     // Planned bluff: a hand committed to bluffing keeps firing rather than randomly giving up.
     if (canRaise && equity < style.callThreshold && bluffCommitted) {
-      return buildRaise(legal, state, seatIndex, betFrac(), 0.1, rng);
+      return buildRaise(legal, state, seatIndex, betFrac(), 0.04, rng);
     }
     return canCheck ? { action: 'check' } : { action: 'fold' };
   }
@@ -641,11 +647,11 @@ function decidePokerActionInner(
   const callNeed = potOdds * diff.potOddsRespect + style.callThreshold * (1 - diff.potOddsRespect);
 
   if (canRaise && rng() < valueBetChance(equity, style.raiseThreshold, style, brain.difficulty)) {
-    return buildRaise(legal, state, seatIndex, betFrac(), 0.12, rng);
+    return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
   }
   // Semi-bluff raise with a strong draw: fold equity now plus outs if called.
   if (canRaise && draw === 'strong' && rng() < 0.35 * Math.max(style.aggression, 0.4)) {
-    return buildRaise(legal, state, seatIndex, betFrac(), 0.12, rng);
+    return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
   }
   // Call when the price is right; draws get an implied-odds discount on the break-even bar.
   const drawDiscount = draw === 'strong' ? 0.85 : draw === 'weak' ? 0.93 : 1;
@@ -654,7 +660,7 @@ function decidePokerActionInner(
   }
   // Weak: continue a planned bluff by raising, otherwise fold.
   if (canRaise && equity < style.callThreshold && bluffCommitted && rng() < 0.6) {
-    return buildRaise(legal, state, seatIndex, betFrac(), 0.1, rng);
+    return buildRaise(legal, state, seatIndex, betFrac(), 0.04, rng);
   }
   return { action: 'fold' };
 }

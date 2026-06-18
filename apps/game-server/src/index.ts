@@ -13,7 +13,7 @@ import { cleanExpiredSessions, markAllSessionsDisconnected } from './services/se
 import { cleanupAbandonedLobbies } from './services/lobby-cleanup.js';
 import { cleanupExpiredTournaments } from './services/tournament-cleanup.js';
 import { registerApiRoutes } from './routes/api.js';
-import { registerClient, setTokenVerifier } from './ws/handler.js';
+import { registerClient, setTokenVerifier, startBotTurnWatchdog } from './ws/handler.js';
 
 async function main() {
   await initLobbyStore();
@@ -82,6 +82,10 @@ async function main() {
 
   await app.listen({ port: config.port, host: '0.0.0.0' });
   console.log(`Game server listening on http://localhost:${config.port}`);
+
+  // Self-healing safety net: guarantees no AI seat can ever permanently stall a hand even if its
+  // normal turn timer is lost. Runs independently of the per-action scheduling path.
+  startBotTurnWatchdog();
 
   // Hourly maintenance: expire orphaned sessions, delete abandoned guests, remove stale lobbies.
   const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;

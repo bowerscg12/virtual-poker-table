@@ -59,6 +59,7 @@ import {
   clearGame,
   clearIntermissionDeadline,
   getActiveGame,
+  getActiveGameLobbyIds,
   getActionDeadline,
   getAutoAction,
   getBlindHandSeats,
@@ -1491,7 +1492,11 @@ function scheduleBotTurn(lobbyId: string, config: VariantConfig, state: GameTabl
   const gen = actionTimerGenerations.get(lobbyId) ?? 0;
   const timer = setTimeout(() => {
     if ((actionTimerGenerations.get(lobbyId) ?? 0) !== gen) return;
-    runBotTurn(lobbyId, userId, seatIndex, config).catch(() => {});
+    // Log (don't swallow) failures: the bot-turn watchdog will still recover the table, but a
+    // logged error tells us a primary-path bug exists to fix rather than relying on the backstop.
+    runBotTurn(lobbyId, userId, seatIndex, config).catch((err) =>
+      console.error(`[bot] runBotTurn failed lobby=${lobbyId} seat=${seatIndex}:`, err)
+    );
   }, botThinkDelayMs(config));
   actionTimers.set(lobbyId, timer);
 }
@@ -1560,6 +1565,114 @@ function driveTurn(lobbyId: string, config: VariantConfig, state: GameTableState
     scheduleBotTurn(lobbyId, config, state);
   } else {
     scheduleActionTimer(lobbyId, config, state);
+  }
+}
+
+// ── Bot-turn watchdog ──────────────────────────────────────────────────────────────────────────
+// Defense-in-depth guarantee that an AI seat can NEVER permanently stall the table. The normal path
+// hands a bot its move via a single setTimeout (scheduleBotTurn). If that timer is ever lost — a
+// swallowed error, a generation bumped without a reschedule, a future refactor regression — the hand
+// would otherwise hang forever on the bot's turn. This watchdog runs independently of that timer: it
+// periodically scans every hand this instance is driving and force-acts any bot that has been on the
+// clock past BOT_STALL_THRESHOLD_MS (far longer than the fixed 3 s think delay, so it only ever fires
+// on a genuine stall, never racing a legitimate move or the first-hand deal animation). Forcing routes
+// through runBotTurn → afterActionApplied → driveTurn, restoring the normal turn chain; runBotTurn
+// re-validates the live action seat, so a redundant fire is a harmless no-op.
+const BOT_WATCHDOG_TICK_MS = 2500;
+const BOT_STALL_THRESHOLD_MS = 10000;
+/** lobbyId → the bot seat currently on the clock and when this watchdog first observed it there. */
+const botStallTracker = new Map<string, { seatIndex: number; since: number }>();
+let botWatchdogInterval: ReturnType<typeof setInterval> | null = null;
+let botWatchdogRunning = false;
+
+/** Start the periodic bot-turn watchdog. Idempotent; call once at server boot. */
+export function startBotTurnWatchdog(): void {
+  if (botWatchdogInterval) return;
+  botWatchdogInterval = setInterval(() => {
+    if (botWatchdogRunning) return; // never let ticks overlap
+    botWatchdogRunning = true;
+    botWatchdogTick()
+      .catch((err) => console.error('[bot-watchdog] tick error:', err))
+      .finally(() => { botWatchdogRunning = false; });
+  }, BOT_WATCHDOG_TICK_MS);
+  // Don't keep the event loop alive solely for the watchdog (clean test/process shutdown).
+  if (typeof botWatchdogInterval.unref === 'function') botWatchdogInterval.unref();
+}
+
+/** Stop the watchdog (used by tests). */
+export function stopBotTurnWatchdog(): void {
+  if (botWatchdogInterval) { clearInterval(botWatchdogInterval); botWatchdogInterval = null; }
+  botStallTracker.clear();
+}
+
+/** Minimal shape of game state the watchdog needs — kept narrow so the gating logic is unit-testable. */
+interface StallCheckState {
+  actionSeatIndex: number | null;
+  street: string;
+  pendingMultiRunout?: boolean;
+  seats: ReadonlyArray<{ seatIndex: number; userId: string; folded: boolean; allIn: boolean }>;
+}
+
+/**
+ * Pure gating logic for the bot-turn watchdog: returns the bot seat that currently owes an action
+ * (and could therefore stall the table), or null when the state is not a live bot betting turn —
+ * hand over/transitioning (`complete`/`waiting`/`reveal`), a pending multi-runout prompt, no action
+ * seat, the action seat already folded/all-in, or the action seat is a human (humans have their own
+ * action/grace timer). Side-effect-free and I/O-free so the stall conditions can be tested directly.
+ */
+export function botStallCandidate(
+  state: StallCheckState | null,
+  isBot: (userId: string) => boolean,
+): { seatIndex: number; userId: string } | null {
+  if (!state || state.actionSeatIndex === null || state.pendingMultiRunout) return null;
+  if (state.street === 'complete' || state.street === 'waiting' || state.street === 'reveal') return null;
+  const seat = state.seats.find((s) => s.seatIndex === state.actionSeatIndex);
+  if (!seat || seat.folded || seat.allIn || !isBot(seat.userId)) return null;
+  return { seatIndex: seat.seatIndex, userId: seat.userId };
+}
+
+async function botWatchdogTick(): Promise<void> {
+  const now = Date.now();
+  const activeIds = new Set(getActiveGameLobbyIds());
+  // Prune tracking for hands that have ended since the last tick.
+  for (const key of [...botStallTracker.keys()]) {
+    if (!activeIds.has(key)) botStallTracker.delete(key);
+  }
+
+  for (const lobbyId of activeIds) {
+    try {
+      const state = await getActiveGame(lobbyId);
+      const candidate = botStallCandidate(state, isBotUser);
+      if (!candidate) {
+        botStallTracker.delete(lobbyId);
+        continue;
+      }
+      // A paused lobby legitimately holds the action seat — never count pause time as a stall.
+      const lobby = await getLobbyById(lobbyId);
+      if (!lobby || lobby.status !== 'playing') {
+        botStallTracker.delete(lobbyId);
+        continue;
+      }
+
+      // It is a bot's turn. Track how long this exact seat has held the clock.
+      const tracked = botStallTracker.get(lobbyId);
+      if (!tracked || tracked.seatIndex !== candidate.seatIndex) {
+        botStallTracker.set(lobbyId, { seatIndex: candidate.seatIndex, since: now });
+        continue;
+      }
+      if (now - tracked.since < BOT_STALL_THRESHOLD_MS) continue;
+
+      // Stalled far past the think delay — force the move now. Reset the clock first so that if the
+      // forced action still fails to advance, we retry next threshold instead of spinning every tick.
+      console.warn(
+        `[bot-watchdog] forcing stalled bot turn lobby=${lobbyId} seat=${candidate.seatIndex} ` +
+        `stalledMs=${now - tracked.since} street=${state!.street}`
+      );
+      botStallTracker.set(lobbyId, { seatIndex: candidate.seatIndex, since: now });
+      await runBotTurn(lobbyId, candidate.userId, candidate.seatIndex, lobby.settings);
+    } catch (err) {
+      console.error(`[bot-watchdog] recovery failed lobby=${lobbyId}:`, err);
+    }
   }
 }
 
@@ -2008,7 +2121,9 @@ async function processPendingRebuys(lobbyId: string): Promise<void> {
     await updateSeatStackAfterRebuy(lobbyId, userId, pending.amount);
     await setSitOutNextHand(lobbyId, userId, false);
     await setSittingOut(lobbyId, userId, false);
-    await setWaitingForReentryBlind(lobbyId, userId, true);
+    // Deal the player back in on the very next hand (clear any re-entry deferral) rather than
+    // holding them at "Waiting for BB" until they reach the big blind — matches bot rebuys.
+    await setWaitingForReentryBlind(lobbyId, userId, false);
     recordRebuy(lobbyId, userId, pending.amount);
     const ws = connectedUserSockets.get(userId);
     if (ws) send(ws, { type: 'rebuy_confirmed', newStack: pending.amount });
@@ -3338,7 +3453,9 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       await updateSeatStackAfterRebuy(lobbyId, userId, buyIn);
       await setSitOutNextHand(lobbyId, userId, false);
       await setSittingOut(lobbyId, userId, false);
-      await setWaitingForReentryBlind(lobbyId, userId, true);
+      // Deal the player back in on the very next hand (clear any re-entry deferral) rather than
+      // holding them at "Waiting for BB" until they reach the big blind — matches bot rebuys.
+      await setWaitingForReentryBlind(lobbyId, userId, false);
       recordRebuy(lobbyId, userId, buyIn);
 
       send(ws, { type: 'rebuy_confirmed', newStack: buyIn });

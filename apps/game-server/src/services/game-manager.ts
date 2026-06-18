@@ -846,6 +846,17 @@ export async function getActiveGame(lobbyId: string): Promise<GameTableState | n
 }
 
 /**
+ * Lobby ids of every hand this server instance is actively driving (i.e. cached in `activeGames`).
+ * This is exactly the set of hands whose in-process turn timers could be lost, so it is the set the
+ * bot-turn watchdog scans to guarantee no AI seat ever stalls. Games that only exist in Redis (a
+ * previous instance's interrupted hand) are deliberately excluded — they are handled by startup
+ * recovery, never driven here.
+ */
+export function getActiveGameLobbyIds(): string[] {
+  return [...activeGames.keys()];
+}
+
+/**
  * Remove the card at `cardIndex` from a player's hole cards during the Pineapple discard phase.
  * No-op if the game, seat, or index is invalid.
  */

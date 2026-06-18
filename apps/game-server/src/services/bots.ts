@@ -35,6 +35,7 @@ const BOT_NAMES = [
   'Ace', 'Rocky', 'Maverick', 'Lucky', 'Diesel', 'Bishop', 'Goose', 'Slick',
   'Cobra', 'Bandit', 'Shark', 'Domino', 'Jett', 'Rebel', 'Hawk', 'Vega',
   'Knox', 'Razor', 'Echo', 'Blaze', 'Duke', 'Fox', 'Banks', 'Rusty',
+  'Jake', 'Wes', 'Trey', 'Bret', 'Nick', 'Mack',
 ];
 
 /**
