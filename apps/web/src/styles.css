@@ -5617,17 +5617,29 @@ select option {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
+  gap: 0.2rem;
   pointer-events: none;
+  text-align: center;
 }
 
 .bj-inscription-line {
-  font-size: clamp(0.5rem, 0.9vw, 0.7rem);
-  font-weight: 800;
-  letter-spacing: 3px;
+  font-size: clamp(0.45rem, 0.85vw, 0.62rem);
+  font-weight: 700;
+  letter-spacing: 2px;
   text-transform: uppercase;
-  opacity: 0.18;
+  color: var(--gold);
+  opacity: 0.32;
   white-space: nowrap;
+}
+
+/* The headline payout line is larger, bolder, and slightly brighter. */
+.bj-inscription-line--primary {
+  font-size: clamp(0.7rem, 1.5vw, 1.05rem);
+  font-weight: 900;
+  letter-spacing: 3px;
+  opacity: 0.5;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  margin-bottom: 0.1rem;
 }
 
 /* Player rail — wooden strip below the oval */
@@ -5646,8 +5658,10 @@ select option {
 }
 
 .bj-seat {
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 100%);
+  border: 1px solid rgba(212,175,55,0.25);
   border-radius: 10px;
   padding: 0.5rem 0.6rem;
   min-width: 110px;
@@ -5659,6 +5673,17 @@ select option {
 .bj-seat--active {
   border-color: var(--gold);
   box-shadow: 0 0 12px rgba(212,175,55,0.4);
+}
+
+/* Betting-phase chip stack sits in a felt betting circle. */
+.bj-seat-bet {
+  align-self: center;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem 0.5rem;
+  border-radius: 50%;
+  border: 2px dashed rgba(212,175,55,0.4);
 }
 
 .bj-seat--me {
@@ -5674,6 +5699,10 @@ select option {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.4rem;
+  padding: 0.25rem 0.3rem;
+  background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.15));
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .bj-seat-avatar {
@@ -5694,7 +5723,8 @@ select option {
 
 .bj-seat-name {
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--gold);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5771,22 +5801,88 @@ select option {
 }
 
 .bj-hand-wager {
-  font-size: 0.7rem;
-  opacity: 0.75;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.bj-hand-tags {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+/* ── Blackjack bet chip stacks ─────────────────────────────────────────────── */
+
+.bj-chip-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Discs overlap vertically to read as a stack of poker chips on edge. */
+.bj-chip-discs {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+}
+
+.bj-chip-discs .bj-chip + .bj-chip {
+  margin-bottom: -11px;
+}
+
+.bj-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  /* Dashed inner ring evokes the edge spots on a casino chip. */
+  border: 1.5px dashed rgba(255,255,255,0.7);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(0,0,0,0.25);
+}
+
+/* Denomination colors, drawn from the existing palette where it fits. */
+.bj-chip--5    { background: linear-gradient(145deg, #d65656, var(--raise-red)); }
+.bj-chip--25   { background: linear-gradient(145deg, #2a9c6a, var(--check)); }
+.bj-chip--100  { background: linear-gradient(145deg, #3a3a3a, #111); }
+.bj-chip--500  { background: linear-gradient(145deg, #8a52b0, #5e2a82); }
+.bj-chip--1000 { background: linear-gradient(145deg, #f4d03f, #c9a227); }
+
+.bj-chip-amount {
+  font-weight: 700;
+  color: var(--gold);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
 }
 
 .bj-total {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  /* Casino-green player badge by default (matches the reference). */
+  background: var(--check);
+  color: #fff;
+  border: 1.5px solid rgba(255,255,255,0.55);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.45);
 }
 
 .bj-total--21 { background: var(--gold); color: #111; }
-.bj-total--bj { background: #c8a000; color: #111; }
-.bj-total--bust { background: var(--danger); }
-.bj-total--good { background: rgba(26,122,82,0.5); }
+.bj-total--bj { background: var(--gold); color: #111; }
+.bj-total--bust { background: var(--danger); color: #fff; }
+.bj-total--good { background: var(--check); color: #fff; }
+/* Dealer badge is red to stand apart from the green player badges. */
+.bj-total--dealer { background: var(--raise-red); color: #fff; }
 
 .bj-hand-result {
   position: absolute;
@@ -5933,7 +6029,19 @@ select option {
 }
 
 .bj-bet-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.9rem;
+}
+
+.bj-staged-chips .bj-chip-discs {
+  flex-direction: row;
+}
+
+.bj-staged-chips .bj-chip-discs .bj-chip + .bj-chip {
+  margin-bottom: 0;
+  margin-left: -10px;
 }
 
 .bj-confirmed-bet {
@@ -5958,6 +6066,46 @@ select option {
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+/* Player-turn actions render as one contiguous segmented bar. */
+.bj-play-buttons--segmented {
+  gap: 0;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+
+.bj-play-buttons--segmented .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid rgba(0,0,0,0.35);
+  padding: 0.9rem 0.4rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: clamp(0.7rem, 2.6vw, 0.85rem);
+  line-height: 1.1;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.bj-play-buttons--segmented .btn:first-child {
+  border-left: none;
+}
+
+/* Tighten the segmented bar on small screens so longer labels (e.g. SURRENDER) fit. */
+@media (max-width: 600px) {
+  .bj-play-buttons--segmented .btn {
+    padding: 0.85rem 0.2rem;
+    letter-spacing: 0;
+  }
 }
 
 .bj-btn-hit    { background: var(--check) !important; }
@@ -6033,6 +6181,178 @@ select option {
   opacity: 0.6;
   min-width: 80px;
   text-align: right;
+}
+
+/* ── Blackjack: timers, insurance, host controls, animations ───────────────── */
+
+.bj-countdown {
+  display: inline-block;
+  margin: 0 auto 0.5rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.bj-countdown--urgent {
+  background: rgba(220,60,60,0.85);
+  color: #fff;
+  animation: bj-pulse 1s ease-in-out infinite;
+}
+
+@keyframes bj-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+.bj-seat-timer {
+  margin-left: auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--gold, #d4af37);
+  color: #1a1a1a;
+  font-weight: 700;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bj-seat-timer--urgent {
+  background: var(--danger, #d23c3c);
+  color: #fff;
+  animation: bj-pulse 1s ease-in-out infinite;
+}
+
+.bj-action-bar--insurance {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bj-insurance-prompt {
+  font-weight: 700;
+  color: var(--gold, #d4af37);
+}
+
+.bj-insurance-waiting {
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+.bj-host-controls {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  padding: 0.5rem;
+  flex-shrink: 0;
+}
+
+.bj-cash-out-btn {
+  margin-left: auto;
+  background: var(--gold);
+  color: #1a1a1a;
+  font-weight: 700;
+}
+
+.bj-cash-out-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bj-paused-banner {
+  text-align: center;
+  padding: 0.4rem;
+  background: rgba(220,60,60,0.2);
+  border-bottom: 1px solid rgba(220,60,60,0.4);
+  font-weight: 700;
+  color: var(--danger, #d23c3c);
+}
+
+/* Newly dealt cards fade/scale in for a casino "deal" feel. */
+.bj-card {
+  animation: bj-deal-in 0.28s ease-out both;
+}
+
+@keyframes bj-deal-in {
+  from { opacity: 0; transform: translateY(-12px) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Result overlay pops in. */
+.bj-hand-result {
+  animation: bj-result-pop 0.3s ease-out both;
+}
+
+@keyframes bj-result-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.bj-hand-result--surrender { color: #c8a24a; }
+
+/* End-of-run recap (high-score mode). */
+.bj-recap-panel {
+  background: var(--felt-dark);
+  border: 1px solid var(--gold, #d4af37);
+  border-radius: 16px;
+  padding: 1.75rem;
+  min-width: 280px;
+  max-width: 380px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(212,175,55,0.25);
+  animation: bj-result-pop 0.3s ease-out both;
+}
+
+.bj-recap-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.4rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bj-recap-record {
+  margin: 0 0 1rem;
+  font-weight: 700;
+  color: var(--gold, #d4af37);
+  animation: bj-pulse 1.2s ease-in-out infinite;
+}
+
+.bj-recap-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.bj-recap-stat--sub { opacity: 0.65; font-size: 0.85rem; }
+
+.bj-recap-label { opacity: 0.8; }
+
+.bj-recap-value {
+  font-weight: 700;
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bj-recap-value--record { color: var(--gold, #d4af37); }
+
+.bj-recap-best {
+  margin: 1rem 0;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.bj-recap-btn { width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bj-card, .bj-hand-result, .bj-countdown--urgent, .bj-seat-timer--urgent,
+  .bj-recap-panel, .bj-recap-record { animation: none; }
 }
 
 /* ── Lobby Templates panel ───────────────────────────────────────────────── */

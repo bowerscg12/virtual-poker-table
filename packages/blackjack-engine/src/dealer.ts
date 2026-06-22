@@ -28,6 +28,7 @@ export function runDealerAI(
   while (true) {
     const { total, isSoft } = calculateTotal(cards);
     if (!dealerShouldHit(total, isSoft, softSeventeenRule)) break;
+    if (shoe.length === 0) break; // Shoe exhausted — dealer stands on what it has.
     const [next, ...rest] = shoe as [Card, ...Card[]];
     cards = [...cards, next];
     shoe = rest;

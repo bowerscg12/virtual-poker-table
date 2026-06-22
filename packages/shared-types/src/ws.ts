@@ -2,7 +2,7 @@ import type { Card } from './cards.js';
 import type { LegalAction, PlayerActionType, PublicTableState } from './game.js';
 import type { LobbySummary } from './lobby.js';
 import type { CashOutSummary } from './session-stats.js';
-import type { BlackjackLegalAction, BlackjackRoundPlayerResult, PublicBlackjackState } from './blackjack.js';
+import type { BlackjackLegalAction, BlackjackRoundPlayerResult, BlackjackSessionRecap, PublicBlackjackState } from './blackjack.js';
 import type { BlindLevel, LeaderboardEntry, PublicTournamentState } from './tournament.js';
 import type { TableReaction } from './reaction.js';
 import type { Suit } from './cards.js';
@@ -72,7 +72,16 @@ export type ClientMessage =
   | { type: 'bj_hit'; handId: string }
   | { type: 'bj_stand'; handId: string }
   | { type: 'bj_double_down'; handId: string }
-  | { type: 'bj_split'; handId: string };
+  | { type: 'bj_split'; handId: string }
+  | { type: 'bj_surrender'; handId: string }
+  /** Place (amount > 0) or decline (amount 0) an insurance side bet during the insurance window. */
+  | { type: 'bj_insurance'; amount: number }
+  /** Take even money on a natural facing a dealer Ace during the insurance window. */
+  | { type: 'bj_even_money' }
+  /** After busting, start a fresh buy-in (high-score run) and rejoin the table. */
+  | { type: 'bj_play_again' }
+  /** Leave the blackjack table and bank the current stack. Only valid between hands. */
+  | { type: 'bj_cash_out' };
 
 /** Server -> Client */
 export type ServerMessage =
@@ -134,8 +143,12 @@ export type ServerMessage =
   | { type: 'bj_player_acted'; seatIndex: number; action: string; state: PublicBlackjackState; legalActions?: BlackjackLegalAction[] }
   /** Dealer took an action (one card drawn). */
   | { type: 'bj_dealer_acted'; state: PublicBlackjackState }
+  /** Insurance window opened — dealer shows an Ace. Clients may take insurance/even money. */
+  | { type: 'bj_insurance_prompt'; deadline: number; state: PublicBlackjackState }
   /** Round settled — includes per-player results. */
-  | { type: 'bj_round_settled'; state: PublicBlackjackState; results: BlackjackRoundPlayerResult[] };
+  | { type: 'bj_round_settled'; state: PublicBlackjackState; results: BlackjackRoundPlayerResult[] }
+  /** Sent to a player when their buy-in busts: end-of-run recap + personal-best comparison. */
+  | { type: 'bj_session_recap'; recap: BlackjackSessionRecap };
 
 export interface ChatMessage {
   id: string;

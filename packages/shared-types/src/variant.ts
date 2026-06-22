@@ -18,6 +18,17 @@ export function clampFlipCardCount(count: number | undefined): number {
 export const TIMER_STEPS_SEC = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180] as const;
 export type TimerStepSec = (typeof TIMER_STEPS_SEC)[number];
 
+/**
+ * Blackjack uses a faster cadence, so it offers a 10s step (the default) on top of the
+ * standard durations. Kept separate from TIMER_STEPS_SEC so poker tables are unaffected.
+ */
+export const BLACKJACK_TIMER_STEPS_SEC: readonly number[] = [0, 10, 15, 30, 45, 60, 90, 120];
+
+/** The action-timer step list valid for a given game variant. */
+export function timerStepsFor(game: GameVariant): readonly number[] {
+  return game === 'blackjack' ? BLACKJACK_TIMER_STEPS_SEC : TIMER_STEPS_SEC;
+}
+
 export function formatTimerLabel(sec: number): string {
   if (sec === 0) return 'No Timer';
   const m = Math.floor(sec / 60);
@@ -100,6 +111,18 @@ export interface VariantConfig {
   blackjackMaxBet?: number;
   /** Whether dealer hits (h17) or stands (s17) on soft 17. Default: 'stand'. */
   blackjackDealerSoftSeventeen?: 'hit' | 'stand';
+  /** Natural blackjack payout ratio. Default: '3:2'. */
+  blackjackBlackjackPayout?: '3:2' | '6:5';
+  /** Surrender option. Default: 'late'. */
+  blackjackSurrender?: 'none' | 'late';
+  /** Whether insurance / even money is offered when the dealer shows an Ace. Default: true. */
+  blackjackInsurance?: boolean;
+  /** Whether a player may double after splitting. Default: true. */
+  blackjackDoubleAfterSplit?: boolean;
+  /** Whether split aces may be re-split / acted on (false = ace splits auto-stand). Default: false. */
+  blackjackResplitAces?: boolean;
+  /** Maximum total hands a player may hold after splitting (e.g. 4 = up to 3 splits). Default: 4. */
+  blackjackMaxSplitHands?: number;
 }
 
 /** Stack chips granted when a player sits (host-configured). */

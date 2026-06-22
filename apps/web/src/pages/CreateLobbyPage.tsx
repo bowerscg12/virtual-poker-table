@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { LobbyTemplate, RulesPreset, VariantConfig } from '@vct/shared-types';
-import { TIMER_STEPS_SEC, formatTimerLabel, FLIP_MIN_CARDS, FLIP_MAX_CARDS, FLIP_DEFAULT_CARDS, clampFlipCardCount } from '@vct/shared-types';
+import { TIMER_STEPS_SEC, BLACKJACK_TIMER_STEPS_SEC, formatTimerLabel, FLIP_MIN_CARDS, FLIP_MAX_CARDS, FLIP_DEFAULT_CARDS, clampFlipCardCount } from '@vct/shared-types';
 import { deleteMyTemplate, getMyTemplates, getPresets, saveTemplate } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
@@ -501,7 +501,7 @@ export default function CreateLobbyPage() {
               value={actionTimerSec}
               onChange={(e) => setActionTimerSec(Number(e.target.value))}
             >
-              {TIMER_STEPS_SEC.map((sec) => (
+              {(isBlackjack ? BLACKJACK_TIMER_STEPS_SEC : TIMER_STEPS_SEC).map((sec) => (
                 <option key={sec} value={sec}>
                   {formatTimerLabel(sec)}
                 </option>

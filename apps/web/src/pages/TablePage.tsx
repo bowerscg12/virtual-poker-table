@@ -106,6 +106,8 @@ export default function TablePage() {
     bjLegalActions,
     bjRoundResults,
     clearBjRoundResults,
+    bjRecap,
+    clearBjRecap,
     send,
   } = useGameSocket(token, lobbyId ?? null, isSpectator);
 
@@ -398,11 +400,14 @@ export default function TablePage() {
               bjState={bjState}
               legalActions={bjLegalActions}
               roundResults={bjRoundResults}
+              recap={bjRecap}
               myUserId={user?.id ?? ''}
               isHost={isHost}
               messages={chat}
               onClearRoundResults={clearBjRoundResults}
+              onClearRecap={clearBjRecap}
               onSend={send}
+              onLeaveTable={() => { clearBjRecap(); navigate('/'); }}
             />
           ) : isTcf ? (
             <TwelveCardFlip

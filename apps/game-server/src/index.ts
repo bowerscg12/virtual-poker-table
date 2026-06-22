@@ -13,11 +13,15 @@ import { cleanExpiredSessions, markAllSessionsDisconnected } from './services/se
 import { cleanupAbandonedLobbies } from './services/lobby-cleanup.js';
 import { cleanupExpiredTournaments } from './services/tournament-cleanup.js';
 import { registerApiRoutes } from './routes/api.js';
-import { registerClient, setTokenVerifier, startBotTurnWatchdog } from './ws/handler.js';
+import { recoverBlackjackLobbies } from './ws/blackjack-handler.js';
+import { bjHandlerDeps, registerClient, setTokenVerifier, startBotTurnWatchdog } from './ws/handler.js';
 
 async function main() {
   await initLobbyStore();
   await recoverInterruptedHands();
+  await recoverBlackjackLobbies(bjHandlerDeps()).catch((err) => {
+    console.error('[startup] Blackjack recovery failed:', err);
+  });
   await tournamentManager.recoverTournamentTimers().catch((err) => {
     console.error('[startup] Tournament timer recovery failed:', err);
   });

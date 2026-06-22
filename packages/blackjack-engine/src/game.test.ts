@@ -6,8 +6,12 @@ import { runDealerAI } from './dealer.js';
 import { resolveRound } from './settlement.js';
 import { getLegalActions } from './legal-actions.js';
 import { calculateTotal } from './hand.js';
+import { DEFAULT_BLACKJACK_RULES } from './types.js';
 
 function c(s: string): Card { return s as Card; }
+
+/** These pre-insurance tests opt out of the insurance window so a dealer-Ace deal still reaches play. */
+const NO_INSURANCE = { ...DEFAULT_BLACKJACK_RULES, insurance: false };
 
 const TWO_PLAYERS = [
   { userId: 'u1', seatIndex: 0, stack: 1000 },
@@ -38,13 +42,13 @@ describe('createRound', () => {
 describe('dealInitial', () => {
   it('errors when no bets placed', () => {
     const s = makeState();
-    expect(dealInitial(s)).toEqual({ error: 'No bets placed' });
+    expect(dealInitial(s, NO_INSURANCE)).toEqual({ error: 'No bets placed' });
   });
 
   it('deals 2 cards to each player and dealer', () => {
     let s = makeState();
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 100 })) };
-    const result = dealInitial(s);
+    const result = dealInitial(s, NO_INSURANCE);
     if ('error' in result) throw new Error(result.error);
     expect(result.players[0]!.hands[0]!.cards).toHaveLength(2);
     expect(result.players[1]!.hands[0]!.cards).toHaveLength(2);
@@ -55,7 +59,7 @@ describe('dealInitial', () => {
   it('deducts bet from stack', () => {
     let s = makeState();
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 100 })) };
-    const result = dealInitial(s);
+    const result = dealInitial(s, NO_INSURANCE);
     if ('error' in result) throw new Error(result.error);
     expect(result.players[0]!.stack).toBe(900);
   });
@@ -63,7 +67,7 @@ describe('dealInitial', () => {
   it('sets non-betting players to sitting_out', () => {
     let s = makeState();
     s = { ...s, players: s.players.map((p, i) => ({ ...p, pendingBet: i === 0 ? 100 : 0 })) };
-    const result = dealInitial(s);
+    const result = dealInitial(s, NO_INSURANCE);
     if ('error' in result) throw new Error(result.error);
     expect(result.players[1]!.status).toBe('sitting_out');
   });
@@ -73,7 +77,7 @@ describe('hit / stand flow', () => {
   function setupForAction() {
     let s = makeState();
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 50 })) };
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
     return dealt;
   }
@@ -109,7 +113,7 @@ describe('double down', () => {
   it('doubles wager, draws one card, auto-stands', () => {
     let s = makeState();
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 100 })) };
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
 
     const player = dealt.players[dealt.activePlayerIndex]!;
@@ -138,7 +142,7 @@ describe('split', () => {
     ];
     s = { ...s, shoe: injectedShoe, players: s.players.map((p) => ({ ...p, pendingBet: 100 })) };
 
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
 
     const player0 = dealt.players[0]!;
@@ -164,7 +168,7 @@ describe('dealer AI', () => {
   it('hits until 17', () => {
     let s = makeState();
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 50 })) };
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
 
     // Stand all players
@@ -188,7 +192,7 @@ describe('settlement', () => {
   it('pays 1:1 on win', () => {
     let s = makeState({ players: [{ userId: 'u1', seatIndex: 0, stack: 1000 }] });
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 100 })) };
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
 
     let state = dealt;
@@ -215,7 +219,7 @@ describe('settlement', () => {
     const injectedShoe: Card[] = [c('Ah'), c('5h'), c('Kh'), c('9d'), ...s.shoe.slice(4)];
     s = { ...s, shoe: injectedShoe, players: s.players.map((p) => ({ ...p, pendingBet: 100 })) };
 
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
 
     // Player has BJ, so status should be 'done', go straight to dealer turn
@@ -234,7 +238,7 @@ describe('getLegalActions', () => {
   it('returns hit and stand for normal hand', () => {
     let s = makeState();
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 50 })) };
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
 
     const player = dealt.players[dealt.activePlayerIndex]!;
@@ -253,7 +257,7 @@ describe('getLegalActions', () => {
   it('returns empty array for wrong player', () => {
     let s = makeState();
     s = { ...s, players: s.players.map((p) => ({ ...p, pendingBet: 50 })) };
-    const dealt = dealInitial(s);
+    const dealt = dealInitial(s, NO_INSURANCE);
     if ('error' in dealt) throw new Error(dealt.error);
 
     const inactiveIdx = dealt.activePlayerIndex === 0 ? 1 : 0;

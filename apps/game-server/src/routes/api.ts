@@ -16,6 +16,7 @@ import { getHandHistories } from '../services/game-manager.js';
 import { createSession, deleteSessionsByUserId } from '../services/session.js';
 import { createTemplate, deleteTemplate, getTemplatesForUser } from '../services/templates.js';
 import { getCareerStats } from '../services/lifetime-stats.js';
+import { getBjHighScore } from '../services/blackjack-highscore.js';
 import {
   buildPublicTournamentState,
   claimDailyChips,
@@ -83,6 +84,20 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     if (user.isGuest) return reply.status(403).send({ error: 'Career stats are not available for guest accounts' });
     const stats = await getCareerStats(userId);
     return stats;
+  });
+
+  app.get('/me/blackjack-stats', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const user = await getUserById(userId);
+    if (!user) return reply.status(404).send({ error: 'User not found' });
+    if (user.isGuest) return reply.status(403).send({ error: 'Blackjack stats are not available for guest accounts' });
+    const best = await getBjHighScore(userId);
+    return {
+      highestPeak: best.bestPeak,
+      longestWinStreak: best.longestWinStreak,
+      mostHandsWithoutBusting: best.bestRunHands,
+      biggestHandWin: best.biggestHandWin,
+    };
   });
 
   app.patch('/auth/me', { onRequest: [app.authenticate] }, async (req, reply) => {

@@ -12,8 +12,12 @@ import {
   variantSupportsBots,
 } from '../services/bots.js';
 import {
+  bjAutoActAndAdvance,
   cancelAllBjTimers,
+  cashOutBjPlayer,
   handleBjMessage,
+  pauseBjLobby,
+  resumeBjLobby,
   sendBjStateToClient,
   startBjBettingPhase,
   teardownBjLobby,
@@ -1156,7 +1160,20 @@ function send(ws: WebSocket, msg: ServerMessage): void {
 
 /** Build the dependency bag for the blackjack handler (captures module-level maps). */
 function bjDeps() {
-  return { send, broadcastLobby, getConnectedSet };
+  return {
+    send,
+    broadcastLobby,
+    getConnectedSet,
+    sendToUser: (userId: string, msg: ServerMessage) => {
+      const ws = connectedUserSockets.get(userId);
+      if (ws) send(ws, msg);
+    },
+  };
+}
+
+/** Exported accessor so startup recovery can drive blackjack lobbies with the live deps. */
+export function bjHandlerDeps() {
+  return bjDeps();
 }
 
 /** Returns the set of userIds currently connected to a lobby. */
@@ -1840,6 +1857,13 @@ async function onGracePeriodExpired(sessionId: string, userId: string, lobbyId: 
     }
   }
 
+  // Blackjack runs its own state machine — auto-stand the player if they're on the clock.
+  const graceLobby = await getLobbyById(lobbyId);
+  if (graceLobby?.settings.game === 'blackjack') {
+    await bjAutoActAndAdvance(lobbyId, userId, graceLobby.settings, bjDeps());
+    return;
+  }
+
   // Auto-act if it is this player's turn so the hand can continue
   const game = await getActiveGame(lobbyId);
   if (game) {
@@ -1965,6 +1989,62 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
   } finally {
     cashOutInProgress.delete(userId);
     pendingCashOuts.delete(userId);
+  }
+}
+
+/**
+ * Cash a player out of a blackjack table. Validates "between hands" + folds the run into
+ * personal bests (in cashOutBjPlayer), then frees the seat, ends the reconnect session, and
+ * sends the leaving player their recap. Mirrors processCashOut but for the blackjack engine.
+ */
+async function processBjCashOut(ws: WebSocket, st: ClientState): Promise<void> {
+  const userId = st.userId;
+  const lobbyId = st.lobbyId;
+  const sessionId = st.sessionId;
+  if (!userId || !lobbyId) return;
+  if (cashOutInProgress.has(userId)) return;
+  cashOutInProgress.add(userId);
+
+  try {
+    const lobby = await getLobbyById(lobbyId);
+    if (!lobby) return;
+    const seat = lobby.seats.find((s) => s.userId === userId);
+    if (!seat) {
+      send(ws, { type: 'error', message: 'You are not seated at this table' });
+      return;
+    }
+
+    const result = await cashOutBjPlayer(lobbyId, userId, bjDeps());
+    if ('error' in result) {
+      send(ws, { type: 'error', message: result.error });
+      return;
+    }
+
+    const prevHost = lobby.hostUserId;
+    await removeSeat(lobbyId, userId);
+    if (sessionId) await deleteSession(sessionId);
+
+    // Detach from the lobby so the leaving player keeps their recap view (no further broadcasts).
+    lobbyClients.get(lobbyId)?.delete(ws);
+    maybeScheduleEmptyLobbyClose(lobbyId);
+    if (connectedUserSockets.get(userId) === ws) connectedUserSockets.delete(userId);
+    st.lobbyId = null;
+    st.sessionId = null;
+
+    // Deliver the cash-out recap to the leaving player.
+    send(ws, { type: 'bj_session_recap', recap: result.recap });
+
+    // Update remaining players' seat layout + host.
+    const connected = getConnectedSet(lobbyId);
+    const withConnected = await getLobbyById(lobbyId, connected);
+    if (withConnected) {
+      broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: withConnected }));
+      announceHostChange(lobbyId, prevHost, withConnected);
+    }
+
+    await maybeScheduleAllPlayersGoneClose(lobbyId);
+  } finally {
+    cashOutInProgress.delete(userId);
   }
 }
 
@@ -3005,6 +3085,18 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const lobby = await getLobbyById(st.lobbyId);
       if (!lobby || lobby.hostUserId !== st.userId) return;
 
+      // ── Blackjack uses its own timer set ──────────────────────────────────
+      if (lobby.settings.game === 'blackjack') {
+        if (msg.paused) {
+          await pauseBjLobby(st.lobbyId);
+        } else {
+          await resumeBjLobby(st.lobbyId, lobby.settings, bjDeps());
+        }
+        const bjUpdated = await getLobbyById(st.lobbyId);
+        if (bjUpdated) broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: bjUpdated }));
+        return;
+      }
+
       if (msg.paused) {
         // --- PAUSE: freeze all timers, recording exact remaining durations ---
 
@@ -3131,6 +3223,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const updated = await kickSeat(st.lobbyId, msg.seatIndex);
       // Remove the synthetic bot user once its seat is freed.
       if (kickedUserId && kickedWasBot) await deleteBotUser(kickedUserId);
+      // Blackjack: if the kicked player was on the clock, auto-stand them so the table continues.
+      if (kickedUserId && lobby.settings.game === 'blackjack') {
+        await bjAutoActAndAdvance(st.lobbyId, kickedUserId, lobby.settings, bjDeps());
+      }
       if (updated) {
         broadcastLobby(st.lobbyId, () => ({ type: 'lobby_state', lobby: updated }));
         announceHostChange(st.lobbyId, prevHost, updated);
@@ -3752,12 +3848,21 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       return;
     }
 
+    case 'bj_cash_out': {
+      await processBjCashOut(ws, st);
+      return;
+    }
+
     case 'bj_place_bet':
     case 'bj_clear_bet':
     case 'bj_hit':
     case 'bj_stand':
     case 'bj_double_down':
-    case 'bj_split': {
+    case 'bj_split':
+    case 'bj_surrender':
+    case 'bj_insurance':
+    case 'bj_even_money':
+    case 'bj_play_again': {
       if (!st.userId || !st.lobbyId) return;
       const bjLobby = await getLobbyById(st.lobbyId);
       if (!bjLobby) return;

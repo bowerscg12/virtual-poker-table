@@ -48,6 +48,20 @@ export const handHistories = pgTable('hand_histories', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// Blackjack high-score mode: per-user best run (peak chips + winning hands across any single buy-in).
+export const blackjackHighScores = pgTable('blackjack_high_scores', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  bestPeakChips: integer('best_peak_chips').notNull().default(0),
+  bestHandsWon: integer('best_hands_won').notNull().default(0),
+  // Longest streak of consecutive winning hands within a single run.
+  longestWinStreak: integer('longest_win_streak').notNull().default(0),
+  // Most hands (rounds) survived in a single buy-in before going broke.
+  bestRunHands: integer('best_run_hands').notNull().default(0),
+  // Largest net chips won on a single hand.
+  biggestHandWin: integer('biggest_hand_win').notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const playerSessions = pgTable('player_sessions', {
   id: uuid('id').primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

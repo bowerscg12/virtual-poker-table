@@ -11,13 +11,19 @@ import type {
 } from '@vct/shared-types';
 import {
   applyDouble,
+  applyEvenMoney,
   applyHit,
+  applyInsurance,
   applySplit,
   applyStand,
+  applySurrender,
+  allInsuranceDecided,
+  blackjackRulesFromConfig,
   calculateTotal,
   createRound,
   dealInitial,
   getLegalActions,
+  resolveInsurance,
   resolveRound,
   type BlackjackTableState,
   type BlackjackPlayer,
@@ -77,12 +83,15 @@ export async function startBjRound(
   roundNumber: number,
 ): Promise<BlackjackTableState> {
   const seed = generateBjSeed();
+  // Continue the prior round's shoe until the cut card is reached, then auto-reshuffle.
+  const previous = await getBjState(lobbyId);
   const state = createRound({
     lobbyId,
     roundNumber,
     numDecks: config.blackjackNumDecks ?? 6,
     players,
     seed,
+    previousShoe: previous?.shoe,
   });
   await persistBjState(lobbyId, state);
   return state;
@@ -140,17 +149,88 @@ export async function clearBjBet(
   return updated;
 }
 
+/**
+ * Remove a player from the live blackjack state (used when they cash out / leave).
+ * Returns the updated state, or null if there was no state / player. Safe to call only
+ * between hands — the caller is responsible for that check.
+ */
+export async function removeBjPlayer(
+  lobbyId: string,
+  userId: string,
+): Promise<BlackjackTableState | null> {
+  const state = await getBjState(lobbyId);
+  if (!state) return null;
+  if (!state.players.some((p) => p.userId === userId)) return null;
+
+  const players = state.players.filter((p) => p.userId !== userId);
+  // Keep activePlayerIndex sane even though removal only happens between hands.
+  const updated: BlackjackTableState = {
+    ...state,
+    players,
+    activePlayerIndex: -1,
+  };
+  await persistBjState(lobbyId, updated);
+  return updated;
+}
+
 /** Close betting and deal initial cards. Returns the dealt state or an error. */
 export async function closeBjBetting(
   lobbyId: string,
+  config: VariantConfig,
 ): Promise<BlackjackTableState | { error: string }> {
   const state = await getBjState(lobbyId);
   if (!state) return { error: 'No active round' };
   if (state.phase !== 'waiting_for_bets') return { error: 'Not in betting phase' };
 
-  const result = dealInitial(state);
+  const result = dealInitial(state, blackjackRulesFromConfig(config));
   if ('error' in result) return result;
 
+  await persistBjState(lobbyId, result);
+  return result;
+}
+
+/** Place or decline an insurance side bet during the insurance window. */
+export async function placeBjInsurance(
+  lobbyId: string,
+  userId: string,
+  amount: number,
+): Promise<BlackjackTableState | { error: string }> {
+  const state = await getBjState(lobbyId);
+  if (!state) return { error: 'No active round' };
+  const result = applyInsurance(state, userId, amount);
+  if ('error' in result) return result;
+  await persistBjState(lobbyId, result);
+  return result;
+}
+
+/** Take even money on a natural during the insurance window. */
+export async function takeBjEvenMoney(
+  lobbyId: string,
+  userId: string,
+): Promise<BlackjackTableState | { error: string }> {
+  const state = await getBjState(lobbyId);
+  if (!state) return { error: 'No active round' };
+  const result = applyEvenMoney(state, userId);
+  if ('error' in result) return result;
+  await persistBjState(lobbyId, result);
+  return result;
+}
+
+/** True once every insurance-eligible player has decided (lets the handler close the window early). */
+export async function bjInsuranceComplete(lobbyId: string): Promise<boolean> {
+  const state = await getBjState(lobbyId);
+  if (!state || state.phase !== 'insurance') return false;
+  return allInsuranceDecided(state);
+}
+
+/** Close the insurance window: peek the hole card and begin play or settlement. */
+export async function resolveBjInsurance(
+  lobbyId: string,
+): Promise<BlackjackTableState | { error: string }> {
+  const state = await getBjState(lobbyId);
+  if (!state) return { error: 'No active round' };
+  if (state.phase !== 'insurance') return { error: 'Not in insurance phase' };
+  const result = resolveInsurance(state);
   await persistBjState(lobbyId, result);
   return result;
 }
@@ -162,13 +242,15 @@ export async function closeBjBetting(
 export async function applyBjAction(
   lobbyId: string,
   userId: string,
-  action: 'hit' | 'stand' | 'double_down' | 'split',
+  action: 'hit' | 'stand' | 'double_down' | 'split' | 'surrender',
   handId: string,
+  config: VariantConfig,
   newHandId?: string,
 ): Promise<BlackjackTableState | { error: string }> {
   const state = await getBjState(lobbyId);
   if (!state) return { error: 'No active round' };
 
+  const rules = blackjackRulesFromConfig(config);
   let result: BlackjackTableState | { error: string };
 
   switch (action) {
@@ -179,10 +261,13 @@ export async function applyBjAction(
       result = applyStand(state, userId, handId);
       break;
     case 'double_down':
-      result = applyDouble(state, userId, handId);
+      result = applyDouble(state, userId, handId, rules);
       break;
     case 'split':
-      result = applySplit(state, userId, handId, newHandId ?? crypto.randomUUID());
+      result = applySplit(state, userId, handId, newHandId ?? crypto.randomUUID(), rules);
+      break;
+    case 'surrender':
+      result = applySurrender(state, userId, handId, rules);
       break;
   }
 
@@ -261,19 +346,23 @@ export async function stepBjDealer(
 export async function settleBjRound(
   lobbyId: string,
   displayNames: Map<string, string>,
+  config: VariantConfig,
 ): Promise<{ state: BlackjackTableState; results: BlackjackRoundPlayerResult[] } | { error: string }> {
   const state = await getBjState(lobbyId);
   if (!state) return { error: 'No active round' };
 
-  const settled = resolveRound(state);
+  const settled = resolveRound(state, blackjackRulesFromConfig(config));
 
   // Build per-player results for broadcast
   const results: BlackjackRoundPlayerResult[] = settled.players
     .filter((p) => p.status !== 'sitting_out' || p.hands.length > 0)
     .map((player) => {
       const originalPlayer = state.players.find((p) => p.userId === player.userId)!;
-      const stackBefore = originalPlayer.stack - originalPlayer.pendingBet;
-      const stackDelta = player.stack - stackBefore;
+      // By settlement, bets/insurance are already deducted from the stack (pendingBet is 0), so the
+      // net change is payouts received minus everything wagered this round (main wagers + insurance).
+      const invested = player.hands.reduce((sum, h) => sum + h.wager, 0) + (player.insuranceBet ?? 0);
+      const totalPayout = player.stack - originalPlayer.stack;
+      const stackDelta = totalPayout - invested;
       return {
         userId: player.userId,
         seatIndex: player.seatIndex,
@@ -349,6 +438,8 @@ export function toPublicBjState(
     activeHandIndex: p.activeHandIndex,
     status: p.status,
     avatar: avatars.get(p.userId),
+    insuranceBet: p.insuranceBet || undefined,
+    insuranceActed: p.insuranceActed || undefined,
   }));
 
   const { total: dealerTotal, isSoft: dealerSoft } = state.dealer.cards.length > 0
@@ -373,6 +464,7 @@ export function toPublicBjState(
     activePlayerIndex: state.activePlayerIndex,
     betDeadline: state.betDeadline,
     actionDeadline: state.actionDeadline,
+    insuranceDeadline: state.insuranceDeadline,
     intermissionDeadline,
     shoePenetration,
   };
@@ -391,6 +483,8 @@ function toPublicHand(h: BlackjackHand): PublicBlackjackHand {
     isBlackjack: h.isBlackjack,
     isDoubled: h.isDoubled,
     isSplit: h.isSplit,
+    isSurrendered: h.isSurrendered || undefined,
+    evenMoney: h.evenMoney || undefined,
     result: h.result,
     payout: h.payout,
   };
@@ -400,10 +494,11 @@ function toPublicHand(h: BlackjackHand): PublicBlackjackHand {
 export async function getBjLegalActions(
   lobbyId: string,
   userId: string,
+  config: VariantConfig,
 ): Promise<BlackjackLegalAction[]> {
   const state = await getBjState(lobbyId);
   if (!state) return [];
-  return getLegalActions(state, userId);
+  return getLegalActions(state, userId, blackjackRulesFromConfig(config));
 }
 
 /** Round number stored per lobby (persists across rounds). */

@@ -1,5 +1,5 @@
 import type { ActiveSeatInfo, AvatarConfig, CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
-import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, TIMER_STEPS_SEC, getTableBuyIn } from '@vct/shared-types';
+import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, timerStepsFor, getTableBuyIn } from '@vct/shared-types';
 import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { lobbies, playerSessions, tableSeats, users } from '../db/schema.js';
@@ -899,8 +899,9 @@ export async function setActionTimerSetting(
   const lobby = await getLobbyById(lobbyId);
   if (!lobby) return { error: 'Lobby not found' };
   if (lobby.hostUserId !== hostUserId) return { error: 'Only the host can change the action timer' };
-  if (!TIMER_STEPS_SEC.includes(seconds as (typeof TIMER_STEPS_SEC)[number])) {
-    return { error: `Timer must be one of: ${TIMER_STEPS_SEC.join(', ')} seconds` };
+  const allowedSteps = timerStepsFor(lobby.settings.game);
+  if (!allowedSteps.includes(seconds)) {
+    return { error: `Timer must be one of: ${allowedSteps.join(', ')} seconds` };
   }
 
   const settings: VariantConfig = {

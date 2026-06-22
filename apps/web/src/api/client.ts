@@ -1,4 +1,4 @@
-import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, CareerStats, CreateLobbyRequest, CreateTemplateRequest, EnterLobbyResponse, LobbyTemplate, LobbySummary, RulesPreset, TournamentSettings, TournamentSummary, TournamentTemplate, PublicTournamentState } from '@vct/shared-types';
+import type { ActiveSeatInfo, AuthResponse, AuthUser, AvatarConfig, BlackjackStats, CareerStats, CreateLobbyRequest, CreateTemplateRequest, EnterLobbyResponse, LobbyTemplate, LobbySummary, RulesPreset, TournamentSettings, TournamentSummary, TournamentTemplate, PublicTournamentState } from '@vct/shared-types';
 
 const API = import.meta.env.VITE_SERVER_URL ? `${import.meta.env.VITE_SERVER_URL}/api` : '/api';
 
@@ -148,6 +148,17 @@ export async function fetchCareerStats(): Promise<CareerStats | null> {
     const res = await fetch(`${API}/me/career-stats`, { headers: authHeaders() });
     if (!res.ok) return null;
     const data = await res.json() as CareerStats | null;
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchBlackjackStats(): Promise<BlackjackStats | null> {
+  try {
+    const res = await fetch(`${API}/me/blackjack-stats`, { headers: authHeaders() });
+    if (!res.ok) return null;
+    const data = await res.json() as BlackjackStats | null;
     return data ?? null;
   } catch {
     return null;

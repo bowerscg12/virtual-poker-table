@@ -1,5 +1,6 @@
 import type { Card } from '@vct/shared-types';
-import type { BlackjackTableState, BlackjackPlayer, BlackjackHand } from './types.js';
+import type { BlackjackTableState, BlackjackPlayer, BlackjackHand, BlackjackRules } from './types.js';
+import { DEFAULT_BLACKJACK_RULES } from './types.js';
 import { buildShoe, shuffleShoe, getCutCardPosition } from './shoe.js';
 import { isNaturalBlackjack } from './hand.js';
 
@@ -11,24 +12,32 @@ export interface CreateRoundOptions {
   seed: string;
   /** Override the RNG (for tests). Defaults to Math.random seeded by the seed string. */
   rng?: () => number;
+  /** Carry an existing shoe forward (continuation across rounds). Reshuffled if past the cut card. */
+  previousShoe?: Card[];
 }
 
 /** Create a fresh round state in the betting phase. */
 export function createRound(opts: CreateRoundOptions): BlackjackTableState {
-  const { lobbyId, roundNumber, numDecks, players, seed, rng } = opts;
+  const { lobbyId, roundNumber, numDecks, players, seed, rng, previousShoe } = opts;
 
   // Build a seeded RNG from the seed string so the shoe is deterministic for fairness proofs.
   // We use a simple mulberry32 implementation — no external deps.
   const seededRng = rng ?? mulberry32(hashSeed(seed));
-  const rawShoe = buildShoe(numDecks);
-  const shoe = shuffleShoe(rawShoe, seededRng);
+  const cutCardPosition = getCutCardPosition(numDecks);
+
+  // Continue the previous shoe when one is supplied and the cut card hasn't been reached;
+  // otherwise build and shuffle a fresh shoe.
+  const shoe =
+    previousShoe && previousShoe.length > cutCardPosition
+      ? previousShoe
+      : shuffleShoe(buildShoe(numDecks), seededRng);
 
   return {
     lobbyId,
     roundNumber,
     phase: 'waiting_for_bets',
     shoe,
-    cutCardPosition: getCutCardPosition(numDecks),
+    cutCardPosition,
     players: players.map((p) => ({
       userId: p.userId,
       seatIndex: p.seatIndex,
@@ -37,6 +46,7 @@ export function createRound(opts: CreateRoundOptions): BlackjackTableState {
       hands: [],
       activeHandIndex: 0,
       status: 'betting',
+      insuranceBet: 0,
     })),
     dealer: { cards: [], holeCardRevealed: false },
     activePlayerIndex: -1,
@@ -46,10 +56,13 @@ export function createRound(opts: CreateRoundOptions): BlackjackTableState {
 
 /**
  * Called when the betting phase closes.
- * Deducts bets from stacks, deals cards in casino order, checks for dealer peek.
- * Returns updated state in 'player_turn' or 'dealer_turn' phase (if dealer has BJ).
+ * Deducts bets from stacks, deals cards in casino order, then either opens the insurance window
+ * (dealer up-card is an Ace and insurance is enabled) or peeks for a dealer natural and starts play.
  */
-export function dealInitial(state: BlackjackTableState): BlackjackTableState | { error: string } {
+export function dealInitial(
+  state: BlackjackTableState,
+  rules: BlackjackRules = DEFAULT_BLACKJACK_RULES,
+): BlackjackTableState | { error: string } {
   const activePlayers = state.players.filter((p) => p.pendingBet > 0);
   if (activePlayers.length === 0) return { error: 'No bets placed' };
 
@@ -70,6 +83,8 @@ export function dealInitial(state: BlackjackTableState): BlackjackTableState | {
       stack: p.stack - p.pendingBet,
       pendingBet: 0,
       status: 'waiting' as const,
+      insuranceBet: 0,
+      insuranceActed: false,
       hands: [
         {
           id: handId,
@@ -118,58 +133,70 @@ export function dealInitial(state: BlackjackTableState): BlackjackTableState | {
   players = players.map((p) => {
     if (p.hands.length === 0) return p;
     const hand = p.hands[0]!;
-    const bj = isNaturalBlackjack(hand.cards);
-    return { ...p, hands: [{ ...hand, isBlackjack: bj }] };
+    return { ...p, hands: [{ ...hand, isBlackjack: isNaturalBlackjack(hand.cards) }] };
   });
 
-  // Dealer peek: check hole card before players act
-  const dealerHasBlackjack = isNaturalBlackjack(dealerCards);
-
-  if (dealerHasBlackjack) {
-    // Reveal hole card, skip player turns, go straight to settlement
-    const settledPlayers = players.map((p) => ({
-      ...p,
-      status: 'done' as const,
-    }));
-    return {
-      ...state,
-      shoe,
-      players: settledPlayers,
-      dealer: { cards: dealerCards, holeCardRevealed: true },
-      phase: 'dealer_turn' as const,
-      activePlayerIndex: -1,
-    };
-  }
-
-  // Find first player who needs to act
-  const firstActiveIdx = players.findIndex((p) => p.status === 'waiting');
-
-  if (firstActiveIdx === -1) {
-    // All players have blackjack or sitting out — go to dealer
+  // Insurance window: dealer shows an Ace and insurance is enabled.
+  if (rules.insurance && dealerCard1[0] === 'A') {
     return {
       ...state,
       shoe,
       players,
+      dealer: { cards: dealerCards, holeCardRevealed: false },
+      phase: 'insurance' as const,
+      activePlayerIndex: -1,
+    };
+  }
+
+  return enterPlayerTurnOrSettle({ ...state, shoe, players }, dealerCards);
+}
+
+/**
+ * Resolve the insurance window: peek the dealer hole card, then either settle (dealer natural)
+ * or begin player turns. Insurance/even-money payouts are computed at settlement.
+ */
+export function resolveInsurance(state: BlackjackTableState): BlackjackTableState {
+  return enterPlayerTurnOrSettle(state, state.dealer.cards);
+}
+
+/**
+ * Shared post-peek branching used by both the direct-deal and post-insurance paths.
+ * Peeks the dealer's two cards (without revealing the hole card to clients unless it's a natural)
+ * and routes to dealer settlement or the first acting player.
+ */
+function enterPlayerTurnOrSettle(
+  state: BlackjackTableState,
+  dealerCards: Card[],
+): BlackjackTableState {
+  const dealerHasBlackjack = isNaturalBlackjack(dealerCards);
+
+  // Players who took even money settle immediately as a 1:1 win regardless of the peek.
+  let players = state.players;
+
+  if (dealerHasBlackjack) {
+    // Reveal hole card, skip player turns, settlement resolves all hands.
+    return {
+      ...state,
+      players: players.map((p) => (p.status === 'sitting_out' ? p : { ...p, status: 'done' as const })),
       dealer: { cards: dealerCards, holeCardRevealed: true },
       phase: 'dealer_turn' as const,
       activePlayerIndex: -1,
     };
   }
 
-  // Players with natural BJ are immediately done (dealer didn't have BJ so they win)
+  // No dealer natural — players with a natural (and not declined via even money) are done as winners.
   players = players.map((p) => {
+    if (p.status === 'sitting_out') return p;
     if (p.hands[0]?.isBlackjack) return { ...p, status: 'done' as const };
     return p;
   });
 
-  // Re-find first active player after marking BJ players as done
   const firstActingIdx = players.findIndex((p) => p.status === 'waiting');
 
   if (firstActingIdx === -1) {
-    // Everyone has BJ or is sitting out — skip to dealer turn
+    // Everyone has a natural or is sitting out — skip straight to the dealer turn.
     return {
       ...state,
-      shoe,
       players,
       dealer: { cards: dealerCards, holeCardRevealed: true },
       phase: 'dealer_turn' as const,
@@ -183,7 +210,6 @@ export function dealInitial(state: BlackjackTableState): BlackjackTableState | {
 
   return {
     ...state,
-    shoe,
     players,
     dealer: { cards: dealerCards, holeCardRevealed: false },
     phase: 'player_turn' as const,

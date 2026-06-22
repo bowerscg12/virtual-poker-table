@@ -230,6 +230,19 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT false
 ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS bot_difficulty VARCHAR(16);
 ALTER TABLE table_seats ADD COLUMN IF NOT EXISTS bot_style VARCHAR(16);
+
+-- Blackjack high-score mode: per-user best single-buy-in run.
+CREATE TABLE IF NOT EXISTS blackjack_high_scores (
+  user_id          UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  best_peak_chips  INTEGER NOT NULL DEFAULT 0,
+  best_hands_won   INTEGER NOT NULL DEFAULT 0,
+  updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Extended blackjack personal-best stats (added after initial high-score table).
+ALTER TABLE blackjack_high_scores ADD COLUMN IF NOT EXISTS longest_win_streak INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE blackjack_high_scores ADD COLUMN IF NOT EXISTS best_run_hands     INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE blackjack_high_scores ADD COLUMN IF NOT EXISTS biggest_hand_win   INTEGER NOT NULL DEFAULT 0;
 `;
 
 async function main() {

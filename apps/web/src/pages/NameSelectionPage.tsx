@@ -6,6 +6,7 @@ import { createTableAndEnter, enterLobby, getLobbyById } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AvatarCreator } from '../components/AvatarCreator';
 import { CareerStatsPanel } from '../components/CareerStatsPanel';
+import { BlackjackStatsPanel } from '../components/BlackjackStatsPanel';
 
 interface CreateState {
   mode: 'create';
@@ -56,6 +57,11 @@ export default function NameSelectionPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [lobbyName, setLobbyName] = useState<string | null>(null);
+  // The game variant of the table being created/joined — drives which stats panel to show.
+  const [joinGame, setJoinGame] = useState<VariantConfig['game'] | null>(null);
+  const chosenGame: VariantConfig['game'] | null =
+    isCreate && state?.mode === 'create' ? state.settings.game : joinGame;
+  const isBlackjackTable = chosenGame === 'blackjack';
 
   // Name is fixed for registered (non-guest) accounts
   const nameIsFixed = user != null && !user.isGuest;
@@ -76,7 +82,10 @@ export default function NameSelectionPage() {
   useEffect(() => {
     if (!isCreate && lobbyId) {
       getLobbyById(lobbyId)
-        .then(({ lobby }) => setLobbyName(`${lobby.hostDisplayName}'s Table`))
+        .then(({ lobby }) => {
+          setLobbyName(`${lobby.hostDisplayName}'s Table`);
+          setJoinGame(lobby.settings.game);
+        })
         .catch(() => {});
     }
   }, [isCreate, lobbyId]);
@@ -168,7 +177,7 @@ export default function NameSelectionPage() {
 
         <AvatarCreator value={avatar} onChange={handleAvatarChange} />
 
-        {nameIsFixed && <CareerStatsPanel />}
+        {nameIsFixed && (isBlackjackTable ? <BlackjackStatsPanel /> : <CareerStatsPanel />)}
 
         <div className="name-selection-actions">
           <button type="submit" className="btn primary" disabled={loading || !name.trim()}>

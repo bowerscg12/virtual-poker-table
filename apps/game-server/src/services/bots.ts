@@ -6,8 +6,9 @@
  * survives a server restart. Bots have no WebSocket connection — the turn driver in the WS handler
  * computes and applies their actions via the pure {@link decidePokerAction} engine.
  *
- * Only cash games (holdem/omaha/plo8) and twelve_card_flip support bots; tournaments and blackjack
- * are rejected by the caller.
+ * Cash games (holdem/omaha/plo8), twelve_card_flip, and blackjack support bots; tournaments are
+ * rejected by the caller. Poker bots use {@link decidePokerAction}; blackjack bots play textbook
+ * basic strategy (driven inside blackjack-handler.ts).
  */
 import type { AvatarConfig, BotDifficulty, BotStyle, GameVariant, LobbySummary } from '@vct/shared-types';
 import { BOT_STYLES, EYE_COLORS, HAIR_COLORS, SKIN_TONES, ALL_HAIR_STYLES, getTableBuyIn } from '@vct/shared-types';
@@ -24,7 +25,7 @@ import {
 import { initSession } from './session-stats.js';
 
 /** Variants that support AI opponents. */
-const BOT_VARIANTS: ReadonlySet<GameVariant> = new Set(['holdem', 'omaha', 'plo8', 'twelve_card_flip']);
+const BOT_VARIANTS: ReadonlySet<GameVariant> = new Set(['holdem', 'omaha', 'plo8', 'twelve_card_flip', 'blackjack']);
 
 export function variantSupportsBots(game: GameVariant): boolean {
   return BOT_VARIANTS.has(game);

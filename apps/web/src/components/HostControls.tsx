@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { LobbySummary } from '@vct/shared-types';
-import { TIMER_STEPS_SEC, TIME_BANK_EXTENSION_SEC, TIME_BANK_MAX_USES, formatTimerLabel, getTableBuyIn } from '@vct/shared-types';
+import { TIMER_STEPS_SEC, BLACKJACK_TIMER_STEPS_SEC, TIME_BANK_EXTENSION_SEC, TIME_BANK_MAX_USES, formatTimerLabel, getTableBuyIn } from '@vct/shared-types';
 import { formatChips } from '../utils/formatChips';
 
 function AnteInput({ label, current, onSet }: { label: string; current: number; onSet: (amount: number) => void }) {
@@ -208,7 +208,7 @@ export function HostControls({ lobby, handActive, intermissionDeadline, onStart,
           value={currentTimerSec}
           onChange={(e) => onSetActionTimer(Number(e.target.value))}
         >
-          {TIMER_STEPS_SEC.map((sec) => (
+          {(isBlackjack ? BLACKJACK_TIMER_STEPS_SEC : TIMER_STEPS_SEC).map((sec) => (
             <option key={sec} value={sec}>
               {formatTimerLabel(sec)}
             </option>

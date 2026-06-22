@@ -393,6 +393,13 @@ export function useGameSocket(token: string | null, lobbyId: string | null, spec
             setError(msg.message);
             break;
 
+          case 'bj_session_recap':
+            // A voluntary cash-out ends the session server-side; drop the local session id so a
+            // refresh doesn't try to reconnect into the table we just left.
+            if (msg.recap.cashedOut) localStorage.removeItem(SESSION_ID_KEY);
+            bj.handleBjMessage(msg);
+            break;
+
           default:
             bj.handleBjMessage(msg);
             break;
@@ -483,6 +490,8 @@ export function useGameSocket(token: string | null, lobbyId: string | null, spec
     bjLegalActions: bj.bjLegalActions,
     bjRoundResults: bj.bjRoundResults,
     clearBjRoundResults: bj.clearBjRoundResults,
+    bjRecap: bj.bjRecap,
+    clearBjRecap: bj.clearBjRecap,
     send,
   };
 }

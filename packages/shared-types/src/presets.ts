@@ -41,7 +41,7 @@ export const RULES_PRESETS: RulesPreset[] = [
   {
     id: 'blackjack-standard',
     name: 'Blackjack',
-    description: 'Work in progress...',
+    description: 'Casino blackjack — 3:2, late surrender, insurance, dealer stands on soft 17',
     config: {
       game: 'blackjack',
       limit: 'no_limit',
@@ -50,10 +50,17 @@ export const RULES_PRESETS: RulesPreset[] = [
       buyIn: 1000,
       minBuyIn: 100,
       maxBuyIn: 5000,
+      actionTimerSec: 10,
       blackjackNumDecks: 6,
       blackjackMinBet: 5,
       blackjackMaxBet: 500,
       blackjackDealerSoftSeventeen: 'stand',
+      blackjackBlackjackPayout: '3:2',
+      blackjackSurrender: 'late',
+      blackjackInsurance: true,
+      blackjackDoubleAfterSplit: true,
+      blackjackResplitAces: false,
+      blackjackMaxSplitHands: 4,
     },
   },
 ];

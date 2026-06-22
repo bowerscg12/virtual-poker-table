@@ -3,12 +3,13 @@ import type { Card } from './cards.js';
 export type BlackjackPhase =
   | 'waiting_for_bets'
   | 'dealing'
+  | 'insurance'
   | 'player_turn'
   | 'dealer_turn'
   | 'settlement'
   | 'round_complete';
 
-export type BlackjackHandResult = 'win' | 'loss' | 'push' | 'blackjack';
+export type BlackjackHandResult = 'win' | 'loss' | 'push' | 'blackjack' | 'surrender';
 
 export type BlackjackActionType =
   | 'hit'
@@ -36,6 +37,10 @@ export interface PublicBlackjackHand {
   isBlackjack: boolean;
   isDoubled: boolean;
   isSplit: boolean;
+  /** True when the player surrendered this hand. */
+  isSurrendered?: boolean;
+  /** True when the player took even money on a natural facing a dealer Ace. */
+  evenMoney?: boolean;
   result?: BlackjackHandResult;
   payout?: number;
 }
@@ -53,6 +58,10 @@ export interface PublicBlackjackPlayer {
   activeHandIndex: number;
   status: 'betting' | 'waiting' | 'acting' | 'done' | 'sitting_out';
   avatar?: import('./avatar.js').AvatarConfig;
+  /** Insurance side bet placed during the insurance window (0 = none/declined). */
+  insuranceBet?: number;
+  /** True once the player has resolved their insurance/even-money decision. */
+  insuranceActed?: boolean;
 }
 
 /** Dealer state. Hole card is masked (null) until the dealer turn phase. */
@@ -75,6 +84,8 @@ export interface PublicBlackjackState {
   activePlayerIndex: number;
   betDeadline?: number;
   actionDeadline?: number;
+  /** Deadline (Unix ms) for the insurance decision window (set while phase === 'insurance'). */
+  insuranceDeadline?: number;
   /** ISO timestamp for the intermission countdown before the next round starts. */
   intermissionDeadline?: string;
   /** Shoe penetration (0–1) — fraction of shoe remaining. Used to show reshuffle notice. */
@@ -87,6 +98,48 @@ export interface BlackjackHandOutcome {
   result: BlackjackHandResult;
   payout: number;
   wager: number;
+}
+
+/**
+ * End-of-run recap shown when a player busts (high-score mode). Each buy-in is its own run:
+ * peak chips and winning hands reset on every fresh buy-in.
+ */
+export interface BlackjackSessionRecap {
+  /** Buy-in amount this run started with. */
+  buyIn: number;
+  /** Highest chip stack reached at any point during this run. */
+  peakChips: number;
+  /** Number of winning hands this run (split hands counted separately). */
+  handsWon: number;
+  /** Total hands played this run. */
+  handsPlayed: number;
+  /** Player's best-ever peak across all runs (after recording this one). */
+  bestPeak: number;
+  /** Player's best-ever winning-hands count across all runs (after recording this one). */
+  bestHandsWon: number;
+  /** True when this run set a new personal-best peak. */
+  isPeakRecord: boolean;
+  /** True when this run set a new personal-best winning-hands count. */
+  isHandsRecord: boolean;
+  /** True when the run ended by a voluntary cash-out (vs. busting out). */
+  cashedOut?: boolean;
+  /** Chip stack the player walked away with (only set on cash-out). */
+  finalStack?: number;
+}
+
+/**
+ * Persistent personal-best blackjack stats shown on the avatar screen for registered players.
+ * All values are all-time bests; 0 across the board means the player has no recorded blackjack play.
+ */
+export interface BlackjackStats {
+  /** Highest chip stack ever reached in a single run. */
+  highestPeak: number;
+  /** Longest streak of consecutive winning hands. */
+  longestWinStreak: number;
+  /** Most hands (rounds) survived in a single buy-in before going broke. */
+  mostHandsWithoutBusting: number;
+  /** Largest net chips won on a single hand. */
+  biggestHandWin: number;
 }
 
 /** Per-player settlement result for bj_round_settled. */

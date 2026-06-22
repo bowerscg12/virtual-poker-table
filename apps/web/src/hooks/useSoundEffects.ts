@@ -103,8 +103,11 @@ export function useSoundEffects(
     prevBjRoundResultsRef.current = bjRoundResults;
     prevBjStateRef.current = bjState;
 
-    // Cards dealt: betting → dealing
-    if (bjState?.phase === 'dealing' && prevPhase === 'waiting_for_bets') {
+    // Cards dealt: betting → first play phase (insurance / player_turn / dealer_turn).
+    if (
+      prevPhase === 'waiting_for_bets' &&
+      (bjState?.phase === 'insurance' || bjState?.phase === 'player_turn' || bjState?.phase === 'dealer_turn')
+    ) {
       playSound(enabled, 'deal');
     }
 

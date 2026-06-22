@@ -1,10 +1,20 @@
-import type { BlackjackTableState, BlackjackPlayer, HandResult } from './types.js';
-import { calculateTotal, isBust } from './hand.js';
+import type { BlackjackTableState, BlackjackPlayer, HandResult, BlackjackRules } from './types.js';
+import { DEFAULT_BLACKJACK_RULES } from './types.js';
+import { calculateTotal, isBust, isNaturalBlackjack } from './hand.js';
 
-export function resolveRound(state: BlackjackTableState): BlackjackTableState {
+/** Profit multiplier on a natural blackjack for the configured payout ratio (3:2 → 1.5, 6:5 → 1.2). */
+function blackjackBonusMultiplier(rules: BlackjackRules): number {
+  return rules.blackjackPayout === '6:5' ? 1.2 : 1.5;
+}
+
+export function resolveRound(
+  state: BlackjackTableState,
+  rules: BlackjackRules = DEFAULT_BLACKJACK_RULES,
+): BlackjackTableState {
   const { total: dealerTotal } = calculateTotal(state.dealer.cards);
   const dealerBusted = isBust(state.dealer.cards);
-  const dealerHasBlackjack = state.dealer.cards.length === 2 && dealerTotal === 21;
+  const dealerHasBlackjack = isNaturalBlackjack(state.dealer.cards);
+  const bonus = blackjackBonusMultiplier(rules);
 
   const updatedPlayers: BlackjackPlayer[] = state.players.map((player) => {
     if (player.status === 'sitting_out') return player;
@@ -14,17 +24,23 @@ export function resolveRound(state: BlackjackTableState): BlackjackTableState {
       let result: HandResult;
       let payout: number;
 
-      if (hand.isBust) {
+      if (hand.isSurrendered) {
+        // Forfeit half the wager (the other half was already deducted at deal time).
+        result = 'surrender';
+        payout = Math.floor(hand.wager / 2);
+      } else if (hand.evenMoney) {
+        // Even money locks a guaranteed 1:1 win on a natural facing a dealer Ace.
+        result = 'win';
+        payout = hand.wager * 2;
+      } else if (hand.isBust) {
         result = 'loss';
         payout = 0;
       } else if (hand.isBlackjack && dealerHasBlackjack) {
-        // Both have natural blackjack → push
         result = 'push';
         payout = hand.wager;
       } else if (hand.isBlackjack) {
-        // Natural blackjack pays 3:2
         result = 'blackjack';
-        payout = hand.wager + Math.floor(hand.wager * 1.5);
+        payout = hand.wager + Math.floor(hand.wager * bonus);
       } else if (dealerHasBlackjack) {
         result = 'loss';
         payout = 0;
@@ -48,6 +64,11 @@ export function resolveRound(state: BlackjackTableState): BlackjackTableState {
       totalPayout += payout;
       return { ...hand, result, payout };
     });
+
+    // Insurance pays 2:1 when the dealer has a natural (returns 3× the insurance bet).
+    if (player.insuranceBet > 0 && dealerHasBlackjack) {
+      totalPayout += player.insuranceBet * 3;
+    }
 
     return {
       ...player,
