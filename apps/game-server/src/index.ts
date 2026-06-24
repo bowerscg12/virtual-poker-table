@@ -16,12 +16,12 @@ import { registerApiRoutes } from './routes/api.js';
 import { recoverBlackjackLobbies } from './ws/blackjack-handler.js';
 import {
   bjHandlerDeps,
-  closeAllClients,
   registerClient,
   setTokenVerifier,
   startBotTurnWatchdog,
   stopBotTurnWatchdog,
 } from './ws/handler.js';
+import { closeAllClients } from './ws/connection.js';
 import { closeRedis } from './store/redis.js';
 import { closeDb } from './db/client.js';
 import { logger } from './logger.js';

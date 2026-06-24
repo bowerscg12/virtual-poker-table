@@ -24,11 +24,10 @@ import {
   updateLobbyStatus,
 } from './lobby.js';
 import {
-  broadcastRawToLobby,
-  sendToUser,
   startTournamentTable,
   updateTournamentTableBlinds,
 } from '../ws/handler.js';
+import { broadcastRawToLobby, sendToUser } from '../ws/connection.js';
 
 // ── Runtime state ────────────────────────────────────────────────────────────
 

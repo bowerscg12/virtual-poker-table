@@ -1,7 +1,7 @@
 import type { WebSocket } from 'ws';
 import { logger } from '../logger.js';
 import type { Card, ClientMessage, PlayerActionType, ServerMessage, VariantConfig } from '@vct/shared-types';
-import { getTableBuyIn, isReactionEmoji, TIME_BANK_EXTENSION_SEC, TIME_BANK_MAX_USES } from '@vct/shared-types';
+import { getTableBuyIn, isReactionEmoji, TIME_BANK_EXTENSION_SEC } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
 import { decidePokerAction, decidePineappleDiscard } from '@vct/poker-engine';
 import {
@@ -79,13 +79,42 @@ import {
   setSeatShownCards,
   startBombPotHand,
   startHand,
-  toPublicState,
   transferChipsBetweenSeats,
   updateLastHandHistoryFoldWin,
   updateSeatStackAfterRebuy,
 } from '../services/game-manager.js';
-import { addChatMessage, addSystemChatMessage, addWhisperMessage, canSendChat, canSendReaction, clearChatRateLimit, createReaction, getChatHistory } from '../services/chat.js';
-import { getMemoryLobby } from '../services/lobby.js';
+import { addSystemChatMessage, clearChatRateLimit, createReaction, getChatHistory } from '../services/chat.js';
+import {
+  isAllInRunoutTrigger,
+  computePrePayoutStacks,
+  isFoldWin,
+  peekRabbitCards,
+  autoDiscardIndex,
+} from './poker-helpers.js';
+import {
+  getTimeBankRemaining,
+  setTimeBankRemaining,
+  clearTimeBankForUser,
+  clearTimeBankForLobby,
+} from './time-bank.js';
+import { hasDonationId, trackDonationId } from './donation-tracker.js';
+import type { ClientState } from './connection.js';
+import {
+  clients,
+  lobbyClients,
+  connectedUserSockets,
+  send,
+  getConnectedSet,
+  broadcastLobby,
+  evictSocket,
+} from './connection.js';
+import {
+  waitingForPlayers,
+  activeRunouts,
+  runoutGenerations,
+  pineappleDiscardData,
+} from './state.js';
+import { announceHostChange, broadcastTableState } from './broadcast.js';
 import { deleteLobby } from '../services/lobby-cleanup.js';
 import { redisDel, keys } from '../store/redis.js';
 import {
@@ -105,7 +134,6 @@ import {
   finalizeCashOut,
   initSession,
   recordAction,
-  recordChatActivity,
   recordFoldWinChoice,
   recordHandEnd,
   recordHandStart,
@@ -113,34 +141,16 @@ import {
 } from '../services/session-stats.js';
 import { persistHandStats, persistSessionEnd } from '../services/lifetime-stats.js';
 import {
-  acceptChallenge,
-  createChallenge,
-  declineChallenge,
-  drainBindNotifications,
-  getOpenAcceptedBetsForUser,
-  getPendingChallengesForTarget,
-  getSettlementsForHand,
-  markSettled,
-  pruneTerminal,
-} from '../services/side-bets.js';
-
-interface ClientState {
-  userId: string | null;
-  lobbyId: string | null;
-  isSpectator: boolean;
-  sessionId: string | null;
-}
+  settleSideBets,
+  handleSideBetMessage,
+  resendSideBetPrompts,
+} from './side-bet-handler.js';
+import { handleChatMessage } from './chat-handler.js';
 
 interface PendingCashOut {
   lobbyId: string;
   sessionId: string | null;
 }
-
-const clients = new Map<WebSocket, ClientState>();
-const lobbyClients = new Map<string, Set<WebSocket>>();
-
-/** userId → the single authoritative WebSocket for that user */
-const connectedUserSockets = new Map<string, WebSocket>();
 
 /** sessionId → auto-act timer (fires GRACE_PERIOD_MS after disconnect; auto-folds if player's turn) */
 const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -157,33 +167,6 @@ const actionTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * can detect they were superseded and bail without acting.
  */
 const actionTimerGenerations = new Map<string, number>();
-
-/**
- * lobbyId → (userId → remaining time-bank extensions). Granted lazily at the configured max on
- * first read and decremented per use; does not refill until the player re-sits (entry cleared on
- * stand/spectate). In-memory only — a server restart resets budgets to full, which favors players.
- */
-const timeBankBudgets = new Map<string, Map<string, number>>();
-
-function getTimeBankRemaining(lobbyId: string, userId: string): number {
-  const lobbyMap = timeBankBudgets.get(lobbyId);
-  if (!lobbyMap || !lobbyMap.has(userId)) return TIME_BANK_MAX_USES;
-  return lobbyMap.get(userId)!;
-}
-
-function setTimeBankRemaining(lobbyId: string, userId: string, remaining: number): void {
-  let lobbyMap = timeBankBudgets.get(lobbyId);
-  if (!lobbyMap) {
-    lobbyMap = new Map();
-    timeBankBudgets.set(lobbyId, lobbyMap);
-  }
-  lobbyMap.set(userId, Math.max(0, remaining));
-}
-
-/** Reset a player's time-bank budget so a re-sit starts fresh (called when they leave their seat). */
-function clearTimeBankForUser(lobbyId: string, userId: string): void {
-  timeBankBudgets.get(lobbyId)?.delete(userId);
-}
 
 /** lobbyId → between-hand countdown timer (fires to auto-start next hand) */
 const intermissionTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -243,12 +226,6 @@ const rabbitHuntPending = new Map<string, Card[]>();
 /** lobbyId → timer that fires after 1 hour of no connected clients */
 const emptyLobbyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/**
- * Set when onIntermissionExpired fires but startHand fails due to insufficient active players.
- * Cleared atomically at the start of tryStartWaitingHand to prevent concurrent triggers.
- */
-const waitingForPlayers = new Map<string, boolean>();
-
 const EMPTY_LOBBY_CLOSE_MS = 60 * 60 * 1000;
 const ALL_PLAYERS_GONE_CLOSE_MS = 10 * 60 * 1000;
 
@@ -292,7 +269,7 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   cancelPineappleDiscard(lobbyId);
   cancelRunItOut(lobbyId);
   cancelAllBjTimers(lobbyId);
-  timeBankBudgets.delete(lobbyId);
+  clearTimeBankForLobby(lobbyId);
   waitingForPlayers.delete(lobbyId);
 
   clearGame(lobbyId);
@@ -357,64 +334,10 @@ async function tryStartWaitingHand(lobbyId: string): Promise<void> {
   await broadcastTableState(lobbyId);
 }
 
-// ── All-in runout orchestration ───────────────────────────
-interface RunoutState {
-  finalEngineState: GameTableState;
-  config: VariantConfig;
-  startBoardCount: number;
-  visibleBoardCount: number;
-  gen: number;
-  /** Whether all participants' hole cards should be revealed at this point in the runout. */
-  revealHoleCards: boolean;
-  /**
-   * Stack for each seat *before* pot distribution. The engine resolves the showdown (and
-   * credits winner stacks) atomically, so during the runout animation we override seat stacks
-   * with these values so chips appear to remain in the center pot until the reveal is done.
-   */
-  prePayoutStacks: Map<number, number>;
-  /** Set for multi-runout reveals; undefined for single-board runouts. */
-  numRuns?: number;
-  currentRunIndex?: number;
-  currentRunVisibleCount?: number;
-}
-
-/**
- * Compute each seat's stack as it was immediately before pots were awarded.
- * The engine state has already applied winnerPayouts to seat.stack; we reverse that here.
- */
-function computePrePayoutStacks(finalState: GameTableState): Map<number, number> {
-  const wonBySeat = new Map<number, number>();
-  for (const payout of finalState.winnerPayouts) {
-    wonBySeat.set(payout.seatIndex, (wonBySeat.get(payout.seatIndex) ?? 0) + payout.amount);
-  }
-  const stacks = new Map<number, number>();
-  for (const seat of finalState.seats) {
-    stacks.set(seat.seatIndex, seat.stack - (wonBySeat.get(seat.seatIndex) ?? 0));
-  }
-  return stacks;
-}
-
-/** lobbyId → active runout sequence (board cards being progressively revealed) */
-const activeRunouts = new Map<string, RunoutState>();
-
-/**
- * Monotonic generation counter for runout callbacks.
- * Incremented by cancelRunout so stale setTimeout callbacks bail immediately.
- */
-const runoutGenerations = new Map<string, number>();
-
+// ── All-in runout orchestration (RunoutState + registries live in state.ts) ───
 function cancelRunout(lobbyId: string): void {
   activeRunouts.delete(lobbyId);
   runoutGenerations.set(lobbyId, (runoutGenerations.get(lobbyId) ?? 0) + 1);
-}
-
-/** True when a game action triggered an all-in board runout (cards were auto-dealt to showdown). */
-function isAllInRunoutTrigger(newState: GameTableState, preBoardCount: number): boolean {
-  return (
-    newState.street === 'complete' &&
-    (newState.board?.length ?? 0) > preBoardCount &&
-    (newState.showdownHands?.length ?? 0) > 0
-  );
 }
 
 /**
@@ -684,20 +607,11 @@ interface PineapplePendingOptIn {
   joined: Set<string>;
 }
 
-interface PineappleDiscardState {
-  deadline: string;
-  gen: number;
-  /** userId → card index they chose to discard */
-  discards: Map<string, number>;
-  /** userIds still waiting to discard */
-  pending: Set<string>;
-}
-
 const pineappleOptInPending = new Map<string, PineapplePendingOptIn>();
 const pineappleOptInTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pineappleOptInGenerations = new Map<string, number>();
 
-const pineappleDiscardData = new Map<string, PineappleDiscardState>();
+// pineappleDiscardData (+ isPineappleDiscardActive) live in state.ts so the broadcast hub can read them.
 const pineappleDiscardTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pineappleDiscardGenerations = new Map<string, number>();
 
@@ -713,38 +627,6 @@ function cancelPineappleDiscard(lobbyId: string): void {
   if (t) { clearTimeout(t); pineappleDiscardTimers.delete(lobbyId); }
   pineappleDiscardData.delete(lobbyId);
   pineappleDiscardGenerations.set(lobbyId, (pineappleDiscardGenerations.get(lobbyId) ?? 0) + 1);
-}
-
-/** Returns true if a pineapple discard phase is currently active for the lobby. */
-export function isPineappleDiscardActive(lobbyId: string): boolean {
-  return pineappleDiscardData.has(lobbyId);
-}
-
-/** Ranks in ascending order for auto-discard logic. */
-const RANK_ORDER = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'] as const;
-
-/**
- * Auto-select the card to discard from 3 hole cards.
- * Rules: discard lowest rank. If two cards tie for lowest (a pocket pair), discard the odd card.
- * If all three are the same rank, discard a random one.
- */
-function autoDiscardIndex(holeCards: Card[], rng: () => number = Math.random): number {
-  const rankOf = (c: Card) => RANK_ORDER.indexOf(c[0] as typeof RANK_ORDER[number]);
-  const ranks = holeCards.map(rankOf);
-  const minRank = Math.min(...ranks);
-  const minIndices = ranks.map((r, i) => r === minRank ? i : -1).filter((i) => i !== -1);
-
-  if (minIndices.length === 3) {
-    // All three same rank — discard random
-    return minIndices[Math.floor(rng() * 3)];
-  }
-  if (minIndices.length === 2) {
-    // Two tied for lowest (pocket pair) — discard the third (odd) card
-    const oddIdx = ranks.findIndex((_, i) => !minIndices.includes(i));
-    return oddIdx;
-  }
-  // One clear lowest — discard it
-  return minIndices[0];
 }
 
 /** Start the Pineapple opt-in phase and return true so callers skip the normal hand start. */
@@ -1074,64 +956,12 @@ async function startMultiRunoutReveal(
 /** userId set to prevent duplicate cash-out processing */
 const cashOutInProgress = new Set<string>();
 
-/**
- * Recently-processed donation IDs. Capped at MAX_DONATION_IDS entries (FIFO eviction) to
- * prevent a reconnect-retry from crediting a donation twice.
- */
-const processedDonationIds = new Set<string>();
-const MAX_DONATION_IDS = 10_000;
-
-function trackDonationId(id: string): void {
-  if (processedDonationIds.size >= MAX_DONATION_IDS) {
-    const first = processedDonationIds.values().next().value as string;
-    processedDonationIds.delete(first);
-  }
-  processedDonationIds.add(id);
-}
-
-/** Anti-spam cooldown for creating side-bet challenges: userId → last-create timestamp (ms). */
-const sideBetCreateAt = new Map<string, number>();
-const SIDE_BET_CREATE_COOLDOWN_MS = 3_000;
-
 export type TokenVerifier = (token: string) => Promise<{ sub: string }>;
 
 let verifyToken: TokenVerifier | null = null;
 
 export function setTokenVerifier(fn: TokenVerifier): void {
   verifyToken = fn;
-}
-
-/**
- * Close every live client socket with the WebSocket "Service Restart" status code (1012) during
- * graceful shutdown. Clients treat this as a non-intentional close and auto-reconnect (with backoff)
- * into the recovered table once the replacement instance boots and runs startup recovery. Authoritative
- * game state already persists to Redis on every action, so no per-socket flush is required here.
- */
-export function closeAllClients(): void {
-  for (const ws of clients.keys()) {
-    try {
-      ws.close(1012, 'server restarting');
-    } catch {
-      /* already closed */
-    }
-  }
-}
-
-/**
- * Send a ServerMessage to a specific user by userId (if they're connected).
- * Used by the tournament manager to send per-player notifications.
- */
-export function sendToUser(userId: string, msg: ServerMessage): void {
-  const ws = connectedUserSockets.get(userId);
-  if (ws) send(ws, msg);
-}
-
-/**
- * Broadcast a ServerMessage to every connected client in a lobby.
- * Used by the tournament manager for tournament-level broadcasts.
- */
-export function broadcastRawToLobby(lobbyId: string, msg: ServerMessage): void {
-  broadcastLobby(lobbyId, () => msg);
 }
 
 /**
@@ -1169,12 +999,6 @@ export async function updateTournamentTableBlinds(lobbyId: string, small: number
   await updateLobbySettings(lobbyId, settings);
 }
 
-function send(ws: WebSocket, msg: ServerMessage): void {
-  if (ws.readyState === ws.OPEN) {
-    ws.send(JSON.stringify(msg));
-  }
-}
-
 /** Build the dependency bag for the blackjack handler (captures module-level maps). */
 function bjDeps() {
   return {
@@ -1193,120 +1017,7 @@ export function bjHandlerDeps() {
   return bjDeps();
 }
 
-/** Returns the set of userIds currently connected to a lobby. */
-function getConnectedSet(lobbyId: string): Set<string> {
-  const sockets = lobbyClients.get(lobbyId);
-  if (!sockets) return new Set();
-  const connected = new Set<string>();
-  for (const ws of sockets) {
-    const st = clients.get(ws);
-    if (st?.userId) connected.add(st.userId);
-  }
-  return connected;
-}
-
-function broadcastLobby(
-  lobbyId: string,
-  build: (userId: string | null, isSpectator: boolean) => ServerMessage
-): void {
-  const set = lobbyClients.get(lobbyId);
-  if (!set) return;
-  for (const ws of set) {
-    const st = clients.get(ws);
-    if (st) send(ws, build(st.userId, st.isSpectator));
-  }
-}
-
-/**
- * After a seat is vacated, post a system chat message if host status migrated to a new player.
- * `updated` is the lobby summary reflecting the post-removal state.
- */
-function announceHostChange(
-  lobbyId: string,
-  prevHostUserId: string | null,
-  updated: { hostUserId: string | null; hostDisplayName: string } | null
-): void {
-  if (!updated) return;
-  if (updated.hostUserId && updated.hostUserId !== prevHostUserId) {
-    const msg = addSystemChatMessage(lobbyId, `${updated.hostDisplayName} is now the host.`);
-    broadcastLobby(lobbyId, () => ({ type: 'chat', message: msg }));
-  }
-}
-
-async function broadcastTableState(lobbyId: string): Promise<void> {
-  const connected = getConnectedSet(lobbyId);
-  const lobby = await getLobbyById(lobbyId, connected);
-  if (!lobby) return;
-
-  // Deliver any pending 1v1 side-bet activation/expiry notifications queued at deal time.
-  deliverSideBetBindNotifications(lobbyId);
-
-  const deadline = getActionDeadline(lobbyId);
-  const intermDeadline = getIntermissionDeadline(lobbyId);
-  const paused = lobby.status === 'paused';
-  const isWaitingForPlayers = waitingForPlayers.get(lobbyId) ?? false;
-
-  // When a runout is active use the final engine state and a truncated board count.
-  // Override seat stacks with pre-payout values so chips appear to stay in the center
-  // pot until the board has been fully revealed and handleHandComplete fires.
-  const runout = activeRunouts.get(lobbyId);
-  const rawGame = runout ? runout.finalEngineState : await getActiveGame(lobbyId);
-
-  // For multi-runout: override the board to show the current run's cards at the current reveal depth.
-  let boardOverride: import('@vct/shared-types').Card[] | undefined;
-  let runoutCurrentRun: number | undefined;
-  let runoutTotalRuns: number | undefined;
-  if (runout?.numRuns !== undefined && runout.currentRunIndex !== undefined && rawGame?.runoutBoards) {
-    boardOverride = rawGame.runoutBoards[runout.currentRunIndex].slice(0, runout.currentRunVisibleCount ?? 0);
-    runoutCurrentRun = runout.currentRunIndex + 1;
-    runoutTotalRuns = runout.numRuns;
-  }
-
-  const game = runout && rawGame
-    ? {
-        ...rawGame,
-        board: boardOverride ?? rawGame.board,
-        seats: rawGame.seats.map((s) => ({
-          ...s,
-          stack: runout.prePayoutStacks.get(s.seatIndex) ?? s.stack,
-        })),
-      }
-    : rawGame;
-  // For single runout pass visibleBoardCount; for multi-runout the board is already sliced above.
-  const visibleBoardCount = (runout && !boardOverride) ? runout.visibleBoardCount : undefined;
-  const runoutActive = runout !== undefined;
-  const revealHoleCards = runout ? runout.revealHoleCards : undefined;
-
-  const suppressLegalActions = isPineappleDiscardActive(lobbyId);
-
-  broadcastLobby(lobbyId, (userId, isSpectator) => {
-    if (!game) {
-      return { type: 'lobby_state', lobby };
-    }
-    const { public: pub, private: priv } = toPublicState(
-      lobbyId, game, userId, isSpectator, lobby.settings, deadline, paused, intermDeadline,
-      visibleBoardCount, runoutActive, revealHoleCards,
-      runoutCurrentRun, runoutTotalRuns, suppressLegalActions,
-      userId ? getTimeBankRemaining(lobbyId, userId) : undefined,
-    );
-    return {
-      type: 'table_state',
-      public: { ...pub, waitingForPlayers: isWaitingForPlayers || undefined },
-      private: priv,
-    };
-  });
-}
-
-/** Evict a stale socket for a userId, removing it from all tracking maps. */
-function evictSocket(existing: WebSocket): void {
-  const st = clients.get(existing);
-  if (st?.lobbyId) lobbyClients.get(st.lobbyId)?.delete(existing);
-  if (st?.userId && connectedUserSockets.get(st.userId) === existing) {
-    connectedUserSockets.delete(st.userId);
-  }
-  clients.delete(existing);
-  try { existing.close(); } catch { /* already closed */ }
-}
+// announceHostChange + broadcastTableState live in broadcast.ts (the table-state broadcast hub).
 
 // ── Stuck-game recovery helpers ───────────────────────────
 
@@ -2178,25 +1889,6 @@ async function notifyBustedPlayers(lobbyId: string): Promise<void> {
 }
 
 /** True when the hand ended because all opponents folded (no showdown). */
-function isFoldWin(state: GameTableState): boolean {
-  return state.winnerPayouts.length === 1 && state.winnerPayouts[0].handDescription === '';
-}
-
-/**
- * Peek at the next community cards that would have been dealt from the remaining deck.
- * Returns the turn+river for a flop fold, or the river for a turn fold. Empty otherwise.
- * Deck layout: each street burns 1 then deals, so the real cards are at odd indices.
- */
-function peekRabbitCards(state: GameTableState): Card[] {
-  if (state.board.length === 3 && state.deck.length >= 4) {
-    return [state.deck[1], state.deck[3]]; // turn then river
-  }
-  if (state.board.length === 4 && state.deck.length >= 2) {
-    return [state.deck[1]]; // river
-  }
-  return [];
-}
-
 /** Cancel any running show-cards timer. Increments generation to invalidate stale callbacks. */
 function cancelShowCardsTimer(lobbyId: string): void {
   const t = showCardsTimers.get(lobbyId);
@@ -2377,75 +2069,6 @@ async function promptShowCards(lobbyId: string, state: GameTableState, config: V
     showCardsTimers.delete(lobbyId);
     finalizeFoldWin(lobbyId, false, p ?? null, config).catch(() => {});
   }, SHOW_CARDS_TIMEOUT_MS));
-}
-
-/** Deliver queued side-bet activation/expiry notifications to the involved players. */
-function deliverSideBetBindNotifications(lobbyId: string): void {
-  const drained = drainBindNotifications(lobbyId);
-  if (!drained) return;
-  for (const a of drained.activated) {
-    for (const userId of a.participantUserIds) {
-      sendToUser(userId, {
-        type: 'side_bet_activated',
-        betId: a.bet.id,
-        opponentName: a.opponentNameByUser[userId] ?? 'Opponent',
-      });
-    }
-  }
-  for (const e of drained.expired) {
-    for (const userId of e.participantUserIds) {
-      sendToUser(userId, { type: 'side_bet_expired', betId: e.bet.id, reason: e.reason });
-    }
-  }
-}
-
-/**
- * Settle all 1v1 side bets bound to the just-completed hand. Runs after end-of-hand stacks are
- * synced so payouts clamp to real post-hand chip counts. Transfers chips directly between the two
- * players (never touching the pot) via the same path as donate_chips, then reveals the result.
- */
-async function settleSideBets(lobbyId: string, handNumber: number, config: VariantConfig): Promise<void> {
-  const settlements = getSettlementsForHand(lobbyId, handNumber);
-  if (settlements.length === 0) return;
-
-  const tableWide = config.sideBetResultVisibility === 'table';
-
-  for (const { bet, result } of settlements) {
-    let payout = 0;
-    if (!result.push && result.winnerUserId) {
-      const winnerUserId = result.winnerUserId;
-      const loserUserId =
-        winnerUserId === bet.challengerUserId ? bet.targetUserId : bet.challengerUserId;
-
-      // Authoritative post-hand stack from the active engine state; clamp the payout to it.
-      const game = await getActiveGame(lobbyId);
-      const loserStack = game?.seats.find((s) => s.userId === loserUserId)?.stack ?? 0;
-      payout = Math.min(bet.wager, Math.max(0, loserStack));
-
-      if (payout > 0) {
-        await donateChips(lobbyId, loserUserId, winnerUserId, payout);
-        await transferChipsBetweenSeats(lobbyId, loserUserId, winnerUserId, payout);
-      }
-    }
-
-    const finalized = markSettled(lobbyId, bet.id, payout);
-    if (!finalized) continue; // already settled (idempotent guard)
-
-    if (tableWide) {
-      broadcastLobby(lobbyId, () => ({ type: 'side_bet_settled', result: finalized }));
-    } else {
-      sendToUser(bet.challengerUserId, { type: 'side_bet_settled', result: finalized });
-      sendToUser(bet.targetUserId, { type: 'side_bet_settled', result: finalized });
-    }
-  }
-
-  pruneTerminal(lobbyId);
-
-  // Reflect the transferred chips in everyone's tray + table immediately.
-  const connected = getConnectedSet(lobbyId);
-  const updatedLobby = await getLobbyById(lobbyId, connected);
-  if (updatedLobby) broadcastLobby(lobbyId, () => ({ type: 'lobby_state', lobby: updatedLobby }));
-  await broadcastTableState(lobbyId);
 }
 
 /**
@@ -2750,15 +2373,8 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
           });
         }
 
-        // Re-send any pending side-bet challenges aimed at this player, and restore the
-        // "accepted" notice for any open bet they're part of. The active-bet seat indicator
-        // returns automatically via the resent table_state.
-        for (const challenge of getPendingChallengesForTarget(session.lobbyId, session.userId)) {
-          send(ws, { type: 'side_bet_challenge', challenge });
-        }
-        for (const bet of getOpenAcceptedBetsForUser(session.lobbyId, session.userId)) {
-          send(ws, { type: 'side_bet_accepted', challenge: bet });
-        }
+        // Re-send any pending side-bet challenges/acceptances aimed at this player.
+        resendSideBetPrompts(ws, session.lobbyId, session.userId);
       }
       return;
     }
@@ -2919,76 +2535,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       return;
     }
 
-    case 'chat': {
-      if (!st.userId || !st.lobbyId) return;
-      if (!canSendChat(st.userId)) return;
-      const user = await getUserById(st.userId);
-      const lobby = getMemoryLobby(st.lobbyId);
-      const isHost = lobby?.hostUserId === st.userId;
-      const chatMsg = addChatMessage(
-        st.lobbyId,
-        st.userId,
-        user?.displayName ?? 'Player',
-        msg.text,
-        isHost
-      );
-      recordChatActivity(st.lobbyId, st.userId);
-      broadcastLobby(st.lobbyId, () => ({ type: 'chat', message: chatMsg }));
+    case 'chat':
+    case 'reaction':
+    case 'whisper':
+      await handleChatMessage(ws, msg, st);
       return;
-    }
-
-    case 'reaction': {
-      if (!st.userId || !st.lobbyId) return;
-      // Emoji must come from the shared allowlist — drop anything else silently.
-      if (typeof msg.emoji !== 'string' || !isReactionEmoji(msg.emoji)) return;
-      if (!canSendReaction(st.userId)) return;
-      const user = await getUserById(st.userId);
-      const lobby = await getLobbyById(st.lobbyId);
-      const seatIndex = lobby?.seats.find((s) => s.userId === st.userId)?.seatIndex ?? null;
-      const reaction = createReaction(st.userId, user?.displayName ?? 'Player', msg.emoji, seatIndex);
-      recordChatActivity(st.lobbyId, st.userId);
-      // Transient by design: broadcast to all lobby sockets (players + spectators),
-      // never stored, so it cannot replay on reconnect or leak into hand history.
-      broadcastLobby(st.lobbyId, () => ({ type: 'reaction', reaction }));
-      return;
-    }
-
-    case 'whisper': {
-      if (!st.userId || !st.lobbyId) return;
-      const text = msg.text?.trim();
-      if (!text) return;
-      if (msg.recipientUserId === st.userId) {
-        send(ws, { type: 'error', message: 'You cannot whisper to yourself' });
-        return;
-      }
-      if (!canSendChat(st.userId)) return;
-      // Recipient must be connected to the same lobby — never deliver across tables.
-      if (!getConnectedSet(st.lobbyId).has(msg.recipientUserId)) {
-        send(ws, { type: 'error', message: 'That player is no longer at the table' });
-        return;
-      }
-      const sender = await getUserById(st.userId);
-      const recipient = await getUserById(msg.recipientUserId);
-      if (!recipient) {
-        send(ws, { type: 'error', message: 'That player is no longer at the table' });
-        return;
-      }
-      const whisperMsg = addWhisperMessage(
-        st.lobbyId,
-        st.userId,
-        sender?.displayName ?? 'Player',
-        msg.recipientUserId,
-        recipient.displayName,
-        text
-      );
-      // Deliver to exactly two sockets: the sender and the recipient.
-      send(ws, { type: 'chat', message: whisperMsg });
-      const recipientWs = connectedUserSockets.get(msg.recipientUserId);
-      if (recipientWs && clients.get(recipientWs)?.lobbyId === st.lobbyId) {
-        send(recipientWs, { type: 'chat', message: whisperMsg });
-      }
-      return;
-    }
 
     case 'sit': {
       if (!st.userId || !st.lobbyId) return;
@@ -3587,7 +3138,7 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
       const { recipientSeatIndex, amount, donationId } = msg;
 
       // Duplicate-send guard (reconnect retry with same donationId)
-      if (processedDonationIds.has(donationId)) return;
+      if (hasDonationId(donationId)) return;
 
       if (!Number.isInteger(amount) || amount <= 0) {
         send(ws, { type: 'error', message: 'Donation amount must be a positive integer' });
@@ -3657,111 +3208,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
     }
 
     // ── 1v1 hole-card side bets ────────────────────────────────────────────
-    case 'side_bet_create': {
-      if (!st.userId || !st.lobbyId) return;
-      const userId = st.userId;
-      const lobbyId = st.lobbyId;
-      const { targetSeatIndex, betType, suit, wager, challengeId } = msg;
-
-      if (!Number.isInteger(wager) || wager <= 0) {
-        send(ws, { type: 'error', message: 'Side bet wager must be a positive integer' });
-        return;
-      }
-      if (betType === 'highest_suit' || betType === 'lowest_suit') {
-        if (suit !== 'h' && suit !== 'd' && suit !== 'c' && suit !== 's') {
-          send(ws, { type: 'error', message: 'A suit must be chosen for this side bet' });
-          return;
-        }
-      }
-
-      // Cooldown to prevent challenge spam.
-      const last = sideBetCreateAt.get(userId) ?? 0;
-      if (Date.now() - last < SIDE_BET_CREATE_COOLDOWN_MS) {
-        send(ws, { type: 'error', message: 'Slow down — too many side bet challenges' });
-        return;
-      }
-
-      const lobby = await getLobbyById(lobbyId);
-      if (!lobby) return;
-      const challengerSeat = lobby.seats.find((s) => s.userId === userId);
-      if (!challengerSeat) { send(ws, { type: 'error', message: 'You are not seated' }); return; }
-      const targetSeat = lobby.seats.find((s) => s.seatIndex === targetSeatIndex);
-      if (!targetSeat?.userId) { send(ws, { type: 'error', message: 'No player in that seat' }); return; }
-      if (targetSeat.userId === userId) { send(ws, { type: 'error', message: 'Cannot side bet against yourself' }); return; }
-
-      // Both players must currently hold at least the wager (engine stack is authoritative).
-      const game = await getActiveGame(lobbyId);
-      const challengerStack = game?.seats.find((s) => s.userId === userId)?.stack ?? challengerSeat.stack;
-      const targetStack = game?.seats.find((s) => s.userId === targetSeat.userId)?.stack ?? targetSeat.stack;
-      if (challengerStack < wager) { send(ws, { type: 'error', message: 'Insufficient chips for that wager' }); return; }
-      if (targetStack < wager) { send(ws, { type: 'error', message: 'That player has insufficient chips' }); return; }
-
-      const created = createChallenge(lobbyId, {
-        id: challengeId,
-        challengerUserId: userId,
-        challengerName: challengerSeat.displayName ?? 'Player',
-        targetUserId: targetSeat.userId,
-        targetName: targetSeat.displayName ?? 'Player',
-        type: betType,
-        suit: (betType === 'highest_suit' || betType === 'lowest_suit') ? suit : undefined,
-        wager,
-      });
-      if (!created.ok) { send(ws, { type: 'error', message: created.reason }); return; }
-
-      sideBetCreateAt.set(userId, Date.now());
-
-      // Bots have no WebSocket to prompt, and always accept. Resolve the challenge server-side
-      // immediately (stacks were just validated above) and notify the human challenger.
-      if (isBotUser(targetSeat.userId)) {
-        const accepted = acceptChallenge(lobbyId, created.challenge.id, targetSeat.userId);
-        if (accepted.ok) {
-          sendToUser(accepted.challenge.challengerUserId, { type: 'side_bet_accepted', challenge: accepted.challenge });
-        }
-        return;
-      }
-
-      // Deliver the challenge to the target; the challenger sees it as pending via accepted/declined replies.
-      sendToUser(targetSeat.userId, { type: 'side_bet_challenge', challenge: created.challenge });
+    case 'side_bet_create':
+    case 'side_bet_accept':
+    case 'side_bet_decline':
+      await handleSideBetMessage(ws, msg, st);
       return;
-    }
-
-    case 'side_bet_accept': {
-      if (!st.userId || !st.lobbyId) return;
-      const userId = st.userId;
-      const lobbyId = st.lobbyId;
-
-      const accepted = acceptChallenge(lobbyId, msg.challengeId, userId);
-      if (!accepted.ok) { send(ws, { type: 'error', message: accepted.reason }); return; }
-
-      // Revalidate both players can still cover the wager at acceptance time.
-      const bet = accepted.challenge;
-      const game = await getActiveGame(lobbyId);
-      const lobby = await getLobbyById(lobbyId);
-      const stackOf = (uid: string) =>
-        game?.seats.find((s) => s.userId === uid)?.stack ??
-        lobby?.seats.find((s) => s.userId === uid)?.stack ?? 0;
-      if (stackOf(bet.challengerUserId) < bet.wager || stackOf(bet.targetUserId) < bet.wager) {
-        // Roll back to declined and notify both parties.
-        declineChallenge(lobbyId, bet.id, userId);
-        sendToUser(bet.challengerUserId, { type: 'side_bet_declined', challengeId: bet.id });
-        sendToUser(bet.targetUserId, { type: 'side_bet_declined', challengeId: bet.id });
-        send(ws, { type: 'error', message: 'A player no longer has enough chips' });
-        return;
-      }
-
-      sendToUser(bet.challengerUserId, { type: 'side_bet_accepted', challenge: bet });
-      sendToUser(bet.targetUserId, { type: 'side_bet_accepted', challenge: bet });
-      return;
-    }
-
-    case 'side_bet_decline': {
-      if (!st.userId || !st.lobbyId) return;
-      const declined = declineChallenge(st.lobbyId, msg.challengeId, st.userId);
-      if (declined) {
-        sendToUser(declined.challengerUserId, { type: 'side_bet_declined', challengeId: declined.id });
-      }
-      return;
-    }
 
     case 'show_cards': {
       if (!st.userId || !st.lobbyId) return;
