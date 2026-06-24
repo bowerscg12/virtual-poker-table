@@ -4,6 +4,7 @@
  */
 import type { WebSocket } from 'ws';
 import type { AvatarConfig, BlackjackSessionRecap, ClientMessage, LobbySummary, ServerMessage, VariantConfig } from '@vct/shared-types';
+import { logger } from '../logger.js';
 import { getTableBuyIn } from '@vct/shared-types';
 import {
   getLegalActions as getBjLegalActionsEngine,
@@ -175,7 +176,7 @@ export async function startBjBettingPhase(
   const deadline = Date.now() + BJ_BETTING_MS;
   await persistBjState(lobbyId, { ...state, betDeadline: deadline });
 
-  console.log(`[bj] Round ${roundNumber} betting phase started for lobby ${lobbyId}`);
+  logger.info({ roundNumber, lobbyId }, '[bj] betting phase started');
 
   deps.broadcastLobby(lobbyId, () => ({ type: 'bj_round_started', deadline }));
   await broadcastBjState(lobbyId, deps);
@@ -234,7 +235,7 @@ async function dealAndStartPlayerTurn(
 ): Promise<void> {
   const result = await closeBjBetting(lobbyId, config);
   if ('error' in result) {
-    console.warn(`[bj] closeBjBetting failed for ${lobbyId}: ${result.error}`);
+    logger.warn({ lobbyId, error: result.error }, '[bj] closeBjBetting failed');
     scheduleBjIntermission(lobbyId, config, deps);
     return;
   }
@@ -919,9 +920,9 @@ export async function recoverBlackjackLobbies(deps: BjHandlerDeps): Promise<void
       cancelAllBjTimers(lobbyId);
       await clearBjState(lobbyId);
       await startBjBettingPhase(lobbyId, lobby.settings, lobby, deps, false);
-      console.log(`[bj] Recovered lobby ${lobbyId} — reopened betting`);
+      logger.info({ lobbyId }, '[bj] Recovered lobby — reopened betting');
     } catch (err) {
-      console.error(`[bj] Recovery failed for ${lobbyId}:`, err);
+      logger.error({ err, lobbyId }, '[bj] Recovery failed');
     }
   }
 }

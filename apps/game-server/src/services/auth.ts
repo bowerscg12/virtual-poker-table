@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import type { AuthResponse, AuthUser, AvatarConfig } from '@vct/shared-types';
+import { logger } from '../logger.js';
 import { getDb } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -53,7 +54,7 @@ export async function initAuthStore(): Promise<void> {
     useMemory = false;
   } catch {
     useMemory = true;
-    console.warn('Postgres unavailable — using in-memory store');
+    logger.warn('Postgres unavailable — using in-memory store');
   }
 }
 

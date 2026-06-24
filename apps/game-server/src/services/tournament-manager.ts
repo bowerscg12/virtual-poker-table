@@ -1,5 +1,6 @@
 import type { GameTableState } from '@vct/poker-engine';
 import type { VariantConfig } from '@vct/shared-types';
+import { logger } from '../logger.js';
 import {
   addChips,
   buildPublicTournamentState,
@@ -133,11 +134,11 @@ export function scheduleTournamentStart(tournamentId: string, scheduledStart: Da
   if (rt.scheduledStartTimer) clearTimeout(rt.scheduledStartTimer);
   const delayMs = scheduledStart.getTime() - Date.now();
   if (delayMs <= 0) {
-    startTournament(tournamentId).catch((err) => console.error('[tournament] auto-start error:', err));
+    startTournament(tournamentId).catch((err) => logger.error({ err }, '[tournament] auto-start error'));
     return;
   }
   rt.scheduledStartTimer = setTimeout(() => {
-    startTournament(tournamentId).catch((err) => console.error('[tournament] auto-start error:', err));
+    startTournament(tournamentId).catch((err) => logger.error({ err }, '[tournament] auto-start error'));
   }, delayMs);
 }
 
@@ -228,10 +229,10 @@ export async function startTournament(tournamentId: string): Promise<{ ok: true 
   // Start hands on all tables (async, do not await to avoid blocking)
   for (const { lobbyId } of tableLobbies) {
     await updateLobbyStatus(lobbyId, 'playing');
-    startTournamentTable(lobbyId).catch((err) => console.error('[tournament] startTable error:', err));
+    startTournamentTable(lobbyId).catch((err) => logger.error({ err }, '[tournament] startTable error'));
   }
 
-  console.log(`[tournament] ${tournamentId} started: ${registrations.length} players, ${numTables} tables, prize pool ${prizePool}`);
+  logger.info({ tournamentId, players: registrations.length, numTables, prizePool }, '[tournament] started');
   return { ok: true };
 }
 
@@ -242,7 +243,7 @@ function scheduleBlindLevelAdvance(tournamentId: string, durationMinutes: number
   if (!rt) return;
   if (rt.blindLevelTimer) clearTimeout(rt.blindLevelTimer);
   rt.blindLevelTimer = setTimeout(() => {
-    advanceBlindLevel(tournamentId, false).catch((err) => console.error('[tournament] blind advance error:', err));
+    advanceBlindLevel(tournamentId, false).catch((err) => logger.error({ err }, '[tournament] blind advance error'));
   }, durationMinutes * 60_000);
 }
 
@@ -525,7 +526,7 @@ async function executeMoveToLobby(
     newSeatIndex: openSeat.seatIndex,
   });
 
-  console.log(`[tournament] Moved player ${userId} to table ${toTableNumber} (lobby ${toLobbyId})`);
+  logger.info({ userId, toTableNumber, toLobbyId }, '[tournament] Moved player to table');
 }
 
 // ── Finalize ──────────────────────────────────────────────────────────────────
@@ -573,7 +574,7 @@ async function finalizeTournament(
   }
 
   clearRuntime(tournamentId);
-  console.log(`[tournament] ${tournamentId} finished`);
+  logger.info({ tournamentId }, '[tournament] finished');
 }
 
 // ── Cancel ────────────────────────────────────────────────────────────────────
@@ -609,7 +610,7 @@ export async function cancelTournament(tournamentId: string): Promise<void> {
 export async function recoverTournamentTimers(): Promise<void> {
   const waiting = await getAllWaitingTournaments();
   for (const t of waiting) {
-    console.log(`[tournament] Recovering scheduled start for ${t.id} at ${t.scheduledStart.toISOString()}`);
+    logger.info({ tournamentId: t.id, scheduledStart: t.scheduledStart.toISOString() }, '[tournament] Recovering scheduled start');
     scheduleTournamentStart(t.id, t.scheduledStart);
   }
 }

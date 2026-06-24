@@ -1,5 +1,6 @@
 import { and, eq, gt, lt, notInArray } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
+import { logger } from '../logger.js';
 import { playerSessions, users } from '../db/schema.js';
 import { memoryStore } from '../store/memory-fallback.js';
 import { isMemoryMode } from './lobby.js';
@@ -56,7 +57,7 @@ export async function cleanupExpiredGuests(): Promise<number> {
 
   const count = deleted.length;
   if (count > 0) {
-    console.log(`[guest-cleanup] Deleted ${count} expired guest account(s) (cutoff: ${cutoff.toISOString()})`);
+    logger.info({ count, cutoff: cutoff.toISOString() }, '[guest-cleanup] Deleted expired guest account(s)');
   }
   return count;
 }
@@ -79,7 +80,7 @@ function cleanupExpiredGuestsMemory(): number {
   }
 
   if (count > 0) {
-    console.log(`[guest-cleanup] Deleted ${count} expired guest account(s) from memory store`);
+    logger.info({ count }, '[guest-cleanup] Deleted expired guest account(s) from memory store');
   }
   return count;
 }

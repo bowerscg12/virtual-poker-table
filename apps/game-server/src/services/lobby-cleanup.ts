@@ -4,6 +4,7 @@ import { handHistories, lobbies, playerSessions, tableSeats } from '../db/schema
 import { keys, redisDel } from '../store/redis.js';
 import { memoryStore } from '../store/memory-fallback.js';
 import { isMemoryMode } from './lobby.js';
+import { logger } from '../logger.js';
 import { deleteBotUsersForLobby, unregisterBotUser } from './bots.js';
 import { SEAT_RELEASE_MS } from './session.js';
 
@@ -140,7 +141,7 @@ export async function cleanupAbandonedLobbies(): Promise<number> {
   }
 
   if (count > 0) {
-    console.log(`[lobby-cleanup] Deleted ${count} abandoned lobby/lobbies`);
+    logger.info({ count }, '[lobby-cleanup] Deleted abandoned lobby/lobbies');
   }
   return count;
 }
@@ -177,7 +178,7 @@ function cleanupAbandonedLobbiesMemory(): number {
   }
 
   if (count > 0) {
-    console.log(`[lobby-cleanup] Deleted ${count} abandoned lobby/lobbies from memory`);
+    logger.info({ count }, '[lobby-cleanup] Deleted abandoned lobby/lobbies from memory');
   }
   return count;
 }

@@ -59,6 +59,35 @@ export async function redisDel(key: string): Promise<void> {
   memoryFallback.delete(key);
 }
 
+/**
+ * Liveness check for the readiness probe: returns true only if Redis answers PING. Resolves false
+ * (rather than throwing) when Redis is unconfigured or unreachable so the caller can report status.
+ */
+export async function redisPing(): Promise<boolean> {
+  const r = getRedis();
+  if (!r) return false;
+  try {
+    await r.connect().catch(() => {});
+    return (await r.ping()) === 'PONG';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Close the Redis connection cleanly (graceful shutdown). Falls back to a hard disconnect if the
+ * QUIT handshake fails, and resets the singleton so a later getRedis() can reconnect (e.g. in tests).
+ */
+export async function closeRedis(): Promise<void> {
+  if (!redis) return;
+  try {
+    await redis.quit();
+  } catch {
+    try { redis.disconnect(); } catch { /* already gone */ }
+  }
+  redis = null;
+}
+
 export const keys = {
   tableState: (lobbyId: string) => `table:${lobbyId}:state`,
   presence: (lobbyId: string) => `table:${lobbyId}:presence`,

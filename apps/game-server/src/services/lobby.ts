@@ -1,4 +1,5 @@
 import type { ActiveSeatInfo, AvatarConfig, CreateLobbyRequest, LobbySummary, TableSeat, VariantConfig } from '@vct/shared-types';
+import { logger } from '../logger.js';
 import { DEFAULT_VARIANT_CONFIG, RULES_PRESETS, timerStepsFor, getTableBuyIn } from '@vct/shared-types';
 import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
@@ -67,7 +68,7 @@ async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT false;
     `);
   } catch (err) {
-    console.error('[schema] Failed to apply column updates:', err);
+    logger.error({ err }, '[schema] Failed to apply column updates');
   }
 
   // Guest-lifecycle: make lobbies.host_user_id nullable with ON DELETE SET NULL.
@@ -93,7 +94,7 @@ async function applySchemaUpdates(pool: import('pg').Pool): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_users_guest_created ON users(created_at) WHERE is_guest = true;
     `);
   } catch (err) {
-    console.error('[schema] Failed to apply guest-lifecycle FK updates:', err);
+    logger.error({ err }, '[schema] Failed to apply guest-lifecycle FK updates');
   }
 }
 

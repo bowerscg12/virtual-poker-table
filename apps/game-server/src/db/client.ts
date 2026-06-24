@@ -24,6 +24,19 @@ export function getDb() {
   return db;
 }
 
+/**
+ * Liveness check for the readiness probe: returns true only if a trivial query succeeds. Resolves
+ * false (rather than throwing) when the pool can't reach Postgres so the caller can report status.
+ */
+export async function pingDb(): Promise<boolean> {
+  try {
+    await getPool().query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function closeDb(): Promise<void> {
   if (pool) {
     await pool.end();

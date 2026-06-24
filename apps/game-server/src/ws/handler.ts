@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws';
+import { logger } from '../logger.js';
 import type { Card, ClientMessage, PlayerActionType, ServerMessage, VariantConfig } from '@vct/shared-types';
 import { getTableBuyIn, isReactionEmoji, TIME_BANK_EXTENSION_SEC, TIME_BANK_MAX_USES } from '@vct/shared-types';
 import type { GameTableState } from '@vct/poker-engine';
@@ -299,7 +300,7 @@ async function onEmptyLobbyExpired(lobbyId: string): Promise<void> {
   lobbyClients.delete(lobbyId);
 
   await deleteLobby(lobbyId);
-  console.log(`[lobby] Deleted abandoned lobby ${lobbyId}`);
+  logger.info({ lobbyId }, '[lobby] Deleted abandoned lobby');
 }
 
 /**
@@ -1101,6 +1102,22 @@ export function setTokenVerifier(fn: TokenVerifier): void {
 }
 
 /**
+ * Close every live client socket with the WebSocket "Service Restart" status code (1012) during
+ * graceful shutdown. Clients treat this as a non-intentional close and auto-reconnect (with backoff)
+ * into the recovered table once the replacement instance boots and runs startup recovery. Authoritative
+ * game state already persists to Redis on every action, so no per-socket flush is required here.
+ */
+export function closeAllClients(): void {
+  for (const ws of clients.keys()) {
+    try {
+      ws.close(1012, 'server restarting');
+    } catch {
+      /* already closed */
+    }
+  }
+}
+
+/**
  * Send a ServerMessage to a specific user by userId (if they're connected).
  * Used by the tournament manager to send per-player notifications.
  */
@@ -1317,7 +1334,7 @@ async function isGameOrphaned(lobbyId: string): Promise<boolean> {
  */
 async function clearOrphanedGame(lobbyId: string): Promise<boolean> {
   if (!(await isGameOrphaned(lobbyId))) return false;
-  console.log(`[recovery] Clearing orphaned game state for lobby ${lobbyId} — all original players left`);
+  logger.info({ lobbyId }, '[recovery] Clearing orphaned game state — all original players left');
   clearGame(lobbyId);
   await redisDel(keys.tableState(lobbyId));
   return true;
@@ -1351,7 +1368,7 @@ async function recoverHandLifecycle(lobbyId: string): Promise<void> {
     !pineappleOptInPending.has(lobbyId) &&
     !pineappleDiscardData.has(lobbyId)
   ) {
-    console.log(`[recovery] Scheduling intermission for stuck lobby ${lobbyId}`);
+    logger.info({ lobbyId }, '[recovery] Scheduling intermission for stuck lobby');
     scheduleIntermission(lobbyId, lobby.settings, 5000);
     return;
   }
@@ -1375,9 +1392,9 @@ async function recoverHandLifecycle(lobbyId: string): Promise<void> {
 
   if (disconnectTimers.has(sess.id)) return; // grace timer already running
 
-  console.log(
-    `[recovery] Reconstructing grace timer for ${actionSeat.userId} in lobby ${lobbyId} ` +
-    `(${Math.round(remainingMs / 1000)}s remaining)`,
+  logger.info(
+    { userId: actionSeat.userId, lobbyId, remainingSec: Math.round(remainingMs / 1000) },
+    '[recovery] Reconstructing grace timer',
   );
 
   if (remainingMs === 0) {
@@ -1512,7 +1529,7 @@ function scheduleBotTurn(lobbyId: string, config: VariantConfig, state: GameTabl
     // Log (don't swallow) failures: the bot-turn watchdog will still recover the table, but a
     // logged error tells us a primary-path bug exists to fix rather than relying on the backstop.
     runBotTurn(lobbyId, userId, seatIndex, config).catch((err) =>
-      console.error(`[bot] runBotTurn failed lobby=${lobbyId} seat=${seatIndex}:`, err)
+      logger.error({ err, lobbyId, seatIndex }, '[bot] runBotTurn failed')
     );
   }, botThinkDelayMs(config));
   actionTimers.set(lobbyId, timer);
@@ -1549,7 +1566,7 @@ async function runBotTurn(
       try {
         decision = decidePokerAction(state, config, seatIndex, brain);
       } catch (err) {
-        console.error(`[bot] decision error lobby=${lobbyId} seat=${seatIndex}:`, err);
+        logger.error({ err, lobbyId, seatIndex }, '[bot] decision error');
         decision = { action: getAutoAction(state, config, seatIndex) };
       }
     }
@@ -1561,7 +1578,7 @@ async function runBotTurn(
     const fallback = getAutoAction(state, config, seatIndex);
     result = await processGameAction(lobbyId, config, userId, crypto.randomUUID(), fallback);
     if ('error' in result) {
-      console.error(`[bot] stuck turn lobby=${lobbyId} seat=${seatIndex} (${result.error})`);
+      logger.error({ lobbyId, seatIndex, error: result.error }, '[bot] stuck turn');
       return;
     }
     recordAction(lobbyId, userId, fallback, preActionStreet);
@@ -1609,7 +1626,7 @@ export function startBotTurnWatchdog(): void {
     if (botWatchdogRunning) return; // never let ticks overlap
     botWatchdogRunning = true;
     botWatchdogTick()
-      .catch((err) => console.error('[bot-watchdog] tick error:', err))
+      .catch((err) => logger.error({ err }, '[bot-watchdog] tick error'))
       .finally(() => { botWatchdogRunning = false; });
   }, BOT_WATCHDOG_TICK_MS);
   // Don't keep the event loop alive solely for the watchdog (clean test/process shutdown).
@@ -1681,14 +1698,14 @@ async function botWatchdogTick(): Promise<void> {
 
       // Stalled far past the think delay — force the move now. Reset the clock first so that if the
       // forced action still fails to advance, we retry next threshold instead of spinning every tick.
-      console.warn(
-        `[bot-watchdog] forcing stalled bot turn lobby=${lobbyId} seat=${candidate.seatIndex} ` +
-        `stalledMs=${now - tracked.since} street=${state!.street}`
+      logger.warn(
+        { lobbyId, seatIndex: candidate.seatIndex, stalledMs: now - tracked.since, street: state!.street },
+        '[bot-watchdog] forcing stalled bot turn'
       );
       botStallTracker.set(lobbyId, { seatIndex: candidate.seatIndex, since: now });
       await runBotTurn(lobbyId, candidate.userId, candidate.seatIndex, lobby.settings);
     } catch (err) {
-      console.error(`[bot-watchdog] recovery failed lobby=${lobbyId}:`, err);
+      logger.error({ err, lobbyId }, '[bot-watchdog] recovery failed');
     }
   }
 }
@@ -1791,7 +1808,7 @@ async function onIntermissionExpired(lobbyId: string, _config: VariantConfig): P
 
   const result = await startHand(lobbyId, lobby.settings);
   if ('error' in result) {
-    console.warn(`[intermission] Cannot start next hand for ${lobbyId}: ${result.error}`);
+    logger.warn({ lobbyId, error: result.error }, '[intermission] Cannot start next hand');
     waitingForPlayers.set(lobbyId, true);
     await broadcastTableState(lobbyId);
     return;
@@ -1960,7 +1977,7 @@ async function processCashOut(ws: WebSocket, st: ClientState): Promise<void> {
     const gameSeat = game?.seats.find((s) => s.userId === userId);
     const finalStack = gameSeat?.stack ?? seat.stack;
     const summary = finalizeCashOut(lobbyId, userId, finalStack);
-    persistSessionEnd(userId, summary).catch((err) => console.error('[lifetime-stats] session:', err));
+    persistSessionEnd(userId, summary).catch((err) => logger.error({ err }, '[lifetime-stats] session'));
     const prevHost = lobby.hostUserId;
 
     await removeSeat(lobbyId, userId);
@@ -2076,7 +2093,7 @@ async function promptPendingCashOuts(lobbyId: string): Promise<void> {
         const seat = lobby?.seats.find((s) => s.userId === userId);
         if (seat) {
           const silentSummary = finalizeCashOut(lobbyId, userId, seat.stack);
-          persistSessionEnd(userId, silentSummary).catch((err) => console.error('[lifetime-stats] session:', err));
+          persistSessionEnd(userId, silentSummary).catch((err) => logger.error({ err }, '[lifetime-stats] session'));
           await removeSeat(lobbyId, userId);
         }
         if (pending.sessionId) await deleteSession(pending.sessionId);
@@ -2114,7 +2131,7 @@ async function promptPendingCashOuts(lobbyId: string): Promise<void> {
             const s = lob?.seats.find((s) => s.userId === userId);
             if (s) {
               const timeoutSummary = finalizeCashOut(lobbyId, userId, s.stack);
-              persistSessionEnd(userId, timeoutSummary).catch((err) => console.error('[lifetime-stats] session:', err));
+              persistSessionEnd(userId, timeoutSummary).catch((err) => logger.error({ err }, '[lifetime-stats] session'));
               await removeSeat(lobbyId, userId);
             }
             if (pending.sessionId) await deleteSession(pending.sessionId);
@@ -2440,14 +2457,14 @@ async function handleHandComplete(lobbyId: string, state: GameTableState, config
   const blindSeats = getBlindHandSeats(lobbyId);
   recordHandEnd(lobbyId, state, config, blindSeats);
   clearBlindHandSeats(lobbyId);
-  persistHandStats(state, config).catch((err) => console.error('[lifetime-stats] hand:', err));
+  persistHandStats(state, config).catch((err) => logger.error({ err }, '[lifetime-stats] hand'));
 
   // Tournament hook: process busts, rebalancing, blind levels
   const tLobby = await getLobbyById(lobbyId);
   if (tLobby?.tournamentId) {
     const { tournamentManager } = await import('../services/tournament-manager.js');
     await tournamentManager.afterHandComplete(tLobby.tournamentId, lobbyId, state).catch((err) => {
-      console.error('[tournament] afterHandComplete error:', err);
+      logger.error({ err }, '[tournament] afterHandComplete error');
     });
   }
 

@@ -1,5 +1,6 @@
 import { and, inArray, lt } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
+import { logger } from '../logger.js';
 import { tournaments } from '../db/schema.js';
 import { isMemoryMode } from './lobby.js';
 import { memoryRegistrations, memoryTournaments } from './tournament-service.js';
@@ -37,7 +38,7 @@ export async function cleanupExpiredTournaments(): Promise<number> {
 
   const count = deleted.length;
   if (count > 0) {
-    console.log(`[tournament-cleanup] Deleted ${count} expired tournament(s) (cutoff: ${cutoff.toISOString()})`);
+    logger.info({ count, cutoff: cutoff.toISOString() }, '[tournament-cleanup] Deleted expired tournament(s)');
   }
   return count;
 }
@@ -55,7 +56,7 @@ function cleanupExpiredTournamentsMemory(): number {
   }
 
   if (count > 0) {
-    console.log(`[tournament-cleanup] Deleted ${count} expired tournament(s) from memory`);
+    logger.info({ count }, '[tournament-cleanup] Deleted expired tournament(s) from memory');
   }
   return count;
 }

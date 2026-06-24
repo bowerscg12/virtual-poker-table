@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'crypto';
 import type { BadgeType, Card, HandHistoryEntry, PlayerActionType, PublicTableState, ShowdownHandEntry, ShowdownResult, VariantConfig } from '@vct/shared-types';
+import { logger } from '../logger.js';
 import { and, eq, gt, inArray, isNotNull } from 'drizzle-orm';
 import {
   applyAction,
@@ -983,16 +984,15 @@ export async function cancelInterruptedHand(lobbyId: string): Promise<boolean> {
   try {
     state = deserialize(JSON.parse(raw) as SerializedGame);
   } catch {
-    console.warn(`[recovery] Could not parse persisted game state for lobby ${lobbyId} — skipping`);
+    logger.warn({ lobbyId }, '[recovery] Could not parse persisted game state — skipping');
     return false;
   }
 
   if (!INTERRUPTED_HAND_STREETS.has(state.street)) return false;
 
-  console.log(
-    `[recovery] Interrupted hand detected — lobby=${lobbyId} hand=#${state.handNumber} ` +
-    `street=${state.street} players=${state.seats.length} ` +
-    `at=${new Date().toISOString()}`
+  logger.info(
+    { lobbyId, hand: state.handNumber, street: state.street, players: state.seats.length },
+    '[recovery] Interrupted hand detected'
   );
 
   // Each player's pre-hand stack = chips still held + all chips committed to the pot this hand.
@@ -1001,7 +1001,7 @@ export async function cancelInterruptedHand(lobbyId: string): Promise<boolean> {
     stacksByUserId.set(seat.userId, seat.stack + seat.totalBet);
   }
 
-  console.log(`[recovery] Cancelling interrupted hand and restoring pre-hand stacks for lobby ${lobbyId}`);
+  logger.info({ lobbyId }, '[recovery] Cancelling interrupted hand and restoring pre-hand stacks');
 
   await restorePreHandStacks(lobbyId, stacksByUserId);
 
@@ -1010,7 +1010,7 @@ export async function cancelInterruptedHand(lobbyId: string): Promise<boolean> {
   blindHandSeats.delete(lobbyId);
   await redisDel(keys.tableState(lobbyId));
 
-  console.log(`[recovery] Lobby ${lobbyId} returned to waiting state`);
+  logger.info({ lobbyId }, '[recovery] Lobby returned to waiting state');
   return true;
 }
 
@@ -1028,13 +1028,13 @@ export async function recoverInterruptedHands(): Promise<void> {
   try {
     lobbyIds = await getActiveLobbyIds();
   } catch (err) {
-    console.error('[recovery] Failed to query active lobbies at startup:', err);
+    logger.error({ err }, '[recovery] Failed to query active lobbies at startup');
     return;
   }
 
   if (lobbyIds.length === 0) return;
 
-  console.log(`[recovery] Startup: scanning ${lobbyIds.length} active lobby/lobbies for interrupted hands`);
+  logger.info({ count: lobbyIds.length }, '[recovery] Startup: scanning active lobby/lobbies for interrupted hands');
 
   let cancelledCount = 0;
   for (const lobbyId of lobbyIds) {
@@ -1042,13 +1042,13 @@ export async function recoverInterruptedHands(): Promise<void> {
       const cancelled = await cancelInterruptedHand(lobbyId);
       if (cancelled) cancelledCount++;
     } catch (err) {
-      console.error(`[recovery] Error checking lobby ${lobbyId}:`, err);
+      logger.error({ err, lobbyId }, '[recovery] Error checking lobby');
     }
   }
 
   if (cancelledCount > 0) {
-    console.log(`[recovery] Startup recovery complete: cancelled ${cancelledCount} interrupted hand(s)`);
+    logger.info({ cancelledCount }, '[recovery] Startup recovery complete');
   } else {
-    console.log('[recovery] Startup: no interrupted hands found');
+    logger.info('[recovery] Startup: no interrupted hands found');
   }
 }

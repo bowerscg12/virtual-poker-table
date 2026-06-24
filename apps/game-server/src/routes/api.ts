@@ -9,9 +9,12 @@ import {
   getActiveSeatForUser,
   getLobbyById,
   getLobbyByInvite,
+  isMemoryMode,
   removeSeat,
   withLobbyEntryLock,
 } from '../services/lobby.js';
+import { pingDb } from '../db/client.js';
+import { redisPing } from '../store/redis.js';
 import { getHandHistories } from '../services/game-manager.js';
 import { createSession, deleteSessionsByUserId } from '../services/session.js';
 import { createTemplate, deleteTemplate, getTemplatesForUser } from '../services/templates.js';
@@ -334,7 +337,35 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  // Liveness probe: is the process up? Cheap and dependency-free — never gate it on DB/Redis, or a
+  // store blip would make the orchestrator kill otherwise-healthy instances.
   app.get('/health', { config: { rateLimit: false } }, async () => ({ ok: true }));
+
+  // Readiness probe: should this instance receive traffic? Pings the live stores so Cloud Run stops
+  // routing players to an instance that can't reach Postgres. Postgres is the hard dependency (503 if
+  // down); Redis degrades gracefully to the in-memory fallback, so it's reported but doesn't gate
+  // readiness — yanking the whole fleet over a Redis blip would cause a worse outage than it prevents.
+  // In memory-mode (no stores configured) the in-memory store is always available, so report ready.
+  app.get('/ready', { config: { rateLimit: false } }, async (_req, reply) => {
+    if (isMemoryMode()) {
+      return { ready: true, store: 'memory', checks: { db: 'skipped', redis: 'skipped' } };
+    }
+    const withTimeout = (p: Promise<boolean>): Promise<boolean> =>
+      Promise.race([
+        p,
+        new Promise<boolean>((resolve) => {
+          const t = setTimeout(() => resolve(false), 2000);
+          if (typeof t.unref === 'function') t.unref();
+        }),
+      ]);
+    const [db, redis] = await Promise.all([withTimeout(pingDb()), withTimeout(redisPing())]);
+    const ready = db;
+    return reply.status(ready ? 200 : 503).send({
+      ready,
+      store: 'postgres',
+      checks: { db: db ? 'up' : 'down', redis: redis ? 'up' : 'down' },
+    });
+  });
 
   // ── Chip Wallet ───────────────────────────────────────────────────────────
 

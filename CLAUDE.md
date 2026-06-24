@@ -258,7 +258,8 @@ npm run migrate -w @vct/game-server
 |---|---|---|
 | `DATABASE_URL` | — | Postgres connection string |
 | `REDIS_URL` | — | Redis (game state persistence) |
-| `JWT_SECRET` | — | Auth token signing secret |
+| `JWT_SECRET` | — | Auth token signing secret. **Required in production** — boot fails fast if unset or left at the dev default (`config.ts`). |
+| `LOG_LEVEL` | `info` | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). All server logs go through the shared `logger.ts` instance. |
 | `DISCONNECT_GRACE_PERIOD_MS` | `180000` | Seat hold duration on disconnect (ms) |
 | `PORT` | `3001` | HTTP/WS port |
 | `WEB_ORIGIN` | — | CORS origin for the web client |
@@ -266,6 +267,14 @@ npm run migrate -w @vct/game-server
 | `REACTION_COOLDOWN_MS` | `2500` | Min interval between emoji reactions per player (ms) |
 
 No Docker needed — server falls back to in-memory when Postgres/Redis are unreachable.
+
+---
+
+## Operations / Observability
+
+- **Probes** (`routes/api.ts`): `GET /api/health` = liveness (static `{ ok: true }`, never gated on stores). `GET /api/ready` = readiness — pings Postgres + Redis (`pingDb`/`redisPing`), returns `503` if Postgres is down so the orchestrator stops routing to a broken instance. Redis is reported but degrades gracefully (memory fallback), so it doesn't gate readiness. Memory-mode reports ready.
+- **Structured logging** (`logger.ts`): one shared `pino` instance used by Fastify and every service — JSON logs queryable by field (`lobbyId`/`userId`/`err`). Level via `LOG_LEVEL`. The standalone `db/migrate.ts` CLI script intentionally keeps plain `console` output.
+- **Graceful shutdown** (`index.ts`): `SIGTERM`/`SIGINT` drain — stop loops, close client sockets with WS `1012` (clients auto-reconnect into the Redis-recovered table), `app.close()`, then release DB/Redis pools (8s force-exit cap). `uncaughtException` drains + exits non-zero; `unhandledRejection` logs only (one stray rejection must not take down every table).
 
 ---
 

@@ -36,6 +36,21 @@ describe('API integration', () => {
     expect(res.json()).toEqual({ ok: true });
   });
 
+  it('readiness check reports ready with per-dependency status', async () => {
+    const res = await app.inject({ method: 'GET', url: '/ready' });
+    // Healthy instance is ready in both modes: memory (local) or postgres reachable (CI).
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      ready: boolean;
+      store: string;
+      checks: { db: string; redis: string };
+    };
+    expect(body.ready).toBe(true);
+    expect(['memory', 'postgres']).toContain(body.store);
+    expect(body.checks).toHaveProperty('db');
+    expect(body.checks).toHaveProperty('redis');
+  });
+
   it('guest auth and create lobby', async () => {
     const guest = await app.inject({
       method: 'POST',
