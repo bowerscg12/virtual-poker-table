@@ -1,10 +1,5 @@
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import cors from '@fastify/cors';
-import jwt from '@fastify/jwt';
-import rateLimit from '@fastify/rate-limit';
-import sensible from '@fastify/sensible';
-import websocket from '@fastify/websocket';
 import { config } from './config.js';
+import { buildApp } from './app.js';
 import { initLobbyStore } from './services/lobby.js';
 import { recoverInterruptedHands } from './services/game-manager.js';
 import { tournamentManager } from './services/tournament-manager.js';
@@ -12,12 +7,9 @@ import { cleanupExpiredGuests } from './services/guest-cleanup.js';
 import { cleanExpiredSessions, markAllSessionsDisconnected } from './services/session.js';
 import { cleanupAbandonedLobbies } from './services/lobby-cleanup.js';
 import { cleanupExpiredTournaments } from './services/tournament-cleanup.js';
-import { registerApiRoutes } from './routes/api.js';
 import { recoverBlackjackLobbies } from './ws/blackjack-handler.js';
 import {
   bjHandlerDeps,
-  registerClient,
-  setTokenVerifier,
   startBotTurnWatchdog,
   stopBotTurnWatchdog,
 } from './ws/handler.js';
@@ -60,39 +52,7 @@ async function main() {
     logger.error({ err }, '[startup] Initial tournament cleanup failed');
   }
 
-  const app = Fastify({ logger, trustProxy: true });
-
-  await app.register(rateLimit, {
-    global: true,
-    max: 100,
-    timeWindow: '1 minute',
-    keyGenerator: (req) => req.ip,
-    errorResponseBuilder: (_req, context) => ({
-      statusCode: 429,
-      error: 'Too Many Requests',
-      message: `Rate limit exceeded. Retry in ${Math.ceil(context.ttl / 1000)}s.`,
-    }),
-  });
-
-  await app.register(cors, { origin: config.webOrigin, credentials: true });
-  await app.register(sensible);
-  await app.register(jwt, { secret: config.jwtSecret });
-  app.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
-    try {
-      await request.jwtVerify();
-    } catch {
-      return reply.status(401).send({ error: 'Unauthorized' });
-    }
-  });
-
-  await app.register(websocket);
-  await app.register(registerApiRoutes, { prefix: '/api' });
-
-  setTokenVerifier(async (token) => app.jwt.verify<{ sub: string }>(token));
-
-  app.get('/ws', { websocket: true, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, (socket) => {
-    registerClient(socket);
-  });
+  const app = await buildApp();
 
   await app.listen({ port: config.port, host: '0.0.0.0' });
   logger.info({ port: config.port }, 'Game server listening');
