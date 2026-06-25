@@ -140,8 +140,21 @@ jobs:
       # login, a FIREBASE_TOKEN refresh token, or a service-account KEY — and key creation is blocked
       # by org policy iam.disableServiceAccountKeyCreation). Authenticate with a CI refresh token from
       # `firebase login:ci`, stored as the FIREBASE_TOKEN secret. firebase-tools reads it from the env.
+      # When apps/web is unchanged (e.g. a server-only push), the built files are byte-identical to
+      # the live release and firebase-tools fails the release with "is the current active version".
+      # That is a no-op, not a real failure, so swallow that specific case while still surfacing any
+      # other error.
       - name: Deploy to Firebase Hosting
-        run: npx firebase-tools deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
+        run: |
+          set +e
+          out=$(npx firebase-tools deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive 2>&1)
+          code=$?
+          echo "$out"
+          if [ $code -ne 0 ] && echo "$out" | grep -q "is the current active version"; then
+            echo "::notice::Hosting content unchanged — already the live release. Treating as success."
+            exit 0
+          fi
+          exit $code
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
