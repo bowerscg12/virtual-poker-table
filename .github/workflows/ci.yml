@@ -136,12 +136,12 @@ jobs:
         env:
           VITE_SERVER_URL: ${{ secrets.CLOUD_RUN_URL }}
 
-      # firebase-tools authenticates via Application Default Credentials. Point it at the credential
-      # file the auth step generated from Workload Identity Federation (the impersonated SA already
-      # holds roles/firebasehosting.admin), so the deploy stays keyless — no service-account key,
-      # which org policy (iam.disableServiceAccountKeyCreation) forbids anyway.
+      # firebase-tools can't consume the keyless WIF credential gcloud uses (it only accepts a user
+      # login, a FIREBASE_TOKEN refresh token, or a service-account KEY — and key creation is blocked
+      # by org policy iam.disableServiceAccountKeyCreation). Authenticate with a CI refresh token from
+      # `firebase login:ci`, stored as the FIREBASE_TOKEN secret. firebase-tools reads it from the env.
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
