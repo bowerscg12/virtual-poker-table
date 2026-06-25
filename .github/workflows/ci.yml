@@ -96,6 +96,7 @@ jobs:
 
       # ── GCP auth ────────────────────────────────────────────────────────────
       - uses: google-github-actions/auth@v2
+        id: auth
         with:
           workload_identity_provider: projects/867608402336/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
           service_account: 867608402336-compute@developer.gserviceaccount.com
@@ -135,5 +136,12 @@ jobs:
         env:
           VITE_SERVER_URL: ${{ secrets.CLOUD_RUN_URL }}
 
+      # firebase-tools authenticates via Application Default Credentials. Point it at the credential
+      # file the auth step generated from Workload Identity Federation (the impersonated SA already
+      # holds roles/firebasehosting.admin), so the deploy stays keyless — no service-account key,
+      # which org policy (iam.disableServiceAccountKeyCreation) forbids anyway.
       - name: Deploy to Firebase Hosting
-        run: npx firebase-tools deploy --only hosting --project ${{ secrets.GCP_PROJECT_ID }}
+        run: npx firebase-tools deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
