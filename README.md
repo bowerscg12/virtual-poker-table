@@ -1,6 +1,5 @@
 # Virtual Card Table ~ "Home Game"
 
-I love my girlfriend Mackenzie
 
 Server-authoritative web PWA for home poker games with friends. Play-money chips only — settle up IRL however you like.
 
@@ -60,3 +59,5 @@ npm run test:e2e -w @vct/web   # requires servers running
 ## Legal
 
 Entertainment only. No real-money wagering in this application.
+
+I love my girlfriend Mackenzie
