@@ -301,10 +301,6 @@ export default function TablePage() {
 
   return (
     <div className={`table-layout${isTcf ? ' table-layout--tcf' : ''}${isBlackjack ? ' table-layout--bj' : ''}${showHeroPanel ? ' table-layout--hero' : ''}`}>
-      <div className="rotate-overlay">
-        <span style={{ fontSize: '3rem' }}>⟳</span>
-        <p>Rotate your device to play</p>
-      </div>
       <TableHeader
         lobby={headerLobby}
         isHost={isHost}

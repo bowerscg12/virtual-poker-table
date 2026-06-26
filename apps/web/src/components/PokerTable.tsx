@@ -14,6 +14,32 @@ import { ReactionOverlay } from './ReactionOverlay';
 /** How far (as fraction of seat orbit radius) the felt buttons sit from center. */
 const BTN_RADIUS_FACTOR = 0.62;
 
+/**
+ * Seat-ring radii as a percentage of the felt box. Portrait uses a narrower
+ * x-radius (the felt is taller than it is wide there) so side seats don't hang
+ * off the rail or crowd the central board, and a slightly taller y-radius to use
+ * the extra vertical room. Landscape keeps the original 46/42 ellipse.
+ */
+const SEAT_RING = {
+  landscape: { x: 46, y: 42 },
+  portrait: { x: 40, y: 44 },
+} as const;
+
+/** Tracks portrait vs. landscape so the seat ring can reshape with the felt. */
+function useIsPortrait(): boolean {
+  const [portrait, setPortrait] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(orientation: portrait)').matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(orientation: portrait)');
+    const onChange = () => setPortrait(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return portrait;
+}
+
 const BADGE_ICON: Record<BadgeType, string> = {
   big_stack:       '👑',
   short_stack:     '💸',
@@ -92,9 +118,10 @@ function computeSeatCenterPx(
   loopIdx: number,
   angleStep: number,
   feltRect: DOMRect,
+  ring: { x: number; y: number } = SEAT_RING.landscape,
 ): { x: number; y: number } {
-  const xPct = 50 + 46 * Math.cos(angleStep * loopIdx - Math.PI / 2);
-  const yPct = 50 + 42 * Math.sin(angleStep * loopIdx - Math.PI / 2);
+  const xPct = 50 + ring.x * Math.cos(angleStep * loopIdx - Math.PI / 2);
+  const yPct = 50 + ring.y * Math.sin(angleStep * loopIdx - Math.PI / 2);
   return {
     x: (feltRect.width * xPct) / 100,
     y: (feltRect.height * yPct) / 100,
@@ -116,6 +143,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
   }));
 
   const angleStep = (2 * Math.PI) / maxSeats;
+  const isPortrait = useIsPortrait();
+  const ring = isPortrait ? SEAT_RING.portrait : SEAT_RING.landscape;
   const remaining = useActionTimer(table?.paused ? undefined : table?.actionDeadline);
   const intermissionRemaining = useActionTimer(table?.paused ? undefined : table?.intermissionDeadline);
   const timerSec = lobby?.settings.actionTimerSec ?? 0;
@@ -230,7 +259,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
 
     banner.winners.forEach((winner, streamIdx) => {
       if (!seats.some(s => s.seatIndex === winner.seatIndex)) return;
-      const dest = computeSeatCenterPx(winner.seatIndex, angleStep, feltRect);
+      const dest = computeSeatCenterPx(winner.seatIndex, angleStep, feltRect, ring);
       for (let chipIdx = 0; chipIdx < 2; chipIdx++) {
         chips.push({
           id: `cf-${winner.seatIndex}-${chipIdx}-${now}`,
@@ -267,7 +296,7 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
 
     const now = Date.now();
     const newChips: ChipFlight[] = batch.map(entry => {
-      const seat = computeSeatCenterPx(entry.seatIndex, angleStep, feltRect);
+      const seat = computeSeatCenterPx(entry.seatIndex, angleStep, feltRect, ring);
       return {
         id: `pots-${entry.seatIndex}-${now}-${entry.id}`,
         startX: seat.x,
@@ -432,8 +461,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
           const isAllIn = gs?.allIn === true;
 
           // Position is always derived from the seat's own index, never the array position
-          const x = 50 + 46 * Math.cos(angleStep * seat.seatIndex - Math.PI / 2);
-          const y = 50 + 42 * Math.sin(angleStep * seat.seatIndex - Math.PI / 2);
+          const x = 50 + ring.x * Math.cos(angleStep * seat.seatIndex - Math.PI / 2);
+          const y = 50 + ring.y * Math.sin(angleStep * seat.seatIndex - Math.PI / 2);
           // Seats near the top edge can't fit a popup above them — drop it below instead.
           const statsBelow = y < 40;
 
@@ -683,8 +712,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
         const gs = table?.seats.find((s) => s.seatIndex === seat.seatIndex);
         if (!gs || (!gs.isDealer && !gs.isSmallBlind && !gs.isBigBlind)) return null;
         const angle = angleStep * i - Math.PI / 2;
-        const bx = 50 + 46 * BTN_RADIUS_FACTOR * Math.cos(angle);
-        const by = 50 + 42 * BTN_RADIUS_FACTOR * Math.sin(angle);
+        const bx = 50 + ring.x * BTN_RADIUS_FACTOR * Math.cos(angle);
+        const by = 50 + ring.y * BTN_RADIUS_FACTOR * Math.sin(angle);
         return (
           <div
             key={`pos-btn-${seat.seatIndex}`}
@@ -703,8 +732,8 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
         reactions={reactions}
         getPos={(r) => {
           if (r.seatIndex === null) return null;
-          const rx = 50 + 46 * Math.cos(angleStep * r.seatIndex - Math.PI / 2);
-          const ry = 50 + 42 * Math.sin(angleStep * r.seatIndex - Math.PI / 2);
+          const rx = 50 + ring.x * Math.cos(angleStep * r.seatIndex - Math.PI / 2);
+          const ry = 50 + ring.y * Math.sin(angleStep * r.seatIndex - Math.PI / 2);
           // Spawn just above the seat capsule; clamp so top seats stay on the felt
           return { xPct: rx, yPct: Math.max(ry - 9, 5) };
         }}

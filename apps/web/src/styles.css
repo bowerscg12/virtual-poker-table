@@ -848,7 +848,8 @@ select option {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 1rem;
+  /* Clear notches / rounded corners (viewport-fit=cover) on both orientations. */
+  padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
   height: 48px;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(6px);
@@ -2966,12 +2967,23 @@ select option {
   }
 
   .raise-panel {
-    position: absolute;
     /* Pop out to the RIGHT of the action buttons, over the felt — anchoring it
        above would push it behind the header on short landscape screens. */
     left: calc(100% + 0.5rem);
     bottom: 0;
-    width: 248px;
+    /* Bound to the felt-side space so it can never run past the viewport edge
+       on a narrow landscape phone (was a fixed 248px that overflowed). */
+    max-width: calc(100vw - var(--hero-w, 130px) - 1rem);
+  }
+}
+
+/* ── Compact raise panel — shared by landscape phones (short height) and
+   portrait phones. The box + internal layout are identical; only the pop-out
+   anchor differs (right in landscape, up in portrait), set per orientation. */
+@media (max-height: 500px), (orientation: portrait) and (max-width: 820px) {
+  .raise-panel {
+    position: absolute;
+    width: clamp(200px, 60vw, 248px);
     flex-direction: column;
     align-items: stretch;
     gap: 0.5rem;
@@ -3039,7 +3051,9 @@ select option {
     min-width: 0;
     width: auto;
   }
+}
 
+@media (max-height: 500px) {
   /* Revert button sizes for tight landscape layout */
   .hero-panel__actions .action-bar__btns .btn {
     padding: 0.35rem 0.75rem;
@@ -3050,6 +3064,75 @@ select option {
   .sit-out-toggle {
     padding: 0.35rem 0.75rem;
     font-size: 0.85rem;
+  }
+}
+
+/* ── Mobile board legibility — community cards/pot stay above seat capsules ──
+   Matches BOTH portrait phones (narrow width) and landscape phones (short
+   height), so the central board is never painted over by an outer seat. The
+   board + pot live inside .pot-area, which sits *before* the seats in the DOM;
+   without an explicit stacking order the later-painted seats cover it. */
+@media (max-width: 640px), (max-height: 500px) {
+  .pot-area {
+    z-index: 5;
+  }
+
+  .seat {
+    z-index: 2;
+    min-width: 56px;
+  }
+
+  /* Tray backdrop so the cards read against the busy felt + nearby capsules. */
+  .board {
+    padding: 4px 6px;
+    border-radius: 9px;
+    background: rgba(0, 0, 0, 0.32);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Smaller bubbles + peeking hole cards so they don't blanket the board. */
+  .chat-bubble {
+    max-width: 140px;
+    font-size: 0.62rem;
+  }
+
+  .hole-cards .playing-card {
+    width: 22px;
+    height: 31px;
+  }
+}
+
+/* ── Mobile: board-decision prompts as bottom sheets ──────────────────────
+   RunItOut / BombPot / ShowCards fire at the exact moment a player wants to see
+   the board. On phones, drop them to a translucent bottom sheet instead of a
+   centered card that blankets the felt, so the board stays visible above. */
+@media (max-width: 640px), (max-height: 500px) {
+  .modal-overlay.run-it-out-overlay,
+  .modal-overlay.bomb-pot-overlay,
+  .modal-overlay.show-cards-overlay {
+    align-items: flex-end;
+    padding: 0;
+    /* Lighter, gradient scrim so the felt/board reads through the top portion. */
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.78) 35%, rgba(0, 0, 0, 0.12));
+  }
+
+  .run-it-out-overlay .modal,
+  .bomb-pot-overlay .modal,
+  .show-cards-overlay .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 60vh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    padding: 1rem 1.1rem calc(1rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55);
+  }
+
+  .run-it-out-overlay .modal-title,
+  .bomb-pot-overlay .modal-title,
+  .show-cards-overlay .modal-title {
+    font-size: 1.15rem;
+    margin-bottom: 0.4rem;
   }
 }
 
@@ -5130,7 +5213,10 @@ select option {
 
 .hero-action-panel {
   flex-shrink: 0;
-  width: 215px;
+  /* --hero-w mirrors the panel width so the breakout raise panel can bound
+     itself to the remaining felt-side space (overridden per breakpoint). */
+  --hero-w: 215px;
+  width: var(--hero-w);
   display: flex;
   /* DOM order: [cards, actions] — column-reverse puts cards at bottom, actions above */
   flex-direction: column-reverse;
@@ -5293,7 +5379,7 @@ select option {
   }
 
   .hero-action-panel {
-    width: 175px;
+    --hero-w: 175px;
   }
 
   .hero-panel__cards .playing-card {
@@ -5308,41 +5394,81 @@ select option {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   PORTRAIT — rotate device prompt for touch devices
+   Portrait is now a first-class layout (see the portrait block in the
+   landscape-adjustments section) — the old "rotate your device" gate is gone.
    ═══════════════════════════════════════════════════════════ */
-
-.rotate-overlay {
-  display: none;
-}
-
-@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
-  .rotate-overlay {
-    display: flex;
-    position: fixed;
-    inset: 0;
-    background: var(--felt-dark);
-    z-index: 9999;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 1rem;
-    color: var(--text);
-    font-size: 1.1rem;
-    text-align: center;
-    padding: 2rem;
-  }
-}
 
 /* ── Landscape phone: narrow hero panel (placed after base styles so it wins) ── */
 
 @media (max-height: 500px) {
   .hero-action-panel {
-    width: 130px;
+    --hero-w: 130px;
     padding: 0.5rem 0.5rem 1rem;
+    /* Clear a left-edge notch when the phone is in landscape. */
+    padding-left: max(0.5rem, env(safe-area-inset-left));
   }
 
   .action-bar__btns {
     gap: 0.35rem;
+  }
+}
+
+/* ── Portrait phones — first-class vertical layout (no forced landscape) ──────
+   Placed after the hero-panel definitions so these overrides win. Felt on top,
+   hero controls as a full-width bottom bar (table-main is column-reverse, and
+   DOM order is [hero, felt]). The felt takes a portrait aspect and the board
+   scales with viewport width. The seat ring reshapes automatically — PokerTable
+   reads the narrower SEAT_RING.portrait x-radius in portrait. */
+@media (orientation: portrait) and (max-width: 820px) {
+  .table-layout--hero .table-main {
+    flex-direction: column-reverse;
+  }
+
+  .felt {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 5;
+    margin: 0.25rem auto;
+  }
+
+  /* Hero controls become a full-width bottom action bar (cards left, actions right). */
+  .hero-action-panel {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.5rem max(0.75rem, env(safe-area-inset-right))
+             calc(0.5rem + env(safe-area-inset-bottom))
+             max(0.75rem, env(safe-area-inset-left));
+    position: relative;
+  }
+
+  .hero-panel__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Anchor the breakout raise panel UPWARD from the bottom bar, spanning width. */
+  .hero-panel__actions .action-bar {
+    position: static;
+  }
+
+  .raise-panel {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(100% + 0.5rem);
+    width: auto;
+    max-width: none;
+  }
+
+  /* Board cards scale with viewport width so all five always fit. */
+  .board .playing-card {
+    width: clamp(34px, 12vw, 56px);
+    height: auto;
+    aspect-ratio: 5 / 7;
+    font-size: clamp(0.62rem, 2.6vw, 0.95rem);
   }
 }
 
@@ -5728,6 +5854,13 @@ select option {
   border: 2px solid #5c3d0e;
   border-top: none;
   flex-shrink: 0;
+}
+
+/* On phones the fixed nowrap rail overflows with 3+ players — let it wrap. */
+@media (max-width: 640px) {
+  .bj-player-row {
+    flex-wrap: wrap;
+  }
 }
 
 .bj-seat {

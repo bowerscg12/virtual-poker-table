@@ -24,7 +24,7 @@ Multiplayer browser card game app. Guest-first identity (display name at join/cr
 | Bot identity | `apps/game-server/src/services/bots.ts` | Bot users, seating (`addBot`), brain lookup, `isBotUser`, cleanup |
 | Blackjack engine | `packages/blackjack-engine/src/game.ts` | Round lifecycle, `game.ts`, `hand.ts`, `shoe.ts`, `dealer.ts`, `settlement.ts` |
 | Shared types | `packages/shared-types/src/` | `ws.ts`, `game.ts`, `lobby.ts`, `variant.ts`, `blackjack.ts`, `avatar.ts` |
-| Table UI | `apps/web/src/components/PokerTable.tsx` | Felt, seats, cards, badges |
+| Table UI | `apps/web/src/components/PokerTable.tsx` | Felt, seats, cards, badges; orientation-aware seat ring (`SEAT_RING`/`useIsPortrait`) |
 | Blackjack UI | `apps/web/src/components/BlackjackTable.tsx` | Blackjack table display |
 | Blackjack bets | `apps/web/src/components/BlackjackActionBar.tsx` | Chip denominations, bet/action UI |
 | WS client | `apps/web/src/hooks/useGameSocket.ts` | WS lifecycle, reconnect, state sync |
@@ -198,6 +198,15 @@ Notable `VariantConfig` fields: `nextHandBombPot`, `runItOut` (1/2/3 runs), `str
 - `guest-cleanup.ts`: deletes guest accounts older than `GUEST_EXPIRY_HOURS` (default 48h) with no active sessions.
 - `lobby-cleanup.ts`: deletes abandoned lobbies where all players have been disconnected >10 min and the lobby is >20 min old.
 
+**Mobile / Responsive Layout** (poker table; all CSS-driven in `apps/web/src/styles.css` except the seat ring): Portrait is a **first-class layout** — the old forced-landscape "rotate your device" gate (`.rotate-overlay`) was removed. Breakpoints: `max-width: 640px` (portrait phones), `max-height: 500px` (landscape phones), and `(orientation: portrait) and (max-width: 820px)` (the portrait layout block — placed *after* the hero-panel definitions so its overrides win on source order).
+
+- **Layout**: landscape phones keep the `[hero panel | felt]` row (`.table-layout--hero .table-main`); portrait flips it to `column-reverse` (felt on top, hero controls become a full-width bottom action bar). `--hero-w` on `.hero-action-panel` mirrors the panel width so the breakout `.raise-panel` can `clamp()`/bound itself to the felt-side space (landscape pops it right, portrait pops it up — internals shared in one `@media (max-height: 500px), (orientation: portrait) and (max-width: 820px)` block).
+- **Seat ring is orientation-aware** (the one JS piece): `SEAT_RING` (`landscape` 46/42 vs `portrait` 40/44 radii) + the `useIsPortrait()` `matchMedia` hook in `PokerTable.tsx`; `computeSeatCenterPx(... , ring)` and the four inline radius sites read it, so side seats don't crowd the board on the narrow portrait felt.
+- **Board legibility**: on phones (`(max-width: 640px), (max-height: 500px)`) `.pot-area`/`.board` get a higher z-index than `.seat` plus a tray backdrop so community cards are never painted over by an outer seat; board cards use `clamp()` sizing in portrait so all five fit.
+- **Decision prompts** (`run-it-out-overlay`/`bomb-pot-overlay`/`show-cards-overlay`) become bottom sheets on phones (translucent scrim, board stays visible). Other modals (cash-out, showdown results, etc.) stay centered.
+- **Safe-area insets** (`env(safe-area-inset-*)`) on the header, landscape hero panel, and bottom sheets (`index.html` already sets `viewport-fit=cover`).
+- **Backlog** of larger mobile redesign ideas: `apps/web/MOBILE_REDESIGN_NOTES.md`.
+
 ---
 
 ## Where To Change Things
@@ -217,6 +226,7 @@ Notable `VariantConfig` fields: `nextHandBombPot`, `runItOut` (1/2/3 runs), `str
 | DB schema | `db/schema.ts` + `migrate.ts` |
 | Betting UI | `components/ActionBar.tsx` |
 | Table UI | `components/PokerTable.tsx` |
+| Mobile / responsive layout | Media queries in `apps/web/src/styles.css` (`max-width:640px`, `max-height:500px`, `orientation:portrait`); seat-ring `SEAT_RING`/`useIsPortrait` in `PokerTable.tsx`; backlog in `apps/web/MOBILE_REDESIGN_NOTES.md` |
 | Avatar | `shared-types/avatar.ts`, `AvatarSvg.tsx`, `AvatarCreator.tsx` |
 | 12-Card-Flip | `poker-engine/twelve-card-flip.ts`, `TwelveCardFlip.tsx` |
 | Table presets | `shared-types/presets.ts` |
