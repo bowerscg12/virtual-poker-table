@@ -358,6 +358,43 @@ export async function deleteTournamentTemplate(id: string): Promise<void> {
   await fetch(`${API}/tournament-templates/${id}`, { method: 'DELETE', headers: authOnlyHeaders() });
 }
 
+export async function claimLowChipBonus(): Promise<{ chipBalance: number }> {
+  const res = await fetch(`${API}/wallet/low-chip-claim`, { method: 'POST', headers: authHeaders(), body: '{}' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? 'Could not claim recovery bonus');
+  }
+  return res.json();
+}
+
+export interface LeaderboardUser {
+  rank: number;
+  userId: string;
+  displayName: string;
+  chipBalance: number;
+}
+
+export async function getGlobalLeaderboard(): Promise<{ leaderboard: LeaderboardUser[] }> {
+  const res = await fetch(`${API}/leaderboard`, { headers: authHeaders() });
+  if (!res.ok) return { leaderboard: [] };
+  return res.json();
+}
+
+export interface TournamentUserStats {
+  tournamentsPlayed: number;
+  tournamentCashes: number;
+  tournamentWins: number;
+  bestTournamentFinish: number | null;
+  totalTournamentEarnings: number;
+  itmPercent: number;
+}
+
+export async function getMyTournamentStats(): Promise<TournamentUserStats | null> {
+  const res = await fetch(`${API}/me/tournament-stats`, { headers: authHeaders() });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export function getWsUrl(): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.host;

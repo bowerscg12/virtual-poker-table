@@ -35,6 +35,7 @@ import { CardView } from '../components/CardView';
 import { TournamentLeaderboard } from '../components/TournamentLeaderboard';
 import { BlindScheduleDisplay } from '../components/BlindScheduleDisplay';
 import { EliminationModal } from '../components/EliminationModal';
+import { TournamentSummaryModal } from '../components/TournamentSummaryModal';
 import { SeatChangeModal } from '../components/SeatChangeModal';
 
 export default function TablePage() {
@@ -688,26 +689,10 @@ export default function TablePage() {
       )}
 
       {tournamentFinalLeaderboard && !eliminationResult && (
-        <div className="modal-overlay" style={{ zIndex: 75 }}>
-          <div className="modal" style={{ maxWidth: 440 }}>
-            <h2 className="modal-title">Tournament Complete!</h2>
-            <div style={{ maxHeight: 300, overflowY: 'auto', margin: '0.75rem 0' }}>
-              {tournamentFinalLeaderboard.map((entry, i) => (
-                <div key={entry.userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.9rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span><span style={{ opacity: 0.5 }}>{i + 1}. </span>{entry.displayName}</span>
-                  {entry.prizeAwarded && entry.prizeAwarded > 0 && (
-                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>+{entry.prizeAwarded.toLocaleString()}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="modal-actions">
-              <button className="btn primary" onClick={() => { clearTournamentFinalLeaderboard(); navigate('/'); }}>
-                Back to Home
-              </button>
-            </div>
-          </div>
-        </div>
+        <TournamentSummaryModal
+          leaderboard={tournamentFinalLeaderboard}
+          onClose={clearTournamentFinalLeaderboard}
+        />
       )}
     </div>
   );

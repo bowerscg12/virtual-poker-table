@@ -243,6 +243,14 @@ CREATE TABLE IF NOT EXISTS blackjack_high_scores (
 ALTER TABLE blackjack_high_scores ADD COLUMN IF NOT EXISTS longest_win_streak INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE blackjack_high_scores ADD COLUMN IF NOT EXISTS best_run_hands     INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE blackjack_high_scores ADD COLUMN IF NOT EXISTS biggest_hand_win   INTEGER NOT NULL DEFAULT 0;
+
+-- Tournament career stats and low-chip recovery.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_low_chip_claim          TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tournaments_played           INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tournament_cashes            INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tournament_wins              INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS best_tournament_finish       INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS total_tournament_earnings    INTEGER NOT NULL DEFAULT 0;
 `;
 
 async function main() {

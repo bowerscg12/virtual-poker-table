@@ -709,6 +709,79 @@ select option {
   padding-top: 0.2rem;
 }
 
+/* ── Tournament stats card ───────────────────────────────────────────────── */
+
+.tournament-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.tournament-stat {
+  text-align: center;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 0.5rem 0.25rem;
+}
+
+.tournament-stat__value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--gold);
+  line-height: 1;
+}
+
+.tournament-stat__label {
+  font-size: 0.7rem;
+  opacity: 0.55;
+  margin-top: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Global leaderboard ─────────────────────────────────────────────────── */
+
+.tournament-leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.25rem;
+}
+
+.tournament-leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.88rem;
+}
+
+.tournament-leaderboard-rank {
+  width: 2.2rem;
+  text-align: center;
+  font-weight: 700;
+  opacity: 0.7;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.tournament-leaderboard-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-leaderboard-chips {
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 /* ── Create tournament form layout ──────────────────────────────────────── */
 
 .form-grid-2 {

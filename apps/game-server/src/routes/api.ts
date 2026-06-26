@@ -23,12 +23,15 @@ import { getBjHighScore } from '../services/blackjack-highscore.js';
 import {
   buildPublicTournamentState,
   claimDailyChips,
+  claimLowChipBonus,
   createTournament,
   createTournamentTemplate,
   deleteTournamentTemplate,
   getChipBalance,
+  getGlobalLeaderboard,
   getTournamentById,
   getTournamentByInviteCode,
+  getTournamentStats,
   getTournamentTemplatesForUser,
   listWaitingTournaments,
   registerForTournament,
@@ -379,6 +382,24 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     const result = await claimDailyChips(userId);
     if ('error' in result) return reply.status(400).send({ error: result.error });
     return result;
+  });
+
+  app.post('/wallet/low-chip-claim', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const userId = (req.user as { sub: string }).sub;
+    const result = await claimLowChipBonus(userId);
+    if ('error' in result) return reply.status(400).send({ error: result.error });
+    return result;
+  });
+
+  app.get('/leaderboard', async () => {
+    const entries = await getGlobalLeaderboard();
+    return { leaderboard: entries };
+  });
+
+  app.get('/me/tournament-stats', { onRequest: [app.authenticate] }, async (req) => {
+    const userId = (req.user as { sub: string }).sub;
+    const stats = await getTournamentStats(userId);
+    return stats;
   });
 
   // ── Tournaments ───────────────────────────────────────────────────────────

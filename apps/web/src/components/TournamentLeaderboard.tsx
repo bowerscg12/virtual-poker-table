@@ -94,29 +94,43 @@ export function TournamentLeaderboard({ tournament }: Props) {
       </div>
 
       <div style={{ overflowY: 'auto', flex: 1 }}>
-        {active.map((entry, i) => (
-          <div
-            key={entry.userId}
-            style={{
-              padding: '0.35rem 0.75rem',
-              borderBottom: '1px solid rgba(255,255,255,0.04)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '0.5rem' }}>
-              <span style={{ opacity: 0.5, marginRight: '0.35rem' }}>{i + 1}.</span>
-              {entry.displayName}
-              {entry.tableNumber && active.length > 9 && (
-                <span style={{ opacity: 0.4, fontSize: '0.7rem', marginLeft: '0.25rem' }}>T{entry.tableNumber}</span>
-              )}
-            </span>
-            <span style={{ color: 'var(--gold)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
-              {(entry.stack ?? 0).toLocaleString()}
-            </span>
-          </div>
-        ))}
+        {active.map((entry, i) => {
+          const maxStack = active[0]?.stack ?? 1;
+          const pct = Math.round(((entry.stack ?? 0) / Math.max(1, maxStack)) * 100);
+          const isLeader = i === 0;
+          return (
+            <div
+              key={entry.userId}
+              style={{
+                padding: '0.35rem 0.75rem 0.4rem',
+                borderBottom: '1px solid rgba(255,255,255,0.04)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '0.5rem' }}>
+                  <span style={{ opacity: 0.5, marginRight: '0.35rem' }}>{i + 1}.</span>
+                  {isLeader && <span style={{ marginRight: '0.25rem' }}>👑</span>}
+                  {entry.displayName}
+                  {entry.tableNumber && active.length > 9 && (
+                    <span style={{ opacity: 0.4, fontSize: '0.7rem', marginLeft: '0.25rem' }}>T{entry.tableNumber}</span>
+                  )}
+                </span>
+                <span style={{ color: 'var(--gold)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
+                  {(entry.stack ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div style={{ height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2, marginTop: '0.25rem', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${pct}%`,
+                  background: isLeader ? 'var(--gold)' : 'rgba(100,200,120,0.7)',
+                  borderRadius: 2,
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+            </div>
+          );
+        })}
 
         {eliminated.length > 0 && (
           <>

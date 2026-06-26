@@ -11,6 +11,13 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   chipBalance: integer('chip_balance').notNull().default(5000),
   lastDailyClaim: timestamp('last_daily_claim'),
+  lastLowChipClaim: timestamp('last_low_chip_claim'),
+  // Tournament career stats
+  tournamentsPlayed: integer('tournaments_played').notNull().default(0),
+  tournamentCashes: integer('tournament_cashes').notNull().default(0),
+  tournamentWins: integer('tournament_wins').notNull().default(0),
+  bestTournamentFinish: integer('best_tournament_finish'),
+  totalTournamentEarnings: integer('total_tournament_earnings').notNull().default(0),
 });
 
 export const lobbies = pgTable('lobbies', {

@@ -18,6 +18,12 @@ export interface MemoryUser {
   createdAt: string;
   chipBalance: number;
   lastDailyClaim: string | null;
+  lastLowChipClaim: string | null;
+  tournamentsPlayed: number;
+  tournamentCashes: number;
+  tournamentWins: number;
+  bestTournamentFinish: number | null;
+  totalTournamentEarnings: number;
 }
 
 export interface MemorySeat {
@@ -75,7 +81,7 @@ export const memoryStore = {
 };
 
 export function memoryCreateUser(
-  data: Omit<MemoryUser, 'id' | 'createdAt' | 'chipBalance' | 'lastDailyClaim'> & { chipBalance?: number; lastDailyClaim?: string | null }
+  data: Omit<MemoryUser, 'id' | 'createdAt' | 'chipBalance' | 'lastDailyClaim' | 'lastLowChipClaim' | 'tournamentsPlayed' | 'tournamentCashes' | 'tournamentWins' | 'bestTournamentFinish' | 'totalTournamentEarnings'> & { chipBalance?: number; lastDailyClaim?: string | null }
 ): MemoryUser {
   const user: MemoryUser = {
     ...data,
@@ -83,6 +89,12 @@ export function memoryCreateUser(
     createdAt: new Date().toISOString(),
     chipBalance: data.chipBalance ?? 5000,
     lastDailyClaim: data.lastDailyClaim ?? null,
+    lastLowChipClaim: null,
+    tournamentsPlayed: 0,
+    tournamentCashes: 0,
+    tournamentWins: 0,
+    bestTournamentFinish: null,
+    totalTournamentEarnings: 0,
   };
   memoryStore.users.set(user.id, user);
   return user;

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import {
   tournaments,
@@ -149,6 +149,156 @@ export async function addChips(userId: string, amount: number): Promise<void> {
   }
 }
 
+export const LOW_CHIP_THRESHOLD = 1000;
+export const LOW_CHIP_BONUS = 2000;
+export const LOW_CHIP_COOLDOWN_DAYS = 7;
+
+export async function claimLowChipBonus(userId: string): Promise<{ chipBalance: number } | { error: string }> {
+  const now = new Date();
+
+  if (isMemoryMode()) {
+    const u = memoryStore.users.get(userId);
+    if (!u) return { error: 'User not found' };
+    if ((u.chipBalance ?? 5000) >= LOW_CHIP_THRESHOLD) return { error: 'Balance is above the low-chip threshold' };
+    if (u.lastLowChipClaim) {
+      const daysSince = (now.getTime() - new Date(u.lastLowChipClaim).getTime()) / 86_400_000;
+      if (daysSince < LOW_CHIP_COOLDOWN_DAYS) {
+        const daysLeft = Math.ceil(LOW_CHIP_COOLDOWN_DAYS - daysSince);
+        return { error: `Recovery bonus available again in ${daysLeft} day${daysLeft === 1 ? '' : 's'}` };
+      }
+    }
+    u.chipBalance = (u.chipBalance ?? 0) + LOW_CHIP_BONUS;
+    u.lastLowChipClaim = now.toISOString();
+    return { chipBalance: u.chipBalance };
+  }
+
+  const db = getDb();
+  const [row] = await db.select({ chipBalance: users.chipBalance, lastLowChipClaim: users.lastLowChipClaim }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!row) return { error: 'User not found' };
+  if (row.chipBalance >= LOW_CHIP_THRESHOLD) return { error: 'Balance is above the low-chip threshold' };
+  if (row.lastLowChipClaim) {
+    const daysSince = (now.getTime() - row.lastLowChipClaim.getTime()) / 86_400_000;
+    if (daysSince < LOW_CHIP_COOLDOWN_DAYS) {
+      const daysLeft = Math.ceil(LOW_CHIP_COOLDOWN_DAYS - daysSince);
+      return { error: `Recovery bonus available again in ${daysLeft} day${daysLeft === 1 ? '' : 's'}` };
+    }
+  }
+  const [updated] = await db
+    .update(users)
+    .set({ chipBalance: row.chipBalance + LOW_CHIP_BONUS, lastLowChipClaim: now })
+    .where(eq(users.id, userId))
+    .returning({ chipBalance: users.chipBalance });
+  return { chipBalance: updated.chipBalance };
+}
+
+export interface TournamentStatsUpdate {
+  played: boolean;
+  cashed: boolean;
+  won: boolean;
+  finish: number;
+  earnings: number;
+}
+
+export async function updateTournamentStats(userId: string, update: TournamentStatsUpdate): Promise<void> {
+  if (isMemoryMode()) {
+    const u = memoryStore.users.get(userId);
+    if (!u) return;
+    if (update.played) u.tournamentsPlayed = (u.tournamentsPlayed ?? 0) + 1;
+    if (update.cashed) u.tournamentCashes = (u.tournamentCashes ?? 0) + 1;
+    if (update.won) u.tournamentWins = (u.tournamentWins ?? 0) + 1;
+    if (u.bestTournamentFinish === null || update.finish < u.bestTournamentFinish) u.bestTournamentFinish = update.finish;
+    u.totalTournamentEarnings = (u.totalTournamentEarnings ?? 0) + update.earnings;
+    return;
+  }
+  const db = getDb();
+  const [row] = await db.select({
+    tournamentsPlayed: users.tournamentsPlayed,
+    tournamentCashes: users.tournamentCashes,
+    tournamentWins: users.tournamentWins,
+    bestTournamentFinish: users.bestTournamentFinish,
+    totalTournamentEarnings: users.totalTournamentEarnings,
+  }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!row) return;
+  await db.update(users).set({
+    tournamentsPlayed: row.tournamentsPlayed + (update.played ? 1 : 0),
+    tournamentCashes: row.tournamentCashes + (update.cashed ? 1 : 0),
+    tournamentWins: row.tournamentWins + (update.won ? 1 : 0),
+    bestTournamentFinish: (row.bestTournamentFinish === null || update.finish < row.bestTournamentFinish)
+      ? update.finish
+      : row.bestTournamentFinish,
+    totalTournamentEarnings: row.totalTournamentEarnings + update.earnings,
+  }).where(eq(users.id, userId));
+}
+
+export interface TournamentUserStats {
+  tournamentsPlayed: number;
+  tournamentCashes: number;
+  tournamentWins: number;
+  bestTournamentFinish: number | null;
+  totalTournamentEarnings: number;
+  itmPercent: number;
+}
+
+export async function getTournamentStats(userId: string): Promise<TournamentUserStats> {
+  if (isMemoryMode()) {
+    const u = memoryStore.users.get(userId);
+    const played = u?.tournamentsPlayed ?? 0;
+    const cashes = u?.tournamentCashes ?? 0;
+    return {
+      tournamentsPlayed: played,
+      tournamentCashes: cashes,
+      tournamentWins: u?.tournamentWins ?? 0,
+      bestTournamentFinish: u?.bestTournamentFinish ?? null,
+      totalTournamentEarnings: u?.totalTournamentEarnings ?? 0,
+      itmPercent: played > 0 ? Math.round((cashes / played) * 100) : 0,
+    };
+  }
+  const db = getDb();
+  const [row] = await db.select({
+    tournamentsPlayed: users.tournamentsPlayed,
+    tournamentCashes: users.tournamentCashes,
+    tournamentWins: users.tournamentWins,
+    bestTournamentFinish: users.bestTournamentFinish,
+    totalTournamentEarnings: users.totalTournamentEarnings,
+  }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!row) return { tournamentsPlayed: 0, tournamentCashes: 0, tournamentWins: 0, bestTournamentFinish: null, totalTournamentEarnings: 0, itmPercent: 0 };
+  const played = row.tournamentsPlayed;
+  const cashes = row.tournamentCashes;
+  return {
+    tournamentsPlayed: played,
+    tournamentCashes: cashes,
+    tournamentWins: row.tournamentWins,
+    bestTournamentFinish: row.bestTournamentFinish,
+    totalTournamentEarnings: row.totalTournamentEarnings,
+    itmPercent: played > 0 ? Math.round((cashes / played) * 100) : 0,
+  };
+}
+
+export interface LeaderboardUser {
+  rank: number;
+  userId: string;
+  displayName: string;
+  chipBalance: number;
+}
+
+export async function getGlobalLeaderboard(): Promise<LeaderboardUser[]> {
+  if (isMemoryMode()) {
+    return [...memoryStore.users.values()]
+      .filter((u) => !u.isGuest && !u.isBot)
+      .sort((a, b) => (b.chipBalance ?? 0) - (a.chipBalance ?? 0))
+      .slice(0, 25)
+      .map((u, i) => ({ rank: i + 1, userId: u.id, displayName: u.displayName, chipBalance: u.chipBalance ?? 0 }));
+  }
+  const db = getDb();
+  const rows = await db
+    .select({ id: users.id, displayName: users.displayName, chipBalance: users.chipBalance })
+    .from(users)
+    .where(and(eq(users.isGuest, false), eq(users.isBot, false)))
+    .orderBy(desc(users.chipBalance))
+    .limit(25);
+  return rows.map((r, i) => ({ rank: i + 1, userId: r.id, displayName: r.displayName, chipBalance: r.chipBalance }));
+}
+
 // ── Prize calculation ────────────────────────────────────────────────────────
 
 export function calcNumPrizeSpots(playerCount: number): number {
@@ -163,10 +313,11 @@ export function calcPrize(prizePool: number, numSpots: number, placement: number
   if (numSpots <= 0 || placement > numSpots) return 0;
   if (numSpots === 1) return prizePool;
   if (numSpots === 2) return placement === 1 ? Math.floor(prizePool * 0.75) : Math.floor(prizePool * 0.25);
-  // 3+ spots: 50/30/20 for top 3
+  // 3+ spots: 50% to 1st, 30% to 2nd, remaining 20% split evenly among spots 3+
   if (placement === 1) return Math.floor(prizePool * 0.50);
   if (placement === 2) return Math.floor(prizePool * 0.30);
-  return Math.floor(prizePool * 0.20);
+  const remainingSpots = numSpots - 2;
+  return Math.floor((prizePool * 0.20) / remainingSpots);
 }
 
 // ── Tournament CRUD ──────────────────────────────────────────────────────────

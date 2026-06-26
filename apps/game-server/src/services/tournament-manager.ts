@@ -14,8 +14,10 @@ import {
   updateRegistration,
   updateTournamentBlindLevel,
   updateTournamentPrizePool,
+  updateTournamentStats,
   updateTournamentStatus,
 } from './tournament-service.js';
+import { addSystemChatMessage } from './chat.js';
 import {
   createTournamentLobby,
   getLobbyById,
@@ -275,6 +277,15 @@ export async function advanceBlindLevel(tournamentId: string, _forced = false): 
     if (tId === tournamentId) sendToUser(userId, levelMsg);
   }
 
+  // Announce in all table chats
+  if (rt) {
+    const announcement = `🔔 Blinds increased to ${blind.small.toLocaleString()}/${blind.big.toLocaleString()} (Level ${nextLevel + 1})`;
+    for (const lobbyId of rt.tableLobbies.values()) {
+      const chatMsg = addSystemChatMessage(lobbyId, announcement);
+      broadcastRawToLobby(lobbyId, { type: 'chat', message: chatMsg });
+    }
+  }
+
   await broadcastTournamentState(tournamentId);
 
   // Schedule next advance if not at last level
@@ -356,14 +367,20 @@ async function handleEliminations(
     prizePerElim = Math.floor(totalPrize / eligibleBusted.length);
   }
 
+  // Get display names for chat announcements
+  const rt = activeTournaments.get(tournamentId);
+  const regs = await getRegistrations(tournamentId);
+  const displayNames = new Map(regs.map((r) => [r.userId, r.displayName]));
+
   for (let i = 0; i < bustedUserIds.length; i++) {
     const userId = bustedUserIds[i];
     const isEligible = eligibleBusted.includes(userId);
     const prize = isEligible ? prizePerElim : null;
+    const position = bustPosition + i;
 
     await updateRegistration(tournamentId, userId, {
       status: 'eliminated',
-      bustPosition: bustPosition + i,
+      bustPosition: position,
       currentStack: 0,
       prizeAwarded: prize,
     });
@@ -372,12 +389,32 @@ async function handleEliminations(
       await addChips(userId, prize);
     }
 
+    await updateTournamentStats(userId, {
+      played: true,
+      cashed: (prize ?? 0) > 0,
+      won: false,
+      finish: position,
+      earnings: prize ?? 0,
+    });
+
     sendToUser(userId, {
       type: 'tournament_elimination_result',
-      bustPosition: bustPosition + i,
+      bustPosition: position,
       prizeAwarded: prize,
       totalPlayers,
     });
+
+    // Announce elimination in all table chats
+    if (rt) {
+      const name = displayNames.get(userId) ?? 'A player';
+      const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
+      const prizeText = prize && prize > 0 ? ` (+${prize.toLocaleString()} chips)` : '';
+      const announcement = `💀 ${name} has been eliminated in ${ordinal(position)} place${prizeText}`;
+      for (const lobbyId of rt.tableLobbies.values()) {
+        const chatMsg = addSystemChatMessage(lobbyId, announcement);
+        broadcastRawToLobby(lobbyId, { type: 'chat', message: chatMsg });
+      }
+    }
   }
 }
 
@@ -473,6 +510,12 @@ async function consolidateToFinalTable(
     for (const [tableNum] of activeTables) {
       if (tableNum !== finalTableNumber) rt.tableLobbies.delete(tableNum);
     }
+
+    // Final table announcement
+    const announcement = `🎯 Final table! ${active.length} players remain.`;
+    const chatMsg = addSystemChatMessage(finalLobbyId, announcement);
+    broadcastRawToLobby(finalLobbyId, { type: 'chat', message: chatMsg });
+
     await broadcastTournamentState(tournamentId);
   }, 5000);
 }
@@ -546,12 +589,31 @@ async function finalizeTournament(
       bustPosition: 1,
       prizeAwarded: prize,
     });
+    await updateTournamentStats(winner.userId, {
+      played: true,
+      cashed: prize > 0,
+      won: true,
+      finish: 1,
+      earnings: prize,
+    });
     sendToUser(winner.userId, {
       type: 'tournament_elimination_result',
       bustPosition: 1,
       prizeAwarded: prize,
       totalPlayers,
     });
+
+    // Announce winner in all table chats
+    const rt2 = activeTournaments.get(tournamentId);
+    if (rt2) {
+      const regs2 = await getRegistrations(tournamentId);
+      const winnerName = regs2.find((r) => r.userId === winner.userId)?.displayName ?? 'A player';
+      const announcement = `🏆 ${winnerName} wins the tournament!`;
+      for (const lobbyId of rt2.tableLobbies.values()) {
+        const chatMsg = addSystemChatMessage(lobbyId, announcement);
+        broadcastRawToLobby(lobbyId, { type: 'chat', message: chatMsg });
+      }
+    }
   }
 
   await updateTournamentStatus(tournamentId, 'finished');

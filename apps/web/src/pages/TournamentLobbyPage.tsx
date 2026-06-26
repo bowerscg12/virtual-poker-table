@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import type { PublicTournamentState } from '@vct/shared-types';
 import {
   getTournamentById,
+  getWallet,
   registerForTournament,
   unregisterFromTournament,
 } from '../api/client';
@@ -47,6 +48,7 @@ export default function TournamentLobbyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [chipBalance, setChipBalance] = useState<number | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const countdown = useCountdown(tournament?.scheduledStart ?? new Date(Date.now() + 86400000).toISOString());
@@ -73,7 +75,10 @@ export default function TournamentLobbyPage() {
 
   useEffect(() => {
     fetchTournament();
-  }, [fetchTournament]);
+    if (user && !user.isGuest) {
+      getWallet().then((w) => setChipBalance(w.chipBalance)).catch(() => null);
+    }
+  }, [fetchTournament, user]);
 
   useEffect(() => {
     if (!id) return;
@@ -273,9 +278,25 @@ export default function TournamentLobbyPage() {
                 {actionLoading ? 'Leaving...' : 'Leave Tournament'}
               </button>
             ) : (
-              <button className="btn primary" onClick={handleRegister} disabled={actionLoading}>
-                {actionLoading ? 'Registering...' : 'Register'}
-              </button>
+              <>
+                {chipBalance !== null && chipBalance < tournament.buyIn && (
+                  <p className="form-error" style={{ width: '100%', margin: '0 0 0.5rem' }}>
+                    Insufficient chips — you need {tournament.buyIn.toLocaleString()} chips to enter.
+                  </p>
+                )}
+                {chipBalance !== null && chipBalance >= tournament.buyIn && chipBalance - tournament.buyIn < 1000 && (
+                  <p className="modal-warning" style={{ width: '100%', margin: '0 0 0.5rem', textAlign: 'left' }}>
+                    After registering you'll have {(chipBalance - tournament.buyIn).toLocaleString()} chips left.
+                  </p>
+                )}
+                <button
+                  className="btn primary"
+                  onClick={handleRegister}
+                  disabled={actionLoading || (chipBalance !== null && chipBalance < tournament.buyIn)}
+                >
+                  {actionLoading ? 'Registering...' : 'Register'}
+                </button>
+              </>
             )}
           </div>
         </div>
