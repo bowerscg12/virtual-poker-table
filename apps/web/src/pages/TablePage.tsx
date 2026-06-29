@@ -435,6 +435,7 @@ export default function TablePage() {
               onWhisper={handleWhisperRequest}
               onSideBetChallenge={mySeat ? (seatIndex, displayName) => setSideBetTarget({ seatIndex, displayName }) : undefined}
               onAddBot={isHost ? (seatIndex) => setAddBotSeat(seatIndex) : undefined}
+              onStartHand={isHost ? () => send({ type: 'host_start' }) : undefined}
               myBlindRevealed={cardsRevealed}
             />
           )}

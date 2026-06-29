@@ -909,6 +909,41 @@ select option {
   color: var(--gold);
 }
 
+/* Pre-game "Start hand" call-to-action on the centre of the felt (host only). */
+.felt-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.felt-start__btn {
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.7rem 1.6rem;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.felt-start__btn:not(:disabled) {
+  animation: felt-start-pulse 1.8s ease-in-out infinite;
+}
+
+.felt-start__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted, rgba(255, 255, 255, 0.7));
+}
+
+@keyframes felt-start-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .felt-start__btn:not(:disabled) { animation: none; }
+}
+
 .board {
   display: flex;
   gap: 6px;

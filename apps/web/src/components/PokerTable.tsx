@@ -101,6 +101,8 @@ interface Props {
   onSideBetChallenge?: (seatIndex: number, displayName: string) => void;
   /** Host-only: open the add-bot flow for an empty seat. */
   onAddBot?: (seatIndex: number) => void;
+  /** Host-only: start the first hand from a button on the felt (pre-game only). */
+  onStartHand?: () => void;
   myBlindRevealed?: boolean;
 }
 
@@ -128,7 +130,7 @@ function computeSeatCenterPx(
   };
 }
 
-export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, isHost, handActive, onMoveSeat, onWhisper, onSideBetChallenge, onAddBot, myBlindRevealed }: Props) {
+export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, isHost, handActive, onMoveSeat, onWhisper, onSideBetChallenge, onAddBot, onStartHand, myBlindRevealed }: Props) {
   const maxSeats = lobby?.settings.maxPlayers ?? 8;
   // Host may drop AI opponents into empty seats (cash games only; never tournaments/blackjack).
   const botsAllowed = !!isHost && !!onAddBot && !lobby?.tournamentId
@@ -323,6 +325,28 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
   const buyIn = lobby?.settings.buyIn ?? 0;
   const isDistributing = !!anim.winnerBanner;
 
+  // ── Felt "Start hand" button (host-only, pre-game) ──────────────────────────
+  // Shows a prominent button in the centre of the felt so the host isn't left
+  // hunting for how to begin. Disappears the moment the first hand is under way
+  // (lobby flips to 'playing'/'paused'); reappears if the start is rejected.
+  const gameStarted = lobby?.status === 'playing' || lobby?.status === 'paused';
+  const seatedCount = seats.filter((s) => s.userId).length;
+  const canStartHand = seatedCount >= 2;
+  const showStartHand = !!isHost && !!onStartHand && !gameStarted;
+  const [startingHand, setStartingHand] = useState(false);
+  // Clear the transient "Starting…" state once the game is actually under way.
+  useEffect(() => {
+    if (gameStarted) setStartingHand(false);
+  }, [gameStarted]);
+  function handleStartHand() {
+    if (!onStartHand || startingHand || !canStartHand) return;
+    setStartingHand(true);
+    onStartHand();
+    // Safety net: re-enable if the start was rejected (e.g. a player left) so the
+    // host isn't stuck with a disabled button.
+    setTimeout(() => setStartingHand(false), 4000);
+  }
+
   const dealerSeatIndex = table?.dealerSeatIndex ?? 0;
   const isDealingThisHand = anim.dealingHandNum === table?.handNumber;
 
@@ -403,7 +427,22 @@ export function PokerTable({ lobby, table, myUserId, anim, messages, reactions, 
       ))}
 
       <div className="pot-area" ref={potAreaRef}>
-        {totalPot <= 0 && <div className="pot">Waiting for hand</div>}
+        {showStartHand && (
+          <div className="felt-start">
+            <button
+              type="button"
+              className="btn primary felt-start__btn"
+              onClick={handleStartHand}
+              disabled={startingHand || !canStartHand}
+            >
+              {startingHand ? 'Starting…' : 'Start hand'}
+            </button>
+            {!canStartHand && (
+              <span className="felt-start__hint">Need at least 2 players</span>
+            )}
+          </div>
+        )}
+        {totalPot <= 0 && !showStartHand && <div className="pot">Waiting for hand</div>}
         {(() => {
           const isDoubleBoard = !!table?.secondBoard;
           const renderCards = (cards: Card[]) =>
