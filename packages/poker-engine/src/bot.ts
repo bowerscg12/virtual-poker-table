@@ -83,6 +83,24 @@ const DIFFICULTY_PROFILES: Record<BotDifficulty, DifficultyProfile> = {
   pro: { iterations: 1200, equityNoise: 0.02, potOddsRespect: 1.0, mistakeRate: 0.0 },
 };
 
+/**
+ * Commitment discipline constants. Together these stop the "two bots jam every other hand" problem:
+ * raises grow linearly off the bet faced (not toward the stack), and a bot only puts a large slice
+ * of its stack at risk when its equity justifies stacking off.
+ */
+/** Cap a re-raise at this multiple of the amount needed to call, so re-raise wars grow linearly
+ *  rather than converging on all-in within a few re-raises. */
+const RERAISE_MULTIPLE = 3;
+/** Equity needed before a bot will commit more than {@link COMMIT_STACK_FRAC} of its effective stack
+ *  (or shove). Scaled by style aggression at the call site — maniacs commit a touch lighter. */
+const COMMIT_EQUITY = 0.62;
+/** A raise that risks more than this fraction of the effective stack counts as "stacking off" and is
+ *  only allowed for hands that clear {@link COMMIT_EQUITY}. */
+const COMMIT_STACK_FRAC = 0.45;
+/** Extra equity required to *re-raise* a bet (vs. betting when checked to) — discourages light
+ *  3-bet/4-bet wars that escalate to all-in. */
+const RERAISE_EQUITY_BONUS = 0.1;
+
 type Rng = () => number;
 
 const RANK_VAL: Record<string, number> = {
@@ -328,6 +346,25 @@ function potSize(state: GameTableState): number {
   return state.seats.reduce((a, s) => a + s.totalBet, 0);
 }
 
+/** Chips a seat started the hand with (everything still behind plus everything already committed). */
+function startStack(seat: GameTableState['seats'][number]): number {
+  return seat.stack + seat.totalBet;
+}
+
+/**
+ * Effective stack for commitment decisions: the smaller of this seat's starting stack and the largest
+ * live opponent's — i.e. the most chips that can actually change hands. Used so the commitment cap
+ * measures real exposure, not chips that can never be called.
+ */
+function effectiveStack(state: GameTableState, seatIndex: number): number {
+  const me = state.seats.find((s) => s.seatIndex === seatIndex);
+  if (!me) return 0;
+  const opps = state.seats.filter((s) => s.seatIndex !== seatIndex && !s.folded);
+  if (opps.length === 0) return startStack(me);
+  const maxOpp = Math.max(...opps.map(startStack));
+  return Math.min(startStack(me), maxOpp);
+}
+
 function find(legal: LegalAction[], type: PlayerActionType): LegalAction | undefined {
   return legal.find((a) => a.type === type);
 }
@@ -446,9 +483,20 @@ function valueBetChance(equity: number, threshold: number, style: StyleProfile, 
 }
 
 /**
- * Build a value/aggressive raise action sized at `fraction` of the (post-call) pot, clamped to the
- * legal raise range. Falls back to all-in when the target meets or exceeds the max, or to call/check
- * when no raise is available. `jamChance` lets aggressive styles/nut hands occasionally shove.
+ * Build a value/aggressive raise action sized at `fraction` of the (post-call) pot, with three caps
+ * that keep a bot from jamming its stack on a marginal hand:
+ *
+ *  1. **Anti-auto-shove** — a pot-fraction bet that reaches the full stack would otherwise convert to
+ *     an all-in on every low-SPR street; cap it ~65% of the way to all-in so it stays a sized raise.
+ *  2. **Escalation** — when re-raising (`toCall > 0`), cap the raise at {@link RERAISE_MULTIPLE}× the
+ *     amount called, so a re-raise war grows linearly off the bet faced instead of converging on
+ *     all-in within a few re-raises.
+ *  3. **Commitment** — a hand that does not clear the (style-scaled) {@link COMMIT_EQUITY} bar never
+ *     risks more than {@link COMMIT_STACK_FRAC} of the effective stack; if even a min-raise would
+ *     over-commit, it just calls/checks instead.
+ *
+ * `equity` (0..1) is this seat's estimated strength; nut hands pass 1. `jamChance` lets aggressive
+ * styles/strong hands occasionally shove, but only when the commitment bar is cleared.
  */
 function buildRaise(
   legal: LegalAction[],
@@ -456,7 +504,9 @@ function buildRaise(
   seatIndex: number,
   fraction: number,
   jamChance: number,
-  rng: Rng
+  rng: Rng,
+  equity: number,
+  style: StyleProfile
 ): BotDecision {
   const raise = find(legal, 'raise');
   const allIn = find(legal, 'all_in');
@@ -464,35 +514,64 @@ function buildRaise(
   const toCall = Math.max(0, state.currentBet - seat.betThisStreet);
   const pot = potSize(state);
 
-  if (allIn && rng() < jamChance) return { action: 'all_in' };
+  // Style-scaled commitment bar: more aggressive styles will stack off a little lighter.
+  const commitEquity = clamp01(COMMIT_EQUITY - (style.aggression - 0.5) * 0.18);
+  const canCommit = equity >= commitEquity;
+
+  // Cheapest non-folding line, used when committing isn't justified.
+  const passive = (): BotDecision => {
+    if (toCall > 0 && find(legal, 'call')) return { action: 'call' };
+    if (find(legal, 'check')) return { action: 'check' };
+    if (find(legal, 'call')) return { action: 'call' };
+    return { action: 'fold' };
+  };
+
+  // Deliberate shove only when our equity justifies stacking off.
+  if (allIn && canCommit && rng() < jamChance) return { action: 'all_in' };
 
   if (raise && raise.minAmount !== undefined && raise.maxAmount !== undefined) {
     const potAfterCall = pot + toCall;
     // Target total bet this street: current bet plus a pot-fraction sizing.
     const target = Math.round(state.currentBet + Math.max(state.minRaise, fraction * potAfterCall));
-    // Commitment cap: `raise.maxAmount` is the full stack, so a sized raise that reaches it would
-    // auto-convert to a shove — which happens on every low-SPR street and makes bots jam far too
-    // often. Cap a sized raise ~65% of the way from calling to all-in so it always keeps chips
-    // behind and stays a raise, not a shove. Deliberate shoves still come from `jamChance` above;
-    // a genuine forced jam (the min legal raise already exceeds the cap) is handled below.
-    const cappedTarget = Math.min(target, Math.round(state.currentBet + 0.65 * (raise.maxAmount - state.currentBet)));
+    // Cap 1 — anti-auto-shove: keep a sized raise from clamping straight to the stack.
+    let cappedTarget = Math.min(target, Math.round(state.currentBet + 0.65 * (raise.maxAmount - state.currentBet)));
+    // Cap 2 — escalation: a re-raise grows off the bet faced, not the remaining stack.
+    if (toCall > 0) {
+      cappedTarget = Math.min(cappedTarget, state.currentBet + RERAISE_MULTIPLE * toCall);
+    }
+    // Cap 3 — commitment: marginal hands never risk more than COMMIT_STACK_FRAC of the eff. stack.
+    if (!canCommit) {
+      const priorCommit = seat.totalBet - seat.betThisStreet; // chips in from earlier streets
+      // commitCeil is a total-bet-this-street ceiling: priorCommit + amount stays within budget.
+      const commitCeil = COMMIT_STACK_FRAC * effectiveStack(state, seatIndex) - priorCommit;
+      if (commitCeil < raise.minAmount) return passive(); // even a min-raise over-commits → just call
+      cappedTarget = Math.min(cappedTarget, Math.round(commitCeil));
+    }
     const clamped = Math.max(raise.minAmount, Math.min(raise.maxAmount, cappedTarget));
-    if (clamped >= raise.maxAmount && allIn) return { action: 'all_in' };
+    if (clamped >= raise.maxAmount && allIn) return canCommit ? { action: 'all_in' } : passive();
     return { action: 'raise', amount: clamped };
   }
-  if (allIn) return { action: 'all_in' };
+  if (allIn) return canCommit ? { action: 'all_in' } : passive();
   // No raise available — take the most aggressive non-folding line we can.
   if (find(legal, 'call')) return { action: 'call' };
   if (find(legal, 'check')) return { action: 'check' };
   return { action: 'fold' };
 }
 
-/** Pick a random non-fold legal action (used for beginner "mistakes" — never folds the nuts). */
-function randomNonFold(legal: LegalAction[], state: GameTableState, seatIndex: number, rng: Rng): BotDecision {
-  const choices = legal.filter((a) => a.type !== 'fold');
-  if (choices.length === 0) return { action: 'fold' };
+/** Pick a random non-fold legal action (used for beginner "mistakes" — never folds the nuts).
+ *  A mistake is a suboptimal *non-shove* action: `all_in` is excluded from the menu and a mistaken
+ *  raise is sized small with the commitment cap engaged, so a beginner's error is never a stack-off
+ *  (jamming a marginal hand was the single biggest source of unrealistic all-ins). */
+function randomNonFold(legal: LegalAction[], state: GameTableState, seatIndex: number, rng: Rng, style: StyleProfile): BotDecision {
+  const choices = legal.filter((a) => a.type !== 'fold' && a.type !== 'all_in');
+  if (choices.length === 0) {
+    // Only fold/all_in were legal (very short stack) — take the cheapest line rather than jamming.
+    if (find(legal, 'call')) return { action: 'call' };
+    if (find(legal, 'check')) return { action: 'check' };
+    return { action: 'fold' };
+  }
   const pick = choices[Math.floor(rng() * choices.length)];
-  if (pick.type === 'raise') return buildRaise(legal, state, seatIndex, 0.6, 0.1, rng);
+  if (pick.type === 'raise') return buildRaise(legal, state, seatIndex, 0.5, 0, rng, 0.35, style);
   return { action: pick.type };
 }
 
@@ -566,18 +645,19 @@ function decidePokerActionInner(
     const slowPlay = rng() < nutsTrapChance(state);
     if (canRaise && !slowPlay && rng() < Math.max(0.5, style.aggression)) {
       const frac = textureBetFraction(style, board, rng) * 1.05;
-      return buildRaise(legal, state, seatIndex, frac, brain.style === 'maniac' ? 0.2 : 0.06, rng);
+      // Nuts: pass equity 1 so the commitment cap never holds it back — it never folds the best hand.
+      return buildRaise(legal, state, seatIndex, frac, brain.style === 'maniac' ? 0.2 : 0.06, rng, 1, style);
     }
     // Trap / pot-control line: stay in cheaply and let opponents catch up or bluff into us.
     if (toCall > 0 && find(legal, 'call')) return { action: 'call' };
     if (canCheck) return { action: 'check' };
     if (find(legal, 'call')) return { action: 'call' };
-    return canRaise ? buildRaise(legal, state, seatIndex, textureBetFraction(style, board, rng), 0.15, rng) : { action: 'check' };
+    return canRaise ? buildRaise(legal, state, seatIndex, textureBetFraction(style, board, rng), 0.15, rng, 1, style) : { action: 'check' };
   }
 
   // ── Beginner mistakes: occasionally make a random (non-fold) play. ────────────────────────
   if (diff.mistakeRate > 0 && rng() < diff.mistakeRate) {
-    return randomNonFold(legal, state, seatIndex, rng);
+    return randomNonFold(legal, state, seatIndex, rng, style);
   }
 
   const preflop = board.length === 0;
@@ -592,6 +672,11 @@ function decidePokerActionInner(
     const floor = brain.difficulty === 'pro' ? opponentRangeFloor(state, seatIndex) : 0;
     equity = estimateEquity(hole, board, config, activeOpponentCount(state, seatIndex), diff.iterations, rng, floor);
   }
+  // Pre-noise ("true") strength drives stack-commitment decisions, so a bot never jams its whole
+  // stack on a hand-reading *misread* — even a beginner only commits when the hand is really there.
+  // Hand-reading noise still corrupts the value/aggression choices below (bet/call/raise selection),
+  // which is where weaker bots are supposed to err.
+  const rawEquity = equity;
   equity = clamp01(equity + gaussianNoise(diff.equityNoise, rng));
 
   // ── Preflop: gate entry by VPIP, then choose raise vs call vs fold. ───────────────────────
@@ -608,13 +693,16 @@ function decidePokerActionInner(
     if (toCall === 0) {
       // In for free (BB walked or all limps): raise for value or check. Never fold.
       if (canRaise && wantsToPlay && rng() < style.pfrBias) {
-        return buildRaise(legal, state, seatIndex, style.betSizePot, brain.style === 'maniac' ? 0.08 : 0.02, rng);
+        return buildRaise(legal, state, seatIndex, style.betSizePot, brain.style === 'maniac' ? 0.08 : 0.02, rng, rawEquity, style);
       }
       return canCheck ? { action: 'check' } : { action: 'call' };
     }
     if (!wantsToPlay) return { action: 'fold' };
-    if (canRaise && equity >= style.raiseThreshold && rng() < style.pfrBias) {
-      return buildRaise(legal, state, seatIndex, style.betSizePot, 0.02, rng);
+    // Re-raising into a pot that is already raised (a 3-bet/4-bet) needs a stronger hand than an
+    // open — otherwise loose styles trade re-raises up to all-in preflop.
+    const pfRaiseBar = style.raiseThreshold + (potIsRaised ? RERAISE_EQUITY_BONUS : 0);
+    if (canRaise && equity >= pfRaiseBar && rng() < style.pfrBias) {
+      return buildRaise(legal, state, seatIndex, style.betSizePot, 0.02, rng, rawEquity, style);
     }
     return find(legal, 'call') ? { action: 'call' } : canCheck ? { action: 'check' } : { action: 'fold' };
   }
@@ -628,16 +716,16 @@ function decidePokerActionInner(
   if (toCall === 0) {
     // No bet to call: bet for value (mixed near threshold for pro), semi-bluff draws, or barrel.
     if (canRaise && rng() < valueBetChance(equity, style.raiseThreshold, style, brain.difficulty)) {
-      return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
+      return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng, rawEquity, style);
     }
     // Semi-bluff: bet a draw for its fold equity even though it isn't yet a made value hand.
     if (canRaise && draw !== 'none' && equity < style.raiseThreshold) {
       const sbChance = (draw === 'strong' ? 0.6 : 0.3) * Math.max(style.aggression, 0.4);
-      if (rng() < sbChance) return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
+      if (rng() < sbChance) return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng, rawEquity, style);
     }
     // Planned bluff: a hand committed to bluffing keeps firing rather than randomly giving up.
     if (canRaise && equity < style.callThreshold && bluffCommitted) {
-      return buildRaise(legal, state, seatIndex, betFrac(), 0.04, rng);
+      return buildRaise(legal, state, seatIndex, betFrac(), 0.04, rng, rawEquity, style);
     }
     return canCheck ? { action: 'check' } : { action: 'fold' };
   }
@@ -646,12 +734,15 @@ function decidePokerActionInner(
   const potOdds = toCall / (pot + toCall); // break-even equity to call
   const callNeed = potOdds * diff.potOddsRespect + style.callThreshold * (1 - diff.potOddsRespect);
 
-  if (canRaise && rng() < valueBetChance(equity, style.raiseThreshold, style, brain.difficulty)) {
-    return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
+  // Raising a bet (a 3-bet+) needs a stronger hand than betting when checked to — this is the main
+  // brake on two bots trading raises up to all-in. Calling stays available for medium-strength hands.
+  const reRaiseBar = style.raiseThreshold + RERAISE_EQUITY_BONUS;
+  if (canRaise && rng() < valueBetChance(equity, reRaiseBar, style, brain.difficulty)) {
+    return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng, rawEquity, style);
   }
   // Semi-bluff raise with a strong draw: fold equity now plus outs if called.
   if (canRaise && draw === 'strong' && rng() < 0.35 * Math.max(style.aggression, 0.4)) {
-    return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng);
+    return buildRaise(legal, state, seatIndex, betFrac(), 0.05, rng, rawEquity, style);
   }
   // Call when the price is right; draws get an implied-odds discount on the break-even bar.
   const drawDiscount = draw === 'strong' ? 0.85 : draw === 'weak' ? 0.93 : 1;
@@ -660,7 +751,7 @@ function decidePokerActionInner(
   }
   // Weak: continue a planned bluff by raising, otherwise fold.
   if (canRaise && equity < style.callThreshold && bluffCommitted && rng() < 0.6) {
-    return buildRaise(legal, state, seatIndex, betFrac(), 0.04, rng);
+    return buildRaise(legal, state, seatIndex, betFrac(), 0.04, rng, rawEquity, style);
   }
   return { action: 'fold' };
 }

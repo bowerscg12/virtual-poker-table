@@ -192,6 +192,76 @@ describe('decidePokerAction — legality & nut rule', () => {
   });
 });
 
+describe('commitment discipline (anti over-shove)', () => {
+  // A low-SPR pot (more chips already in than left behind), checked to the bot on the turn.
+  const committedState = (hole: Card[]) => makeState({
+    street: 'turn',
+    board: ['Kh', '7d', '2c', '9s'],
+    currentBet: 0, // checked to the bot
+    minRaise: 10,
+    seats: [
+      seat(0, hole, { betThisStreet: 0, totalBet: 600, stack: 700 }),
+      seat(1, ['Js', 'Td'], { betThisStreet: 0, totalBet: 600, stack: 700 }),
+    ],
+    actionSeatIndex: 0,
+  });
+
+  it('a marginal hand on a committed pot never jams and keeps chips behind', () => {
+    // Ace-high, no pair or draw: equity well below the commit bar — the bot must not stack off.
+    let shoves = 0;
+    const trials = 300;
+    for (let s = 1; s <= trials; s++) {
+      const d = decidePokerAction(committedState(['As', 'Qd']), holdem, 0, { style: 'lag', difficulty: 'pro' }, mulberry32(s));
+      if (d.action === 'all_in') shoves++;
+      if (d.action === 'raise') expect(d.amount!).toBeLessThan(700);
+    }
+    expect(shoves).toBe(0);
+  });
+
+  it('a strong hand still commits far more than a marginal hand in the same spot', () => {
+    // The commitment gate must discriminate by strength, not just clamp everyone — a set should put
+    // in much more than ace-high. (Average chips committed this street across many seeds.)
+    const avgCommit = (hole: Card[]): number => {
+      let sum = 0;
+      const trials = 300;
+      for (let s = 1; s <= trials; s++) {
+        const d = decidePokerAction(committedState(hole), holdem, 0, { style: 'lag', difficulty: 'pro' }, mulberry32(s));
+        if (d.action === 'all_in') sum += 700;
+        else if (d.action === 'raise') sum += d.amount!;
+      }
+      return sum / trials;
+    };
+    expect(avgCommit(['7h', '7s'])).toBeGreaterThan(avgCommit(['As', 'Qd']) * 2);
+  });
+
+  it('caps a re-raise to a multiple of the bet faced instead of escalating to all-in', () => {
+    // Facing a sizable bet with a strong (non-nut) hand and deep stacks: a value raise must stay a
+    // sized re-raise bounded by currentBet + RERAISE_MULTIPLE(=3) * toCall, not a jam.
+    const toCall = 200;
+    const cap = 300 + 3 * toCall; // 900
+    const state = makeState({
+      street: 'flop',
+      board: ['Kh', '7d', '2c'],
+      currentBet: 300,
+      minRaise: 200,
+      seats: [
+        seat(0, ['7h', '7s'], { betThisStreet: 100, totalBet: 100, stack: 1900 }), // set of 7s, toCall 200
+        seat(1, ['As', 'Kd'], { betThisStreet: 300, totalBet: 300, stack: 1700 }),
+      ],
+      actionSeatIndex: 0,
+    });
+    let shoves = 0;
+    const trials = 300;
+    for (let s = 1; s <= trials; s++) {
+      const d = decidePokerAction(state, holdem, 0, { style: 'lag', difficulty: 'pro' }, mulberry32(s));
+      if (d.action === 'raise') expect(d.amount!).toBeLessThanOrEqual(cap);
+      if (d.action === 'all_in') shoves++;
+    }
+    // Jams are the rare exception (small jamChance), not the rule the escalation used to force.
+    expect(shoves).toBeLessThan(trials * 0.15);
+  });
+});
+
 describe('preflop strength & style looseness', () => {
   it('ranks premium hands above trash', () => {
     expect(preflopStrength(['Ah', 'As'], holdem)).toBeGreaterThan(preflopStrength(['7h', '2d'], holdem));
