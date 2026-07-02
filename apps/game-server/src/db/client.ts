@@ -12,6 +12,11 @@ export function getPool(): pg.Pool {
     pool = new pg.Pool({
       connectionString: config.databaseUrl.replace(/[?&]sslmode=[^&]+/, ''),
       ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+      // Fail fast on an unreachable/misconfigured DB instead of hanging the caller. Without this,
+      // the boot-time `SELECT 1` in initLobbyStore() can block past Cloud Run's startup deadline and
+      // the container is killed for "failing to listen on $PORT" — even though the port bind itself
+      // is fine. A bounded timeout lets initLobbyStore's try/catch fall back to memory mode instead.
+      connectionTimeoutMillis: 5000,
     });
   }
   return pool;

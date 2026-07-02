@@ -18,9 +18,19 @@ import { closeRedis } from './store/redis.js';
 import { closeDb } from './db/client.js';
 import { logger } from './logger.js';
 
-async function main() {
-  await initLobbyStore();
-  await recoverInterruptedHands();
+/**
+ * Best-effort, idempotent recovery + cleanup run once at boot. Deliberately invoked AFTER the HTTP
+ * port is bound: Cloud Run kills any container that doesn't listen on $PORT within its startup
+ * deadline, so nothing that touches Postgres/Redis (any of which can be briefly slow or unreachable)
+ * may block the initial listen(). Every step is wrapped so a single failure degrades one subsystem
+ * instead of taking down boot — authoritative table state lives in Redis and re-recovers on demand.
+ */
+async function runStartupRecovery(): Promise<void> {
+  try {
+    await recoverInterruptedHands();
+  } catch (err) {
+    logger.error({ err }, '[startup] Interrupted-hand recovery failed');
+  }
   await recoverBlackjackLobbies(bjHandlerDeps()).catch((err) => {
     logger.error({ err }, '[startup] Blackjack recovery failed');
   });
@@ -51,11 +61,21 @@ async function main() {
   } catch (err) {
     logger.error({ err }, '[startup] Initial tournament cleanup failed');
   }
+}
+
+async function main() {
+  // Decide store mode (Postgres vs in-memory) before serving. The pg pool has a bounded connection
+  // timeout (see db/client.ts), so an unreachable DATABASE_URL falls back to memory within seconds
+  // rather than hanging boot past Cloud Run's startup deadline.
+  await initLobbyStore();
 
   const app = await buildApp();
 
+  // Bind the port as early as possible so the platform health check passes; recovery runs after.
   await app.listen({ port: config.port, host: '0.0.0.0' });
   logger.info({ port: config.port }, 'Game server listening');
+
+  await runStartupRecovery();
 
   // Self-healing safety net: guarantees no AI seat can ever permanently stall a hand even if its
   // normal turn timer is lost. Runs independently of the per-action scheduling path.
