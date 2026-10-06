@@ -46,6 +46,10 @@ export async function buildApp() {
   await app.register(websocket);
   await app.register(registerApiRoutes, { prefix: '/api' });
 
+  // The web client is hosted separately (Firebase Hosting); this server only serves /api and /ws.
+  // Send anyone who opens the bare server URL to the actual app instead of a JSON 404.
+  app.get('/', async (_request, reply) => reply.redirect(config.webOrigin, 302));
+
   setTokenVerifier(async (token) => app.jwt.verify<{ sub: string }>(token));
 
   app.get('/ws', { websocket: true, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, (socket) => {
