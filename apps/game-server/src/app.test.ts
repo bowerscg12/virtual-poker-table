@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildApp } from './app.js';
+import { config } from './config.js';
 
 /**
  * Boot smoke test. Constructing the real Fastify app and calling `ready()` exercises the entire
@@ -20,6 +21,14 @@ describe('buildApp (server boot)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
+    await app.close();
+  });
+
+  it('redirects the bare root URL to the web client', async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: 'GET', url: '/' });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe(config.webOrigin);
     await app.close();
   });
 });
